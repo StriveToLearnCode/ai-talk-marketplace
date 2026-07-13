@@ -67,6 +67,19 @@ const SCOPE_PRIORITY = {
   installed: 2,
 };
 
+const CAPABILITY_LIFECYCLE = {
+  discovery_states: ["candidate_reuse", "candidate_reference", "low_relevance"],
+  selection_states: ["auto_selected", "choice_required", "low_relevance"],
+  usage_preferences: ["apply", "prefer_reuse", "prefer_reference", "excluded"],
+  user_choice_states: ["prefer_reuse", "prefer_reference", "excluded"],
+  execution_validation_states: [
+    "confirmed_reuse",
+    "partial_reuse",
+    "incompatible",
+    "reference_only",
+  ],
+};
+
 function usage() {
   return `Build a bounded local capability index for AI Talk.
 
@@ -240,8 +253,10 @@ function markdownMetadata(content, fallbackName) {
   const paragraphs = content
     .slice(Math.max(0, bodyStart))
     .split(/\n\s*\n/)
+    .map((item) => item.trim())
+    .filter((item) => item && !item.startsWith("#"))
     .map((item) => cleanText(item))
-    .filter((item) => item && !item.startsWith("#"));
+    .filter(Boolean);
 
   return {
     name: frontmatter.name || heading || fallbackName,
@@ -491,6 +506,55 @@ function compareRanked(left, right) {
   );
 }
 
+function publicCapabilityType(kind) {
+  return {
+    implementation: "example",
+    standard: "project_rule",
+    template: "prompt",
+  }[kind] || kind;
+}
+
+function discoveryStatus(item, mainScore) {
+  if (item.score < Math.max(6, Math.floor(mainScore * 0.2))) return "low_relevance";
+  if (item.scope === "project" && ["component", "utility"].includes(item.kind)) {
+    return "candidate_reuse";
+  }
+  return "candidate_reference";
+}
+
+function candidateDetails(item, mainScore) {
+  const type = publicCapabilityType(item.kind);
+  return {
+    id: item.id,
+    kind: item.kind,
+    type,
+    name: item.name,
+    path: item.path,
+    scope: item.scope,
+    source: item.source,
+    score: item.score,
+    matched_terms: item.matched_terms,
+    match_reason: item.matched_terms.length
+      ? `Matched task terms: ${item.matched_terms.join(", ")}`
+      : `Matched task intent in ${type} metadata.`,
+    discovery_status: discoveryStatus(item, mainScore),
+    pending_validation: [
+      "Read the real file before relying on this capability.",
+      "Verify API, data shape, dependencies, configuration, and applicable constraints.",
+    ],
+    potential_risks: [
+      "Metadata similarity does not prove runtime compatibility.",
+      "Do not change a shared capability solely to force reuse.",
+    ],
+    selection_status: "low_relevance",
+    usage_preference: null,
+    selection_source: null,
+    choice_reason: null,
+    user_choice: null,
+    execution_validation: null,
+  };
+}
+
 function selectCapabilities(ranked) {
   if (!ranked.length || ranked[0].score <= 0) return [];
   const main = ranked[0];
@@ -519,17 +583,85 @@ function selectCapabilities(ranked) {
 
   return [main, ...helpers].map((item, index) => ({
     role: index === 0 ? "main" : "auxiliary",
-    id: item.id,
-    kind: item.kind,
-    name: item.name,
-    path: item.path,
-    scope: item.scope,
-    source: item.source,
-    score: item.score,
-    reason: item.matched_terms.length
-      ? `Matched: ${item.matched_terms.join(", ")}`
-      : `Matched task intent in ${item.kind} metadata.`,
+    ...candidateDetails(item, main.score),
   }));
+}
+
+function automaticUsagePreference(item) {
+  if (["skill", "project_rule"].includes(item.type)) return "apply";
+  if (["prompt", "example"].includes(item.type)) return "prefer_reference";
+  return "prefer_reuse";
+}
+
+function isCompetingAlternative(selectedItem, candidate, mainScore) {
+  if (candidate.id === selectedItem.id || candidate.kind !== selectedItem.kind) return false;
+  if (discoveryStatus(candidate, mainScore) === "low_relevance") return false;
+  if (candidate.score < Math.max(6, Math.floor(selectedItem.score * 0.8))) return false;
+  const selectedTerms = new Set(selectedItem.matched_terms);
+  const overlap = candidate.matched_terms.filter((term) => selectedTerms.has(term));
+  const novel = candidate.matched_terms.filter((term) => !selectedTerms.has(term));
+  return overlap.length > 0 && novel.length === 0;
+}
+
+function classifySelections(selected, ranked, mainScore) {
+  const reusableKinds = new Set(["component", "utility", "implementation"]);
+  const selectedIds = new Set(selected.map((item) => item.id));
+  const alternatives = [];
+  const classified = selected.map((item) => {
+    const isReusableImplementation = reusableKinds.has(item.kind);
+    const competingOptions = isReusableImplementation
+      ? ranked.filter((candidate) => !selectedIds.has(candidate.id) && isCompetingAlternative(item, candidate, mainScore))
+      : [];
+    const hasCompetingSelection = competingOptions.length > 0;
+    const isSharedImplementation = isReusableImplementation && item.scope !== "project";
+    const requiresChoice = hasCompetingSelection || isSharedImplementation;
+
+    if (requiresChoice) {
+      const reasons = [];
+      if (hasCompetingSelection) reasons.push("Multiple relevant options compete for the same capability type.");
+      if (isSharedImplementation) reasons.push("The capability is shared or outside the current project, so adaptation is uncertain.");
+      for (const candidate of competingOptions.slice(0, 2)) {
+        alternatives.push({
+          role: "alternative",
+          ...candidateDetails(candidate, mainScore),
+          selection_status: "choice_required",
+          usage_preference: null,
+          selection_source: null,
+          choice_reason: "This option closely overlaps another selected capability for the same role.",
+        });
+      }
+      return {
+        ...item,
+        selection_status: "choice_required",
+        usage_preference: null,
+        selection_source: null,
+        choice_reason: reasons.join(" "),
+      };
+    }
+
+    return {
+      ...item,
+      selection_status: "auto_selected",
+      usage_preference: automaticUsagePreference(item),
+      selection_source: "ai_talk",
+      choice_reason: "This is the only selected high-relevance capability for its role.",
+    };
+  });
+  return { classified, alternatives };
+}
+
+function automaticSupplements(ranked, selected, mainScore) {
+  const selectedIds = new Set(selected.map((item) => item.id));
+  const isRelevant = (item) => discoveryStatus(item, mainScore) !== "low_relevance";
+  const projectRules = ranked
+    .filter((item) => item.kind === "standard" && item.scope === "project" && !selectedIds.has(item.id) && isRelevant(item))
+    .slice(0, 2)
+    .map((item) => ({ role: "constraint", ...candidateDetails(item, mainScore) }));
+  const prompts = ranked
+    .filter((item) => item.kind === "prompt" && !selectedIds.has(item.id) && isRelevant(item))
+    .slice(0, 1)
+    .map((item) => ({ role: "auxiliary", ...candidateDetails(item, mainScore) }));
+  return [...projectRules, ...prompts];
 }
 
 function summarize(capabilities) {
@@ -584,21 +716,42 @@ async function buildIndex(args) {
     : unique
         .map((item) => ({ ...item, score: 0, matched_terms: [] }))
         .sort((left, right) => left.scope.localeCompare(right.scope) || left.path.localeCompare(right.path));
-  const selected = args.query ? selectCapabilities(ranked) : [];
-  const outputCapabilities = (args.query ? ranked.filter((item) => item.score > 0) : ranked)
-    .slice(0, args.limit);
+  const mainScore = ranked[0]?.score || 0;
+  const baseSelected = args.query ? selectCapabilities(ranked) : [];
+  const supplemented = args.query
+    ? [...baseSelected, ...automaticSupplements(ranked, baseSelected, mainScore)]
+    : [];
+  const classification = args.query
+    ? classifySelections(supplemented, ranked, mainScore)
+    : { classified: [], alternatives: [] };
+  const classifiedSelection = [...classification.classified, ...classification.alternatives]
+    .filter((item, index, items) => items.findIndex((candidate) => candidate.id === item.id) === index);
+  const automatic = classifiedSelection.filter((item) => item.selection_status === "auto_selected");
+  const choiceRequired = classifiedSelection
+    .filter((item) => item.selection_status === "choice_required")
+    .slice(0, 3);
+  const includedIds = new Set([...automatic, ...choiceRequired].map((item) => item.id));
+  const selected = classifiedSelection.filter((item) => includedIds.has(item.id));
+  const selectedById = new Map(selected.map((item) => [item.id, item]));
+  const rankedCapabilities = args.query ? ranked.filter((item) => item.score > 0) : ranked;
+  const outputCapabilities = rankedCapabilities
+    .slice(0, args.limit)
+    .map((item) => selectedById.get(item.id) || candidateDetails(item, mainScore));
 
   return {
-    schema_version: 1,
+    schema_version: 3,
     project_root: projectRoot,
     query: args.query || null,
     roots,
+    lifecycle: CAPABILITY_LIFECYCLE,
     stats: {
       ...summarize(unique),
       returned: outputCapabilities.length,
-      truncated: outputCapabilities.length < (args.query ? ranked.filter((item) => item.score > 0).length : ranked.length),
+      truncated: outputCapabilities.length < rankedCapabilities.length,
     },
     selected,
+    automatic,
+    choice_required: choiceRequired,
     capabilities: outputCapabilities,
     warnings,
   };

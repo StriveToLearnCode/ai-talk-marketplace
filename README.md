@@ -1,189 +1,114 @@
 # AI Talk
 
-AI Talk 是一个 Codex 插件，用来识别开发任务，发现项目或公司已有的 Skill、Prompt、组件、工具函数和规范，再把模糊需求整理成边界明确、带复用要求的任务摘要。用户确认一次后，当前 Codex 会在同一个线程继续分析、规划或执行。
+AI Talk 是一个 Codex 插件，帮助用户把研发需求表达清楚，并推荐公司或项目已有的 Skill、Prompt、组件、工具函数、同类实现和规范。
 
-默认流程不再要求复制、滚动、粘贴和重新发送任务话术。只有明确要求“只生成话术、提示词或模板”时，AI Talk 才输出可复制代码块。
+AI Talk 只准备任务，不替代 Codex Plan，不生成完整技术实施步骤，也不修改代码。所有任务话术都必须经过用户审查后才能交给 Codex。
 
-核心链路：
+核心流程：
 
 ```text
-自然语言需求
-→ 识别任务类型和执行意图
-→ 检索已有 Skill、Prompt、组件、工具和规范
-→ 选择 1 个主能力和最多 2 个辅助能力
-→ 生成带项目上下文和复用要求的任务摘要
-→ 确认后交给当前 Codex 规划或执行
+用户自然语言
+→ 理解任务并补充必要上下文
+→ 自动采用明确能力
+→ 存在歧义时用户选择复用、参考或排除
+→ 生成最终任务话术
+→ 用户审查
+→ 确认后交给 Codex
 ```
 
 ## 安装
-
-用户不需要先下载这个项目，直接在终端运行：
 
 ```bash
 codex plugin marketplace add StriveToLearnCode/ai-talk-marketplace --ref master
 codex plugin add ai-talk@personal
 ```
 
-检查安装结果：
+安装或更新后新建 Codex 对话，让新线程加载最新 Skill。
 
-```bash
-codex plugin list
-```
-
-看到下面的状态表示安装成功：
-
-```text
-ai-talk@personal  installed, enabled
-```
-
-安装或更新后，需要新建一个 Codex 对话，让新线程加载最新 Skill。
-
-### 本地开发安装
-
-只有开发插件本身时才需要 clone 仓库。进入仓库目录后运行：
+本地开发安装：
 
 ```bash
 codex plugin marketplace add "$PWD"
 codex plugin add ai-talk@personal
 ```
 
-### 安装失败时
-
-当前 marketplace 标识是 `personal`。如果用户已经配置了另一个同名 marketplace，Codex 会拒绝重复添加；这是当前版本的分发限制。
-
-先确认 Codex CLI 支持插件命令：
-
-```bash
-codex plugin --help
-```
-
-如果 GitHub 仓库是私有的，还需要先配置可访问该仓库的 Git 凭据。
-
-## 怎么用
+## 使用
 
 AI Talk 只在显式调用时启用：
 
 ```text
-$ai-talk <你的自然语言需求>
+$ai-talk <自然语言研发需求>
 ```
 
-### Bug 定位
+第一版重点支持 Bug 定位、UI 或截图还原、多语言迁移检查、接口联调、新页面或新模块开发。
 
 ```text
-$ai-talk 轮播图偶尔不切换，先帮我看看
+$ai-talk 轮播图偶尔不切换，先帮我看看，不要修改代码
+$ai-talk 根据截图开发一个独立榜单页面
+$ai-talk 活动从俄语迁移成法语，看看还有哪些没替换
+$ai-talk 根据接口文档接入奖励接口，不要编造字段
 ```
 
-AI Talk 会识别为“Bug 定位 + 只分析”，展示排查范围、证据要求和验收结果。确认“继续处理”后，当前 Codex 直接开始定位，并明确禁止修改代码。
+## 期望处理方式
 
-### UI 或多语言检查
+AI Talk 识别的是后续 Codex 的期望处理方式，不是当前执行授权：
+
+| 用户表达 | 期望处理方式 |
+| --- | --- |
+| “帮我看看”“先定位”“不要改” | `analyze`，只分析 |
+| “先给方案”“讨论方案” | `plan`，先给方案 |
+| “帮我开发”“接入”“修复” | `modify_and_verify`，修改并验证 |
+| “审查代码” | `review`，只审查 |
+
+用户未说明时默认 `plan`。即使识别为 `modify_and_verify`，AI Talk 也只生成待审查任务话术，不会直接修改代码。
+
+## 任务状态
+
+- `draft`：仍有阻塞问题。
+- `ready_for_review`：话术已准备，等待审查。
+- `confirmed`：用户明确确认，可交给 Codex。
+- `revise`：用户要求调整。
+
+所有新任务默认进入 `ready_for_review`，`requires_user_review` 始终为 `true`。有效操作文案为“确认任务 / 调整任务 / 取消”，不使用含义模糊的“继续”。
+
+## 能力复用
+
+AI Talk 通过一次轻量索引搜索公司级和项目级 Skill、Prompt、组件、utility、同类页面及项目规则，不打开业务源码、不定位根因、不运行测试。主 Skill、项目规则和明确匹配的项目能力自动写入话术；只有组件、方法或复用方向存在歧义时才需要用户选择：
+
+- `prefer_reuse`：优先验证复用。
+- `prefer_reference`：仅作参考。
+- `excluded`：本次排除。
+
+选择“优先复用”不代表已经兼容。只有确认后的 Codex 实际读取和验证代码后，才能给出 `confirmed_reuse`、`partial_reuse`、`incompatible` 或 `reference_only`。
+
+没有歧义候选时直接生成待审查话术；存在未选择的歧义候选时任务暂处 `draft`，完成选择后回到 `ready_for_review`。
+
+## 强制审查
+
+最终输出会明确显示：
 
 ```text
-$ai-talk 这个活动原来是俄语，现在改成法语，看看还有哪些没替换
+任务状态：待用户审查
+任务话术已准备，等待审查。
+当前尚未执行代码修改。
 ```
 
-AI Talk 会在摘要中覆盖代码文字、语言资源、图片文案、接口动态内容和页面截图；确认后开始检查，不修改业务逻辑。
-
-### 接口联调
-
-```text
-$ai-talk 根据这个接口文档把奖励接口接一下
-```
-
-没有明确执行方式时，默认先给方案。摘要会包含契约依据、参数和字段映射、加载、空数据、失败及重复请求状态；确认后当前 Codex 直接输出方案。
-
-### 直接执行
-
-需要 Codex 在确认后直接修改时，要明确说明：
-
-```text
-$ai-talk 根据接口文档直接把奖励接口接好并验证
-```
-
-### 还是不行
-
-上一轮处理后问题仍存在，可以在同一个对话继续输入：
-
-```text
-$ai-talk 还是不行
-```
-
-AI Talk 会复用上一轮已有信息，整理新的返工摘要；确认后先检查修改是否生效、环境是否使用最新代码，再继续定位。
-
-## 三种执行方式
-
-| 用户表达 | 执行方式 | 确认后的结果 |
-| --- | --- | --- |
-| “帮我看看”“先定位”“不要改代码” | 只分析 | 禁止修改代码，只定位并提供证据 |
-| “先给方案”“确认后再做” | 先给方案 | 先说明原因、方案和影响范围 |
-| “直接修复”“实现并验证” | 直接执行 | 在当前模式和权限允许时修改并验证 |
-
-表达冲突时使用更保守的方式：只分析优先于先给方案，先给方案优先于直接执行。
-
-## 确认后继续
-
-默认调用会展示：
-
-1. 识别到的任务场景。
-2. 本轮执行方式。
-3. 任务目标、相关范围和验收结果。
-4. 是否启用最小改动及是否读取了项目上下文。
-5. 已确认的主能力、辅助能力和复用对象；无匹配时明确标记。
-6. “继续处理 / 只生成话术 / 调整要求”三个选择。
-
-优先使用可点击的结构化选择；当前模式不支持时，只需回复“继续”“生成话术”或“调整”。选择“继续处理”后，当前 Codex 直接沿用摘要继续工作，不会再次输出完整任务话术。
-
-## 只生成话术
-
-需要可复制文本时明确说明：
-
-```text
-$ai-talk 只帮我生成一段轮播图排查话术
-```
-
-这类请求不会进入确认执行流程。AI Talk 会保留识别反馈和单个 `text` 代码块，默认话术为 150–300 个中文字符，简单任务不超过 200 字。
-
-## 个人配置
-
-可选配置文件：
-
-```text
-~/.codex/ai-talk/preferences.json
-```
-
-示例：
-
-```json
-{
-  "language": "zh-CN",
-  "default_mode": "plan-first",
-  "minimal_change": true,
-  "explain_commands": true,
-  "require_verification": true,
-  "avoid_unrelated_files": true,
-  "output_style": "concise"
-}
-```
-
-配置文件不存在时会使用内置默认值。用户在当前任务中的明确指令始终优先于配置，配置不会绕过 Codex 当前模式或权限。
+生成后 AI Talk 立即停止，不继续读取业务代码、不运行项目命令、不修改文件，也不自动提交给 Codex。
 
 ## 公司能力目录
 
-AI Talk 不假设固定公司路径。已知统一 Skill、Prompt 或组件目录时，可通过 `--source-root company-name=/absolute/path` 传给统一的 `collect_context.py` 上下文命令，或设置 `AI_TALK_CAPABILITY_ROOTS`。未配置或目录不存在时会降级到项目与用户级来源，不会编造能力。
-
-## 更新
-
-GitHub marketplace 更新后重新安装：
+公司目录不硬编码。已知目录时传给统一上下文脚本：
 
 ```bash
-codex plugin marketplace upgrade personal
-codex plugin add ai-talk@personal
+python3 plugins/ai-talk/skills/ai-talk/scripts/collect_context.py \
+  --root /path/to/project \
+  --query '当前需求' \
+  --source-root frontend-platform=/absolute/path
 ```
 
-随后新建 Codex 对话。
+目录不存在或搜索失败时会降级，不会编造能力。
 
 ## 开发验证
-
-运行脚本测试：
 
 ```bash
 PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover \
@@ -191,4 +116,4 @@ PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover \
 node --test plugins/ai-talk/skills/ai-talk/tests/test_build_capability_index.mjs
 ```
 
-更多实现说明见 [插件 README](plugins/ai-talk/README.md)，新线程验收用例见 [acceptance-cases.md](plugins/ai-talk/tests/acceptance-cases.md)。
+第一版人工验收用例见 [acceptance-cases.md](plugins/ai-talk/tests/acceptance-cases.md)。

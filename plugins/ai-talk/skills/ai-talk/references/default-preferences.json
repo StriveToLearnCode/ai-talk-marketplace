@@ -1,6 +1,5 @@
 {
   "language": "zh-CN",
-  "default_mode": "plan-first",
   "minimal_change": true,
   "explain_commands": true,
   "require_verification": true,

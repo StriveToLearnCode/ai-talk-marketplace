@@ -17,10 +17,18 @@ USER_PREFERENCES_PATH = Path.home() / ".codex" / "ai-talk" / "preferences.json"
 CAPABILITY_INDEX_SCRIPT = SKILL_ROOT / "scripts" / "build-capability-index.mjs"
 DEFAULT_CAPABILITY_LIMIT = 30
 
+TASK_SCENES = {
+    "bug_debugging": ("bug", "报错", "异常", "失效", "不切换", "偶尔", "定位", "排查", "问题还在"),
+    "ui_reconstruction": ("截图", "figma", "还原", "视觉", "样式", "切图"),
+    "localization_migration": ("多语言", "语言包", "俄语", "法语", "迁移", "没替换", "未替换"),
+    "api_integration": ("接口", "openapi", "请求", "响应", "联调", "字段"),
+    "feature_development": ("帮我开发", "开发", "新页面", "独立页面", "新模块", "新增", "实现", "创建"),
+}
+
+CAPABILITY_CHOICES = ("prefer_reuse", "prefer_reference", "excluded")
+
 SUPPORTED_PREFERENCES = {
     "language": lambda value: isinstance(value, str) and bool(value.strip()),
-    "default_mode": lambda value: value
-    in {"analysis-only", "plan-first", "direct-execution"},
     "minimal_change": lambda value: isinstance(value, bool),
     "explain_commands": lambda value: isinstance(value, bool),
     "require_verification": lambda value: isinstance(value, bool),
@@ -276,6 +284,14 @@ def collect_git(root: Path, warnings: list[str]) -> dict[str, Any]:
     return result
 
 
+def context_file_summary(path: Path, limit: int = 600) -> str:
+    try:
+        content = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeError):
+        return ""
+    return " ".join(content.split())[:limit]
+
+
 def collect_context_files(root: Path) -> list[dict[str, str]]:
     files: list[dict[str, str]] = []
     candidates: list[tuple[Path, str]] = [
@@ -293,7 +309,13 @@ def collect_context_files(root: Path) -> list[dict[str, str]]:
         if path in seen or not path.is_file() or is_sensitive_path(path.relative_to(root)):
             continue
         seen.add(path)
-        files.append({"path": str(path.relative_to(root)), "kind": kind})
+        files.append(
+            {
+                "path": str(path.relative_to(root)),
+                "kind": kind,
+                "summary": context_file_summary(path),
+            }
+        )
     return files
 
 
@@ -341,6 +363,18 @@ def empty_capability_context(
         "status": status,
         "query": query.strip() if isinstance(query, str) and query.strip() else None,
         "roots": [],
+        "lifecycle": {
+            "discovery_states": ["candidate_reuse", "candidate_reference", "low_relevance"],
+            "selection_states": ["auto_selected", "choice_required", "low_relevance"],
+            "usage_preferences": ["apply", "prefer_reuse", "prefer_reference", "excluded"],
+            "user_choice_states": ["prefer_reuse", "prefer_reference", "excluded"],
+            "execution_validation_states": [
+                "confirmed_reuse",
+                "partial_reuse",
+                "incompatible",
+                "reference_only",
+            ],
+        },
         "stats": {
             "total": 0,
             "by_kind": {},
@@ -349,6 +383,8 @@ def empty_capability_context(
             "truncated": False,
         },
         "selected": [],
+        "automatic": [],
+        "choice_required": [],
         "candidates": [],
         "warnings": [],
     }
@@ -424,16 +460,191 @@ def collect_capabilities(
         "status": "ready",
         "query": raw_payload.get("query") or normalized_query,
         "roots": raw_payload.get("roots", []),
+        "lifecycle": raw_payload.get("lifecycle", empty_capability_context(None)["lifecycle"]),
         "stats": raw_payload.get("stats", empty_capability_context(None)["stats"]),
         "selected": raw_payload.get("selected", []),
+        "automatic": raw_payload.get("automatic", []),
+        "choice_required": raw_payload.get("choice_required", []),
         "candidates": raw_payload.get("capabilities", []),
         "warnings": raw_payload.get("warnings", []),
     }
 
 
+def infer_task(query: str | None, task_action: str, blocking_question: str | None) -> dict[str, Any]:
+    text = query.strip() if isinstance(query, str) else ""
+    lowered = text.lower()
+    scenes = [
+        scene
+        for scene, terms in TASK_SCENES.items()
+        if any(term in lowered for term in terms)
+    ]
+    if not scenes:
+        scenes = ["unknown"]
+
+    if any(term in lowered for term in ("审查代码", "代码审查", "review code", "code review")):
+        handling_mode = "review"
+    elif any(
+        term in lowered
+        for term in ("不要修改", "不要改", "只分析", "先定位", "先帮我看看", "帮我看看", "看看还有哪些")
+    ):
+        handling_mode = "analyze"
+    elif any(term in lowered for term in ("先给方案", "只给方案", "先分析怎么改", "讨论方案")):
+        handling_mode = "plan"
+    elif any(
+        term in lowered
+        for term in ("帮我开发", "开发", "实现", "新增", "创建", "接入", "修复", "改好", "完成并验证")
+    ):
+        handling_mode = "modify_and_verify"
+    else:
+        handling_mode = "plan"
+
+    if not text or blocking_question:
+        status = "draft"
+    elif task_action == "confirm":
+        status = "confirmed"
+    elif task_action == "revise":
+        status = "revise"
+    else:
+        status = "ready_for_review"
+
+    return {
+        "scenes": scenes,
+        "primary_scene": scenes[0],
+        "handling_mode": handling_mode,
+        "status": status,
+        "requires_user_review": True,
+        "confirmed_by_user": status == "confirmed",
+        "blocking_question": blocking_question,
+        "review_message": (
+            "任务话术已准备，等待审查。当前尚未执行代码修改。"
+            if status == "ready_for_review"
+            else None
+        ),
+        "allowed_user_actions": ["确认任务", "调整任务", "取消"],
+        "handoff_to_codex_allowed": status == "confirmed",
+        "ai_talk_may_modify_code": False,
+        "awaiting_capability_choice": False,
+        "pending_capability_choice_count": 0,
+        "conflicts": [],
+        "output_contract": {
+            "summary_fields": [
+                "task_type",
+                "handling_mode",
+                "task_status",
+                "related_scope",
+                "main_skill",
+                "automatic_capabilities",
+                "choice_required",
+                "user_selections",
+                "unconfirmed_information",
+            ],
+            "final_task_fields": [
+                "current_request",
+                "current_goal",
+                "related_scope",
+                "handling_mode",
+                "main_skill",
+                "automatic_capabilities",
+                "user_capability_choices",
+                "project_constraints",
+                "prohibitions",
+                "output_requirements",
+                "acceptance_requirements",
+                "unconfirmed_information",
+            ],
+            "stop_after_ready_for_review": True,
+        },
+    }
+
+
+def apply_rule_conflicts(task: dict[str, Any], query: str | None, context_files: list[dict[str, str]]) -> None:
+    text = query.lower() if isinstance(query, str) else ""
+    rejects_reuse = any(term in text for term in ("不要复用", "不复用", "重新实现", "从头实现"))
+    if not rejects_reuse:
+        return
+
+    for context_file in context_files:
+        summary = context_file.get("summary", "").lower()
+        requires_reuse = any(
+            term in summary
+            for term in ("优先复用", "尽量复用", "prefer existing", "reuse existing")
+        )
+        if not requires_reuse:
+            continue
+        task["conflicts"].append(
+            {
+                "user_request": "Do not reuse existing capabilities; implement again.",
+                "project_rule": f"{context_file['path']} requires existing capabilities to be preferred.",
+                "recommendation": "Verify compatibility first; add a business implementation only when reuse is unsuitable.",
+                "requires_user_choice": True,
+            }
+        )
+
+    if task["conflicts"]:
+        task["status"] = "draft"
+        task["confirmed_by_user"] = False
+        task["blocking_question"] = "是否同意先验证现有能力兼容性，确认不适用后再新增实现？"
+        task["review_message"] = None
+        task["handoff_to_codex_allowed"] = False
+
+
+def apply_capability_choices(
+    capabilities: dict[str, Any], raw_choices: list[str], warnings: list[str]
+) -> dict[str, list[dict[str, Any]]]:
+    choices: dict[str, str] = {}
+    for raw in raw_choices:
+        capability_id, separator, choice = raw.partition("=")
+        if not separator or choice not in CAPABILITY_CHOICES:
+            warnings.append(
+                f"Capability choice '{raw}' was ignored; expected <id>=prefer_reuse|prefer_reference|excluded."
+            )
+            continue
+        choices[capability_id] = choice
+
+    groups = {choice: [] for choice in CAPABILITY_CHOICES}
+    known_ids = {
+        candidate.get("id")
+        for candidate in capabilities["candidates"]
+        if candidate.get("id")
+    }
+    for capability_id in choices.keys() - known_ids:
+        warnings.append(f"Capability choice referenced unknown id '{capability_id}' and was ignored.")
+
+    for collection_name in ("selected", "automatic", "choice_required", "candidates"):
+        for candidate in capabilities[collection_name]:
+            choice = choices.get(candidate.get("id"))
+            candidate["user_choice"] = choice
+            if choice:
+                candidate["usage_preference"] = choice
+                candidate["selection_source"] = "user"
+                candidate["choice_reason"] = "The user explicitly selected this usage preference."
+            if choice and collection_name == "candidates":
+                groups[choice].append(candidate)
+    return groups
+
+
+def apply_capability_choice_state(task: dict[str, Any], capabilities: dict[str, Any]) -> None:
+    pending = [
+        candidate
+        for candidate in capabilities["choice_required"]
+        if candidate.get("user_choice") is None
+    ]
+    task["awaiting_capability_choice"] = bool(pending)
+    task["pending_capability_choice_count"] = len(pending)
+    if not pending:
+        return
+
+    task["status"] = "draft"
+    task["confirmed_by_user"] = False
+    task["blocking_question"] = "请选择待选组件或复用方法的使用方式。"
+    task["review_message"] = None
+    task["handoff_to_codex_allowed"] = False
+
+
 def compose_task_context(payload: dict[str, Any]) -> dict[str, Any]:
     capabilities = payload["capabilities"]
     return {
+        "task": payload["task"],
         "project": payload["project"],
         "git": payload["git"],
         "context_files": payload["context_files"],
@@ -441,8 +652,12 @@ def compose_task_context(payload: dict[str, Any]) -> dict[str, Any]:
         "capabilities": {
             "status": capabilities["status"],
             "query": capabilities["query"],
+            "lifecycle": capabilities["lifecycle"],
             "stats": capabilities["stats"],
             "selected": capabilities["selected"],
+            "automatic": capabilities["automatic"],
+            "choice_required": capabilities["choice_required"],
+            "user_selections": payload["capability_selections"],
             "warnings": capabilities["warnings"],
         },
     }
@@ -456,6 +671,9 @@ def collect_context(
     source_roots: list[str] | None = None,
     include_user_sources: bool = True,
     capability_limit: int = DEFAULT_CAPABILITY_LIMIT,
+    task_action: str = "prepare",
+    blocking_question: str | None = None,
+    capability_choices: list[str] | None = None,
 ) -> tuple[dict[str, Any], int]:
     warnings: list[str] = []
     errors: list[str] = []
@@ -468,7 +686,7 @@ def collect_context(
     errors.extend(preference_errors)
 
     payload: dict[str, Any] = {
-        "schema_version": 2,
+        "schema_version": 4,
         "project": {
             "root": str(root),
             "types": [],
@@ -481,6 +699,8 @@ def collect_context(
         "git": {"is_repository": False, "branch": None, "changed_files": []},
         "context_files": [],
         "related_files": [],
+        "task": infer_task(query, task_action, blocking_question),
+        "capability_selections": {choice: [] for choice in CAPABILITY_CHOICES},
         "capabilities": empty_capability_context(query),
         "task_context": {},
         "warnings": warnings,
@@ -495,6 +715,7 @@ def collect_context(
     payload["project"] = detect_project(root, warnings)
     payload["git"] = collect_git(root, warnings)
     payload["context_files"] = collect_context_files(root)
+    apply_rule_conflicts(payload["task"], query, payload["context_files"])
     payload["related_files"] = collect_related(root, related_paths or [], warnings)
     payload["capabilities"] = collect_capabilities(
         root,
@@ -504,6 +725,10 @@ def collect_context(
         capability_limit,
         warnings,
     )
+    payload["capability_selections"] = apply_capability_choices(
+        payload["capabilities"], capability_choices or [], warnings
+    )
+    apply_capability_choice_state(payload["task"], payload["capabilities"])
     payload["task_context"] = compose_task_context(payload)
     return payload, 2 if errors else 0
 
@@ -545,6 +770,22 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=DEFAULT_CAPABILITY_LIMIT,
         help="Maximum ranked capability candidates included in task_context (default: 30).",
     )
+    parser.add_argument(
+        "--task-action",
+        choices=("prepare", "confirm", "revise", "regenerate"),
+        default="prepare",
+        help="Apply an explicit user task-state action. New and regenerated tasks wait for review.",
+    )
+    parser.add_argument(
+        "--blocking-question",
+        help="Keep the task in draft while this direction-changing question remains unanswered.",
+    )
+    parser.add_argument(
+        "--capability-choice",
+        action="append",
+        default=[],
+        help="User choice as <capability-id>=prefer_reuse|prefer_reference|excluded. Repeat as needed.",
+    )
     return parser.parse_args(argv)
 
 
@@ -560,6 +801,9 @@ def main(argv: list[str] | None = None) -> int:
         source_roots=args.source_root,
         include_user_sources=not args.no_user_sources,
         capability_limit=args.capability_limit,
+        task_action=args.task_action,
+        blocking_question=args.blocking_question,
+        capability_choices=args.capability_choice,
     )
     json.dump(payload, sys.stdout, ensure_ascii=False, indent=2)
     sys.stdout.write("\n")

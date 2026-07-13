@@ -70,7 +70,7 @@ test("indexes project skills, prompts, standards, components, utilities and impl
 
   const payload = await runIndex(root);
 
-  assert.equal(payload.schema_version, 1);
+  assert.equal(payload.schema_version, 3);
   assert.equal(payload.stats.by_kind.skill, 1);
   assert.equal(payload.stats.by_kind.prompt, 1);
   assert.equal(payload.stats.by_kind.standard, 1);
@@ -80,17 +80,55 @@ test("indexes project skills, prompts, standards, components, utilities and impl
   assert.ok(payload.capabilities.every((item) => !item.path.includes("node_modules")));
 });
 
-test("selects one main capability and no more than two complementary helpers", async (t) => {
+test("selects a main capability, complementary helpers, and automatic supplements", async (t) => {
   const root = await makeFixture();
   t.after(() => rm(root, { recursive: true, force: true }));
 
   const payload = await runIndex(root, "--query", "联调奖励接口并复用 RewardCard 组件");
 
-  assert.ok(payload.selected.length >= 1 && payload.selected.length <= 3);
+  assert.ok(payload.selected.length >= 1 && payload.selected.length <= 6);
   assert.equal(payload.selected[0].role, "main");
   assert.ok(payload.selected.slice(1).every((item) => item.role === "auxiliary"));
   assert.ok(payload.selected.some((item) => ["skill", "prompt", "component"].includes(item.kind)));
   assert.ok(payload.capabilities.every((item) => item.score > 0));
+  assert.deepEqual(payload.lifecycle.user_choice_states, ["prefer_reuse", "prefer_reference", "excluded"]);
+  assert.deepEqual(payload.lifecycle.selection_states, ["auto_selected", "choice_required", "low_relevance"]);
+  assert.deepEqual(payload.lifecycle.execution_validation_states, [
+    "confirmed_reuse",
+    "partial_reuse",
+    "incompatible",
+    "reference_only",
+  ]);
+  for (const candidate of payload.selected) {
+    assert.ok(["skill", "component", "utility", "example", "project_rule", "prompt"].includes(candidate.type));
+    assert.ok(["candidate_reuse", "candidate_reference", "low_relevance"].includes(candidate.discovery_status));
+    assert.equal(candidate.user_choice, null);
+    assert.equal(candidate.execution_validation, null);
+    assert.ok(candidate.match_reason.length > 0);
+    assert.ok(candidate.pending_validation.length > 0);
+    assert.ok(candidate.potential_risks.length > 0);
+  }
+  assert.ok(payload.automatic.some((item) => item.kind === "skill"));
+  assert.deepEqual(payload.choice_required, []);
+});
+
+test("automatically selects a unique project component", async (t) => {
+  const root = await makeFixture();
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await writeFile(
+    path.join(root, "AGENTS.md"),
+    "# Project Rules\n\nReward workflows must prefer existing components.\n",
+  );
+
+  const payload = await runIndex(root, "--query", "RewardCard reward component");
+  const projectComponent = payload.automatic.find((item) => item.kind === "component");
+
+  assert.ok(projectComponent);
+  assert.equal(projectComponent.selection_status, "auto_selected");
+  assert.equal(projectComponent.usage_preference, "prefer_reuse");
+  assert.equal(projectComponent.selection_source, "ai_talk");
+  assert.ok(payload.automatic.some((item) => item.type === "project_rule"));
+  assert.deepEqual(payload.choice_required, []);
 });
 
 test("accepts an explicit company source without assuming a fixed company path", async (t) => {
@@ -119,7 +157,68 @@ description: 前端 Bug 必须先定位根因和运行证据，再决定最小�
 
   assert.equal(payload.selected[0].source, "frontend-platform");
   assert.equal(payload.selected[0].scope, "company");
+  assert.equal(payload.selected[0].selection_status, "auto_selected");
+  assert.equal(payload.selected[0].usage_preference, "apply");
   assert.ok(payload.roots.some((item) => item.label === "frontend-platform"));
+});
+
+test("requires user choice for a shared component outside the project", async (t) => {
+  const projectRoot = await mkdtemp(path.join(os.tmpdir(), "ai-talk-project-"));
+  const companyRoot = await mkdtemp(path.join(os.tmpdir(), "ai-talk-company-component-"));
+  t.after(() => rm(projectRoot, { recursive: true, force: true }));
+  t.after(() => rm(companyRoot, { recursive: true, force: true }));
+  await mkdir(path.join(companyRoot, "components"), { recursive: true });
+  await writeFile(
+    path.join(companyRoot, "components/SharedRewardDialog.vue"),
+    "<template><dialog>Shared reward</dialog></template>\n",
+  );
+
+  const payload = await runIndex(
+    projectRoot,
+    "--source-root",
+    `frontend-platform=${companyRoot}`,
+    "--query",
+    "SharedRewardDialog component",
+  );
+
+  assert.equal(payload.choice_required.length, 1);
+  assert.equal(payload.choice_required[0].kind, "component");
+  assert.equal(payload.choice_required[0].selection_status, "choice_required");
+  assert.equal(payload.choice_required[0].usage_preference, null);
+  assert.equal(payload.choice_required[0].selection_source, null);
+});
+
+test("requires user choice when multiple project components are selected", async (t) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ai-talk-component-choice-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await mkdir(path.join(root, "src/components"), { recursive: true });
+  await writeFile(path.join(root, "src/components/reward-card.vue"), "<template>Reward card</template>\n");
+  await writeFile(path.join(root, "src/components/reward-panel.vue"), "<template>Reward panel</template>\n");
+
+  const payload = await runIndex(root, "--query", "reward");
+
+  assert.equal(payload.choice_required.length, 2);
+  assert.ok(payload.choice_required.every((item) => item.scope === "project"));
+  assert.ok(payload.choice_required.every((item) => item.selection_status === "choice_required"));
+});
+
+test("automatically keeps complementary project utilities in one reuse chain", async (t) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ai-talk-project-chain-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await mkdir(path.join(root, "src/utils"), { recursive: true });
+  await writeFile(
+    path.join(root, "src/utils/use-store.ts"),
+    "export function useStore() { return null; }\n",
+  );
+  await writeFile(
+    path.join(root, "src/utils/chain-gift-adapter.ts"),
+    "export function chainGiftAdapter() { return null; }\n",
+  );
+
+  const payload = await runIndex(root, "--query", "useStore chainGiftAdapter");
+
+  assert.equal(payload.automatic.filter((item) => item.kind === "utility").length, 2);
+  assert.deepEqual(payload.choice_required, []);
 });
 
 test("returns no forced selection when the task has no relevant match", async (t) => {

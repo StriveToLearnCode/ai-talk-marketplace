@@ -30,7 +30,7 @@ class CollectContextTests(unittest.TestCase):
         with mock.patch.object(collect_context, "USER_PREFERENCES_PATH", missing):
             values, meta, warnings, errors = collect_context.load_preferences(None)
 
-        self.assertEqual("plan-first", values["default_mode"])
+        self.assertNotIn("default_mode", values)
         self.assertEqual("defaults", meta["source"])
         self.assertEqual(str(missing), meta["path"])
         self.assertEqual([], warnings)
@@ -71,7 +71,7 @@ class CollectContextTests(unittest.TestCase):
 
         values, _, warnings, errors = collect_context.load_preferences(preferences)
 
-        self.assertEqual("plan-first", values["default_mode"])
+        self.assertNotIn("default_mode", values)
         self.assertTrue(values["minimal_change"])
         self.assertEqual(3, len(warnings))
         self.assertEqual([], errors)
@@ -95,6 +95,81 @@ class CollectContextTests(unittest.TestCase):
         self.assertIn("node", payload["project"]["types"])
         self.assertEqual("pnpm", payload["project"]["package_manager"])
         self.assertEqual("node --test", payload["project"]["package_scripts"]["test"])
+
+    def test_required_inputs_map_to_first_version_scenes_and_modes(self) -> None:
+        cases = [
+            ("轮播图偶尔不切换，先帮我看看", ["bug_debugging"], "analyze"),
+            ("根据截图还原这个活动页面", ["ui_reconstruction"], "plan"),
+            ("活动从俄语迁移成法语，看看还有哪些没替换", ["localization_migration"], "analyze"),
+            ("根据接口文档接入奖励接口", ["api_integration"], "modify_and_verify"),
+            ("帮我开发一个独立榜单页面", ["feature_development"], "modify_and_verify"),
+        ]
+
+        for query, expected_scenes, expected_mode in cases:
+            with self.subTest(query=query):
+                task = collect_context.infer_task(query, "prepare", None)
+                self.assertTrue(set(expected_scenes).issubset(task["scenes"]))
+                self.assertEqual(expected_mode, task["handling_mode"])
+                self.assertEqual("ready_for_review", task["status"])
+                self.assertTrue(task["requires_user_review"])
+                self.assertFalse(task["handoff_to_codex_allowed"])
+                self.assertFalse(task["ai_talk_may_modify_code"])
+
+    def test_screenshot_development_preserves_both_scenes(self) -> None:
+        task = collect_context.infer_task(
+            "帮我根据截图开发一个独立榜单页面", "prepare", None
+        )
+
+        self.assertIn("ui_reconstruction", task["scenes"])
+        self.assertIn("feature_development", task["scenes"])
+        self.assertEqual("modify_and_verify", task["handling_mode"])
+
+    def test_task_state_transitions_require_explicit_actions(self) -> None:
+        query = "帮我开发一个独立榜单页面"
+
+        prepared = collect_context.infer_task(query, "prepare", None)
+        confirmed = collect_context.infer_task(query, "confirm", None)
+        revise = collect_context.infer_task(query, "revise", None)
+        regenerated = collect_context.infer_task(query, "regenerate", None)
+        draft = collect_context.infer_task(query, "prepare", "榜单数据来自哪个接口？")
+
+        self.assertEqual("ready_for_review", prepared["status"])
+        self.assertEqual("confirmed", confirmed["status"])
+        self.assertTrue(confirmed["confirmed_by_user"])
+        self.assertTrue(confirmed["handoff_to_codex_allowed"])
+        self.assertEqual("revise", revise["status"])
+        self.assertEqual("ready_for_review", regenerated["status"])
+        self.assertEqual("draft", draft["status"])
+        self.assertTrue(all(item["requires_user_review"] for item in (prepared, confirmed, revise, regenerated, draft)))
+
+    def test_project_reuse_rule_conflict_keeps_task_in_draft(self) -> None:
+        temporary, root = self.make_root()
+        self.addCleanup(temporary.cleanup)
+        (root / "AGENTS.md").write_text(
+            "# Project Rules\n\n优先复用项目已有组件。\n", encoding="utf-8"
+        )
+
+        payload, exit_code = collect_context.collect_context(
+            root,
+            query="不要复用现有组件，重新实现整个榜单",
+            include_user_sources=False,
+        )
+
+        self.assertEqual(0, exit_code)
+        task = payload["task_context"]["task"]
+        self.assertEqual("draft", task["status"])
+        self.assertTrue(task["conflicts"])
+        self.assertTrue(task["conflicts"][0]["requires_user_choice"])
+        self.assertFalse(task["handoff_to_codex_allowed"])
+
+    def test_task_output_contract_stops_after_review_ready(self) -> None:
+        task = collect_context.infer_task("奖励接口联调", "prepare", None)
+
+        self.assertTrue(task["output_contract"]["stop_after_ready_for_review"])
+        self.assertIn("handling_mode", task["output_contract"]["summary_fields"])
+        self.assertIn("automatic_capabilities", task["output_contract"]["summary_fields"])
+        self.assertIn("choice_required", task["output_contract"]["summary_fields"])
+        self.assertIn("acceptance_requirements", task["output_contract"]["final_task_fields"])
 
     def test_non_node_project_returns_package_warning(self) -> None:
         temporary, root = self.make_root()
@@ -181,7 +256,7 @@ class CollectContextTests(unittest.TestCase):
         )
 
         self.assertEqual(0, exit_code)
-        self.assertEqual(2, payload["schema_version"])
+        self.assertEqual(4, payload["schema_version"])
         self.assertEqual("ready", payload["capabilities"]["status"])
         self.assertEqual(
             "api-integration", payload["capabilities"]["selected"][0]["name"]
@@ -191,7 +266,120 @@ class CollectContextTests(unittest.TestCase):
             payload["capabilities"]["selected"],
             payload["task_context"]["capabilities"]["selected"],
         )
+        self.assertEqual("ready_for_review", payload["task_context"]["task"]["status"])
+        selected = payload["capabilities"]["selected"][0]
+        for key in (
+            "type",
+            "match_reason",
+            "discovery_status",
+            "pending_validation",
+            "potential_risks",
+            "user_choice",
+            "execution_validation",
+        ):
+            self.assertIn(key, selected)
+        self.assertEqual("auto_selected", selected["selection_status"])
+        self.assertEqual("apply", selected["usage_preference"])
+        self.assertEqual("ai_talk", selected["selection_source"])
+        self.assertEqual(
+            payload["capabilities"]["automatic"],
+            payload["task_context"]["capabilities"]["automatic"],
+        )
+        self.assertEqual([], payload["task_context"]["capabilities"]["choice_required"])
+        self.assertFalse(payload["task_context"]["task"]["awaiting_capability_choice"])
         self.assertNotIn("candidates", payload["task_context"]["capabilities"])
+
+    @unittest.skipUnless(shutil.which("node"), "Node.js is required for capability indexing")
+    def test_unique_project_component_is_automatic_and_does_not_block_review(self) -> None:
+        temporary, root = self.make_root()
+        self.addCleanup(temporary.cleanup)
+        component = root / "src" / "components"
+        component.mkdir(parents=True)
+        (component / "RankCard.vue").write_text(
+            "<template><article>Rank card</article></template>\n", encoding="utf-8"
+        )
+
+        payload, exit_code = collect_context.collect_context(
+            root,
+            query="RankCard component",
+            include_user_sources=False,
+        )
+
+        self.assertEqual(0, exit_code)
+        automatic = payload["task_context"]["capabilities"]["automatic"]
+        self.assertEqual(1, len(automatic))
+        self.assertEqual("component", automatic[0]["type"])
+        self.assertEqual("prefer_reuse", automatic[0]["usage_preference"])
+        self.assertEqual("ready_for_review", payload["task_context"]["task"]["status"])
+        self.assertFalse(payload["task_context"]["task"]["awaiting_capability_choice"])
+
+    @unittest.skipUnless(shutil.which("node"), "Node.js is required for capability indexing")
+    def test_shared_component_choice_blocks_then_returns_to_review(self) -> None:
+        project_temporary, project_root = self.make_root()
+        company_temporary, company_root = self.make_root()
+        self.addCleanup(project_temporary.cleanup)
+        self.addCleanup(company_temporary.cleanup)
+        component = company_root / "components"
+        component.mkdir(parents=True)
+        (component / "SharedRankDialog.vue").write_text(
+            "<template><dialog>Shared rank</dialog></template>\n", encoding="utf-8"
+        )
+        source_roots = [f"frontend-platform={company_root}"]
+
+        pending, _ = collect_context.collect_context(
+            project_root,
+            query="SharedRankDialog component",
+            source_roots=source_roots,
+            include_user_sources=False,
+            task_action="confirm",
+        )
+        candidate = pending["task_context"]["capabilities"]["choice_required"][0]
+        self.assertEqual("draft", pending["task_context"]["task"]["status"])
+        self.assertTrue(pending["task_context"]["task"]["awaiting_capability_choice"])
+        self.assertFalse(pending["task_context"]["task"]["confirmed_by_user"])
+
+        resolved, _ = collect_context.collect_context(
+            project_root,
+            query="SharedRankDialog component",
+            source_roots=source_roots,
+            include_user_sources=False,
+            capability_choices=[f"{candidate['id']}=prefer_reference"],
+        )
+        resolved_candidate = resolved["task_context"]["capabilities"]["choice_required"][0]
+        self.assertEqual("prefer_reference", resolved_candidate["user_choice"])
+        self.assertEqual("user", resolved_candidate["selection_source"])
+        self.assertEqual("ready_for_review", resolved["task_context"]["task"]["status"])
+        self.assertFalse(resolved["task_context"]["task"]["awaiting_capability_choice"])
+
+    @unittest.skipUnless(shutil.which("node"), "Node.js is required for capability indexing")
+    def test_user_capability_choice_does_not_confirm_reuse(self) -> None:
+        temporary, root = self.make_root()
+        self.addCleanup(temporary.cleanup)
+        skill = root / "skills" / "rank-skill"
+        skill.mkdir(parents=True)
+        (skill / "SKILL.md").write_text(
+            "---\nname: rank-skill\ndescription: 榜单页面组件复用规范。\n---\n",
+            encoding="utf-8",
+        )
+
+        first, _ = collect_context.collect_context(
+            root, query="开发榜单页面", include_user_sources=False
+        )
+        capability_id = first["capabilities"]["selected"][0]["id"]
+        payload, _ = collect_context.collect_context(
+            root,
+            query="开发榜单页面",
+            include_user_sources=False,
+            capability_choices=[f"{capability_id}=prefer_reuse"],
+        )
+
+        selected = payload["capabilities"]["selected"][0]
+        self.assertEqual("prefer_reuse", selected["user_choice"])
+        self.assertIsNone(selected["execution_validation"])
+        self.assertEqual(
+            capability_id,
+            payload["task_context"]["capabilities"]["user_selections"]["prefer_reuse"][0]["id"],
+        )
 
     @unittest.skipUnless(shutil.which("node"), "Node.js is required for capability indexing")
     def test_same_query_produces_project_specific_task_context(self) -> None:
@@ -298,6 +486,8 @@ class CollectContextTests(unittest.TestCase):
                 "git",
                 "context_files",
                 "related_files",
+                "task",
+                "capability_selections",
                 "capabilities",
                 "task_context",
                 "warnings",
