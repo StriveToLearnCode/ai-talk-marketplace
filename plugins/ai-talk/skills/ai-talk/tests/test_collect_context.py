@@ -124,85 +124,6 @@ class CollectContextTests(unittest.TestCase):
         self.assertIn("feature_development", task["scenes"])
         self.assertEqual("modify_and_verify", task["handling_mode"])
 
-    def test_simple_analysis_bypasses_confirmation_card(self) -> None:
-        temporary, root = self.make_root()
-        self.addCleanup(temporary.cleanup)
-
-        payload, exit_code = collect_context.collect_context(
-            root,
-            query="轮播图偶尔不切换，先帮我看看，不要修改代码",
-            include_user_sources=False,
-        )
-
-        self.assertEqual(0, exit_code)
-        confirmation = payload["task_context"]["confirmation"]
-        self.assertEqual("ready", confirmation["state"])
-        self.assertEqual("bypass", confirmation["presentation"])
-        self.assertFalse(payload["task_context"]["task"]["requires_user_review"])
-        self.assertTrue(payload["task_context"]["task"]["handoff_to_codex_allowed"])
-
-    def test_multi_scene_task_uses_full_confirmation_card(self) -> None:
-        temporary, root = self.make_root()
-        self.addCleanup(temporary.cleanup)
-
-        payload, exit_code = collect_context.collect_context(
-            root,
-            query="帮我根据截图开发一个独立榜单页面",
-            include_user_sources=False,
-        )
-
-        self.assertEqual(0, exit_code)
-        confirmation = payload["confirmation"]
-        self.assertEqual("ready", confirmation["state"])
-        self.assertEqual("card", confirmation["presentation"])
-        for key in (
-            "task_type",
-            "execution",
-            "goal",
-            "scope",
-            "internal_skills",
-            "reusable_capabilities",
-            "constraints",
-            "risks",
-            "unconfirmed",
-            "task_prompt",
-        ):
-            self.assertIn(key, confirmation)
-        self.assertTrue(confirmation["actions"]["start_execution"]["enabled"])
-        self.assertFalse(confirmation["actions"]["insert_into_composer"]["auto_send"])
-
-    def test_missing_query_is_blocked_with_one_question(self) -> None:
-        temporary, root = self.make_root()
-        self.addCleanup(temporary.cleanup)
-
-        payload, exit_code = collect_context.collect_context(
-            root, query=None, include_user_sources=False
-        )
-
-        self.assertEqual(0, exit_code)
-        confirmation = payload["confirmation"]
-        self.assertEqual("blocked", confirmation["state"])
-        self.assertEqual("card", confirmation["presentation"])
-        self.assertTrue(confirmation["blocking_question"])
-        self.assertFalse(confirmation["actions"]["start_execution"]["enabled"])
-
-    def test_scope_expansion_is_highlighted_for_confirmation(self) -> None:
-        temporary, root = self.make_root()
-        self.addCleanup(temporary.cleanup)
-
-        payload, exit_code = collect_context.collect_context(
-            root,
-            query="把这个改动扩大到整个项目的所有页面",
-            include_user_sources=False,
-        )
-
-        self.assertEqual(0, exit_code)
-        confirmation = payload["confirmation"]
-        self.assertEqual("needs_confirmation", confirmation["state"])
-        self.assertEqual("card", confirmation["presentation"])
-        self.assertTrue(confirmation["decision_requirements"]["scope_risk"])
-        self.assertTrue(any("范围扩大" in item for item in confirmation["risks"]))
-
     def test_task_state_transitions_require_explicit_actions(self) -> None:
         query = "帮我开发一个独立榜单页面"
 
@@ -335,7 +256,7 @@ class CollectContextTests(unittest.TestCase):
         )
 
         self.assertEqual(0, exit_code)
-        self.assertEqual(5, payload["schema_version"])
+        self.assertEqual(4, payload["schema_version"])
         self.assertEqual("ready", payload["capabilities"]["status"])
         self.assertEqual(
             "api-integration", payload["capabilities"]["selected"][0]["name"]
@@ -367,8 +288,6 @@ class CollectContextTests(unittest.TestCase):
         self.assertEqual([], payload["task_context"]["capabilities"]["choice_required"])
         self.assertFalse(payload["task_context"]["task"]["awaiting_capability_choice"])
         self.assertNotIn("candidates", payload["task_context"]["capabilities"])
-        self.assertEqual(payload["confirmation"], payload["task_context"]["confirmation"])
-        self.assertEqual("ready", payload["confirmation"]["state"])
 
     @unittest.skipUnless(shutil.which("node"), "Node.js is required for capability indexing")
     def test_unique_project_component_is_automatic_and_does_not_block_review(self) -> None:
@@ -418,7 +337,6 @@ class CollectContextTests(unittest.TestCase):
         self.assertEqual("draft", pending["task_context"]["task"]["status"])
         self.assertTrue(pending["task_context"]["task"]["awaiting_capability_choice"])
         self.assertFalse(pending["task_context"]["task"]["confirmed_by_user"])
-        self.assertEqual("needs_confirmation", pending["confirmation"]["state"])
 
         resolved, _ = collect_context.collect_context(
             project_root,
@@ -432,7 +350,6 @@ class CollectContextTests(unittest.TestCase):
         self.assertEqual("user", resolved_candidate["selection_source"])
         self.assertEqual("ready_for_review", resolved["task_context"]["task"]["status"])
         self.assertFalse(resolved["task_context"]["task"]["awaiting_capability_choice"])
-        self.assertEqual("ready", resolved["confirmation"]["state"])
 
     @unittest.skipUnless(shutil.which("node"), "Node.js is required for capability indexing")
     def test_user_capability_choice_does_not_confirm_reuse(self) -> None:
@@ -573,7 +490,6 @@ class CollectContextTests(unittest.TestCase):
                 "capability_selections",
                 "capabilities",
                 "task_context",
-                "confirmation",
                 "warnings",
                 "errors",
             },

@@ -27,34 +27,6 @@ TASK_SCENES = {
 
 CAPABILITY_CHOICES = ("prefer_reuse", "prefer_reference", "excluded")
 
-SCENE_LABELS = {
-    "bug_debugging": "Bug 定位与修复",
-    "ui_reconstruction": "UI / 页面还原",
-    "localization_migration": "多语言迁移",
-    "api_integration": "接口联调",
-    "feature_development": "功能开发",
-    "unknown": "研发任务",
-}
-
-HANDLING_MODE_LABELS = {
-    "analyze": "只分析",
-    "plan": "先给方案",
-    "modify_and_verify": "修改并验证",
-    "review": "只审查",
-}
-
-SCOPE_RISK_TERMS = (
-    "公共组件",
-    "公用组件",
-    "共享组件",
-    "全局组件",
-    "全部页面",
-    "所有页面",
-    "整个项目",
-    "全项目",
-    "扩大范围",
-)
-
 SUPPORTED_PREFERENCES = {
     "language": lambda value: isinstance(value, str) and bool(value.strip()),
     "minimal_change": lambda value: isinstance(value, bool),
@@ -581,8 +553,6 @@ def infer_task(query: str | None, task_action: str, blocking_question: str | Non
                 "unconfirmed_information",
             ],
             "stop_after_ready_for_review": True,
-            "stop_for_confirmation_card": True,
-            "bypass_continues_to_codex": True,
         },
     }
 
@@ -603,9 +573,9 @@ def apply_rule_conflicts(task: dict[str, Any], query: str | None, context_files:
             continue
         task["conflicts"].append(
             {
-                "user_request": "用户要求不复用现有能力并重新实现。",
-                "project_rule": f"{context_file['path']} 要求优先复用现有能力。",
-                "recommendation": "先验证现有能力兼容性；仅在不适用时新增业务实现。",
+                "user_request": "Do not reuse existing capabilities; implement again.",
+                "project_rule": f"{context_file['path']} requires existing capabilities to be preferred.",
+                "recommendation": "Verify compatibility first; add a business implementation only when reuse is unsuitable.",
                 "requires_user_choice": True,
             }
         )
@@ -693,204 +663,6 @@ def compose_task_context(payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def compact_capability(candidate: dict[str, Any]) -> dict[str, Any]:
-    return {
-        key: candidate.get(key)
-        for key in (
-            "id",
-            "name",
-            "type",
-            "source",
-            "path",
-            "match_reason",
-            "selection_status",
-            "usage_preference",
-            "selection_source",
-            "choice_reason",
-            "pending_validation",
-            "potential_risks",
-            "user_choice",
-        )
-        if candidate.get(key) is not None
-    }
-
-
-def confirmation_constraints(payload: dict[str, Any]) -> list[str]:
-    values = payload["preferences"]["values"]
-    constraints: list[str] = []
-    if values.get("minimal_change"):
-        constraints.append("保持最小修改，避免无关重构。")
-    if values.get("avoid_unrelated_files"):
-        constraints.append("只处理确认范围内的文件。")
-    if values.get("require_verification"):
-        constraints.append("修改后执行与风险相匹配的验证。")
-    for context_file in payload["context_files"]:
-        if context_file.get("kind") == "instructions":
-            constraints.append(f"遵循 {context_file['path']} 中的项目规则。")
-    for capability in payload["capabilities"]["automatic"]:
-        if capability.get("type") == "project_rule":
-            constraints.append(f"采用项目规则：{capability.get('name', capability.get('path'))}。")
-        elif capability.get("type") == "prompt":
-            constraints.append(f"采用适用 Prompt：{capability.get('name', capability.get('path'))}。")
-    if payload["capabilities"]["selected"]:
-        constraints.append("内部能力只代表推荐方向，复用前仍需验证兼容性。")
-    return constraints[:5]
-
-
-def compose_task_prompt(confirmation: dict[str, Any]) -> str:
-    lines = [
-        f"任务目标：{confirmation['goal']}",
-        f"任务类型：{confirmation['task_type']['label']}",
-        f"执行方式：{confirmation['execution']['label']}",
-        f"任务范围：{'、'.join(confirmation['scope'])}",
-    ]
-
-    skill_names = [item["name"] for item in confirmation["internal_skills"]]
-    if skill_names and confirmation["adjustable"]["use_capabilities"]:
-        lines.append(f"内部 Skill：{'、'.join(skill_names)}")
-
-    reusable = [item["name"] for item in confirmation["reusable_capabilities"]]
-    if reusable and confirmation["adjustable"]["use_capabilities"]:
-        lines.append(f"可复用能力：{'、'.join(reusable)}；实现前验证兼容性。")
-
-    if confirmation["constraints"]:
-        lines.append(f"关键约束：{' '.join(confirmation['constraints'])}")
-    if confirmation["risks"]:
-        lines.append(f"风险与未确认信息：{' '.join(confirmation['risks'])}")
-
-    lines.append("请按上述范围处理；不要扩展到未确认范围，并在完成后说明修改与验证结果。")
-    return "\n".join(lines)
-
-
-def is_simple_task(payload: dict[str, Any], query: str) -> bool:
-    task = payload["task"]
-    if (
-        not query
-        or task["conflicts"]
-        or task["awaiting_capability_choice"]
-        or payload["capabilities"]["status"] == "unavailable"
-        or any(term in query for term in SCOPE_RISK_TERMS)
-        or len(task["scenes"]) != 1
-        or task["primary_scene"] == "unknown"
-    ):
-        return False
-
-    if task["handling_mode"] in {"analyze", "review"} and len(query) <= 120:
-        return True
-
-    return bool(payload["related_files"]) and len(payload["related_files"]) <= 2
-
-
-def build_confirmation(payload: dict[str, Any], query: str | None) -> dict[str, Any]:
-    text = query.strip() if isinstance(query, str) else ""
-    task = payload["task"]
-    capabilities = payload["capabilities"]
-    pending_choices = [
-        item
-        for item in capabilities["choice_required"]
-        if item.get("user_choice") is None
-    ]
-    has_scope_risk = any(term in text for term in SCOPE_RISK_TERMS)
-
-    if not text or (task.get("blocking_question") and not task["conflicts"] and not pending_choices):
-        state = "blocked"
-    elif task["conflicts"] or pending_choices or has_scope_risk:
-        state = "needs_confirmation"
-    else:
-        state = "ready"
-
-    scope = [item["path"] for item in payload["related_files"]]
-    if not scope:
-        scope = ["当前项目内，具体文件由执行阶段确认"]
-
-    automatic = capabilities["automatic"]
-    selected = capabilities["selected"]
-    internal_skills = [
-        compact_capability(item)
-        for item in selected
-        if item.get("type") == "skill"
-    ]
-    reusable_capabilities = [
-        compact_capability(item)
-        for item in selected
-        if item.get("type") in {"component", "utility", "example"}
-    ]
-
-    risks: list[str] = []
-    risks.extend(
-        conflict.get("recommendation", "存在规则冲突，需要确认处理方式。")
-        for conflict in task["conflicts"]
-    )
-    risks.extend(
-        f"{item.get('name', '候选能力')} 的复用方式尚未确认。"
-        for item in pending_choices
-    )
-    if has_scope_risk:
-        risks.append("任务涉及公共能力或范围扩大，执行前需要确认影响面。")
-    if capabilities["status"] == "unavailable":
-        risks.append("内部能力索引不可用，执行阶段需要重新确认可复用实现。")
-
-    blocking_question = None
-    if state == "blocked":
-        blocking_question = task.get("blocking_question") or "请说明要完成的具体任务。"
-
-    presentation = "bypass" if state == "ready" and is_simple_task(payload, text) else "card"
-    confirmation = {
-        "schema_version": 1,
-        "state": state,
-        "presentation": presentation,
-        "task_type": {
-            "id": task["primary_scene"],
-            "label": SCENE_LABELS.get(task["primary_scene"], "研发任务"),
-            "all": task["scenes"],
-        },
-        "execution": {
-            "mode": task["handling_mode"],
-            "label": HANDLING_MODE_LABELS[task["handling_mode"]],
-        },
-        "goal": text,
-        "scope": scope,
-        "internal_skills": internal_skills,
-        "reusable_capabilities": reusable_capabilities,
-        "automatic_capabilities": [compact_capability(item) for item in automatic],
-        "choice_required": [compact_capability(item) for item in capabilities["choice_required"]],
-        "constraints": confirmation_constraints(payload),
-        "risks": risks[:5],
-        "unconfirmed": risks[:5],
-        "blocking_question": blocking_question,
-        "decision_requirements": {
-            "capability_choice_ids": [
-                item["id"] for item in pending_choices if item.get("id")
-            ],
-            "rule_conflict": bool(task["conflicts"]),
-            "scope_risk": has_scope_risk,
-        },
-        "adjustable": {
-            "execution_mode": task["handling_mode"],
-            "execution_mode_options": list(HANDLING_MODE_LABELS.keys()),
-            "scope": scope,
-            "use_capabilities": True,
-            "capability_preferences": {
-                item["id"]: item.get("user_choice")
-                for item in capabilities["choice_required"]
-                if item.get("id")
-            },
-        },
-        "actions": {
-            "adjust": {"enabled": True},
-            "insert_into_composer": {
-                "enabled": state != "blocked",
-                "host_api": "unavailable",
-                "fallback": "copy_to_clipboard",
-                "auto_send": False,
-            },
-            "start_execution": {"enabled": state == "ready", "requires_click": True},
-        },
-    }
-    confirmation["task_prompt"] = compose_task_prompt(confirmation)
-    return confirmation
-
-
 def collect_context(
     root: Path,
     related_paths: list[str] | None = None,
@@ -914,7 +686,7 @@ def collect_context(
     errors.extend(preference_errors)
 
     payload: dict[str, Any] = {
-        "schema_version": 5,
+        "schema_version": 4,
         "project": {
             "root": str(root),
             "types": [],
@@ -931,7 +703,6 @@ def collect_context(
         "capability_selections": {choice: [] for choice in CAPABILITY_CHOICES},
         "capabilities": empty_capability_context(query),
         "task_context": {},
-        "confirmation": {},
         "warnings": warnings,
         "errors": errors,
     }
@@ -958,18 +729,7 @@ def collect_context(
         payload["capabilities"], capability_choices or [], warnings
     )
     apply_capability_choice_state(payload["task"], payload["capabilities"])
-    payload["confirmation"] = build_confirmation(payload, query)
-    payload["task"]["confirmation_state"] = payload["confirmation"]["state"]
-    payload["task"]["confirmation_presentation"] = payload["confirmation"]["presentation"]
-    if payload["confirmation"]["presentation"] == "bypass":
-        payload["task"]["requires_user_review"] = False
-        payload["task"]["handoff_to_codex_allowed"] = True
-        payload["task"]["review_message"] = None
-        payload["task"]["allowed_user_actions"] = []
-    else:
-        payload["task"]["allowed_user_actions"] = ["调整", "插入输入框", "开始执行"]
     payload["task_context"] = compose_task_context(payload)
-    payload["task_context"]["confirmation"] = payload["confirmation"]
     return payload, 2 if errors else 0
 
 

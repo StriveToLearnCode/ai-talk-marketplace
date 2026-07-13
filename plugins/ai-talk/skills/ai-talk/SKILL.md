@@ -1,127 +1,157 @@
 ---
 name: ai-talk
-description: 在用户显式调用 $ai-talk 时，识别自然语言研发任务，读取有限项目上下文，自动匹配内部 Skill、规则和可复用能力。简单明确任务跳过确认卡直接交给 Codex；复杂任务通过轻量任务卡展示目标、范围、约束和风险，用户一次点击即可开始执行。仅在组件、utility 或复用方式存在真实歧义时要求选择。
+description: 在用户显式调用 $ai-talk 时，把研发需求表达清楚，读取项目上下文，发现公司或项目已有 Skill、Prompt、组件、工具函数、同类实现和规范，自动采用明确能力，仅在组件或复用方式存在歧义时让用户选择，再生成必须经过审查的 Codex 任务话术。用于 Bug 定位、UI 或截图还原、多语言迁移检查、接口联调、新页面或新模块开发。AI Talk 不执行代码、不替代 Codex Plan，也不生成完整技术实施步骤。
 ---
 
 # AI Talk
 
-把自然语言需求整理成可执行任务，并在真正需要时提供一次轻量确认。AI Talk 不是模板管理器，不维护搜索、分类、模板编辑、导入导出或后台系统。
+把自然语言需求整理成可审查的 Codex 任务话术。AI Talk 只负责理解、补充、能力发现和任务准备，不修改业务代码，不运行项目命令，不自动把任务交给 Codex。
 
 ## 固定流程
 
-1. 从当前输入、对话、附件、截图、已给路径和项目上下文提取已知信息，不重复询问已经回答的内容。
-2. 读取 `references/capability-reuse.md`，只运行一次 `scripts/collect_context.py --root <项目根目录> --query '<当前需求与已确认补充>'`。用户给出路径时增加 `--related`；已知公司目录时增加 `--source-root`。这是 AI Talk 准备阶段唯一允许运行的项目命令。
-3. 使用 `task_context.task` 识别场景和期望执行方式，使用 `task_context.capabilities` 自动采用明确能力，并使用 `task_context.confirmation` 决定是否展示任务卡。
-4. 按场景读取 AI Talk 自身的 reference。reference 中的定位、实现和验证要求只写入完整任务话术，AI Talk 准备阶段不得提前执行。
-5. `confirmation.presentation == bypass` 时，不展示确认卡、不要求用户输入“继续”或“确认任务”。直接结束 AI Talk 准备阶段，把 `confirmation.task_prompt` 作为当前任务交给正常 Codex 流程继续处理。
-6. `confirmation.presentation == card` 时，调用 MCP 工具 `show_ai_talk_task`，参数只传完整的 `task_context.confirmation`。工具的 `structuredContent` 用于 widget，`content` 是宿主未渲染 widget 时的完整文本降级。调用后停止，不再追加成功占位或引导用户操作不可见卡片。
-7. `confirmation.state == ready` 时等待用户点击“开始执行”；点击产生的完整任务消息就是明确执行授权，后续进入正常 Codex 流程。
-8. `confirmation.state == needs_confirmation` 时只突出需要调整的范围、规则冲突或复用方式。用户完成选择后卡片回到 `ready`。
-9. `confirmation.state == blocked` 时只询问 `blocking_question` 这一项。不得一次列出多个问题。
-10. MCP Apps 不可用时直接保留工具返回的紧凑文本确认摘要，仍遵守相同状态和调整边界；不得虚构可点击按钮、不可见卡片或输入框写入能力。
+1. 从当前输入、当前对话、上传文件、截图、已给路径和项目上下文提取已知信息、限制和验收结果。不得重复询问已经回答的内容。
+2. 读取 `references/capability-reuse.md`，只运行一次 `scripts/collect_context.py --root <项目根目录> --query '<当前需求与已确认补充>'`。用户给出路径时增加 `--related`；已知公司目录时增加 `--source-root`。这是 AI Talk 阶段唯一允许运行的项目命令。
+3. 使用 `task_context.task` 识别场景、期望处理方式和任务状态。脚本结果是初始判断；结合完整对话修正时必须保留相同字段名。
+4. 按场景读取 AI Talk 自身的 reference，并读取 `references/clarifying-questions.md`。只把 reference 中的排查、实现和验证要求写入最终任务话术，不得在 AI Talk 阶段执行这些要求。
+5. 从 `task_context.capabilities` 收集索引候选，只使用脚本返回的名称、类型、来源、路径、摘要、导出符号和匹配原因。不得额外打开候选业务源码、消费者、测试或同类页面；索引结果统一标记为待 Codex 验证，不是兼容性结论。
+6. 自动采用主 Skill、项目规则、适用 Prompt 和唯一明确的项目内组件、utility 或历史实现。只有 `task_context.capabilities.choice_required` 非空且仍有未选择项时，才向用户展示精简候选并等待 `prefer_reuse`、`prefer_reference` 或 `excluded`。
+7. 没有待选项时直接生成最终任务话术；存在待选项时在用户完成选择后生成。状态设为 `ready_for_review`，明确提示尚未执行代码修改，然后停止。
+8. 只有用户明确回复“确认任务”或语义完全等价的确认，状态才能变为 `confirmed`。确认只表示话术可交给 Codex，不授权 AI Talk 修改代码。
+9. 用户要求调整时进入 `revise`；合并调整后重新生成话术并回到 `ready_for_review`。取消时停止。
 
-## 准备与执行边界
+## 话术准备边界
 
-- AI Talk 准备阶段只负责理解、能力发现和任务确认，不修改业务代码。
-- `collect_context.py` 是准备阶段唯一允许运行的项目命令。不得额外运行 `rg`、Git 定位、构建、测试、开发服务器或业务脚本。
-- 不打开候选页面、组件、接口、composable、hook、utility、测试或历史活动源码。真实兼容性检查留给开始执行后的 Codex。
-- 用户点击“开始执行”或任务命中 `bypass` 后，AI Talk 准备阶段结束；随后按任务话术和匹配到的主 Skill 进入正常 Codex 分析、修改与验证流程。
-- 不把“帮我开发”“修复”本身当作复杂任务卡的确认；是否展示卡片由 `confirmation.presentation` 决定。
-
-## 任务卡契约
-
-任务卡必须展示：
-
-- `task_type`：任务类型。
-- `execution`：期望执行方式。
-- `goal`：任务目标。
-- `scope`：代码或页面范围。
-- `internal_skills`：匹配到的内部 Skill。
-- `reusable_capabilities`：组件、utility 或同类实现。
-- `constraints`：AI Talk 补充的关键约束。
-- `risks` / `unconfirmed`：风险和未确认信息。
-
-任务卡状态：
-
-- `ready`：信息足够，突出“开始执行”。
-- `needs_confirmation`：存在组件/复用歧义、公共能力风险、范围扩大或规则冲突，突出调整区域。
-- `blocked`：缺少真正阻塞的信息，只显示一个问题，不能开始执行。
-
-`presentation` 只有 `card` 和 `bypass`。简单明确任务使用 `bypass`；多场景、规则冲突、公共能力、范围扩大、未决复用方式或缺少关键信息时使用 `card`。
-
-## 三个按钮
-
-### 调整
-
-只允许修改：
-
-- `execution_mode`：`analyze / plan / modify_and_verify / review`。
-- `scope`：任务涉及的代码或页面范围。
-- `use_capabilities` 和 `capability_preferences`：是否采用内部能力，以及歧义候选的 `prefer_reuse`、`prefer_reference`、`excluded`。
-
-不得在调整区加入目标重写、模板编辑、搜索、分类、导入导出或完整表单。
-
-### 插入输入框
-
-公开 MCP Apps 协议当前没有“只写入 Codex composer 草稿但不发送”的接口。按钮必须保持 `auto_send: false`：宿主没有草稿写入能力时复制完整 `task_prompt`，并明确提示用户未自动发送。禁止使用 `ui/message` 冒充输入框插入。
-
-### 开始执行
-
-只有 `state == ready` 时启用。用户点击后通过 MCP Apps `ui/message` 发送当前完整 `task_prompt`，一次点击即开始，不再要求输入“继续”。未经点击不得发送。
+- AI Talk 的产物是任务话术，不是当前问题的分析结果、技术方案或代码修改。
+- `collect_context.py` 是 AI Talk 阶段唯一允许运行的项目命令。不得额外运行 `rg`、`find`、Git 定位、构建、测试、开发服务器或业务脚本。
+- 不打开页面、组件、接口、composable、hook、utility、测试或历史活动的业务源码。真实代码检查全部写入最终话术，留给确认后的 Codex。
+- 不根据 Bug、UI 或接口 reference 开始定位根因、比较实现、验证数据链路或给出修复方案。
+- 不向用户展示分支定位、目录搜索、候选源码阅读或中间推理。能力搜索完成后只展示轻量摘要、候选选择和最终话术。
+- 用户已经给出截图、路径或现象时，只把它们作为话术中的已知信息，不据此展开当前排查。
 
 ## 场景识别
 
 第一版重点支持：
 
-- Bug、报错、异常、偶现或定位原因：`bug_debugging`，读取 `references/bug-debugging.md`。
-- 截图、Figma、视觉走查或页面还原：`ui_reconstruction`，读取 `references/ui-review.md`。
-- 语言迁移、语言包或文案遗漏：`localization_migration`，读取 `references/ui-review.md`。
-- 接口文档、OpenAPI、字段映射或联调：`api_integration`，读取 `references/api-integration.md`。
+- Bug、报错、异常、偶现、功能失效或定位原因：`bug_debugging`，读取 `references/bug-debugging.md`。
+- 截图、Figma、视觉走查、切图或页面还原：`ui_reconstruction`，读取 `references/ui-review.md`。
+- 语言迁移、语言包、文案遗漏或图片文字检查：`localization_migration`，读取 `references/ui-review.md`。
+- 接口文档、OpenAPI、字段映射或前后端联调：`api_integration`，读取 `references/api-integration.md`。
 - 新页面、新功能或新模块：`feature_development`，读取 `references/feature-development.md`。
 
-一个需求可以有多个场景。无法识别时使用 `unknown`，按通用任务整理规则继续。
+一个需求可以有多个场景。例如“根据截图开发独立榜单页面”同时包含 `ui_reconstruction` 和 `feature_development`。无法识别时使用 `unknown`，按通用任务整理规则继续，不为完整性匹配低频模板。
 
-## 执行方式
+## 期望处理方式
 
-- `analyze`：只分析，不修改。
-- `plan`：先给方案，用户未说明时默认使用。
-- `modify_and_verify`：修改并验证。
-- `review`：只审查，不修改。
+这些值描述用户希望后续 Codex 如何处理，不是 AI Talk 当前执行授权：
 
-这些值描述开始执行后的 Codex 行为，不是 AI Talk 准备阶段的修改授权。
+- `analyze`：只分析，不修改。触发词包括“帮我看看”“先定位”“不要改”。
+- `plan`：先给方案。触发词包括“先给方案”“讨论方案”。用户未说明时默认使用此值。
+- `modify_and_verify`：修改并验证。触发词包括“帮我开发”“实现”“新增”“接入”“修复”。
+- `review`：只审查，不修改。触发词包括“审查代码”“代码 review”。
 
-## 能力选择
+输出必须把期望处理方式和当前任务状态分开，例如：
 
-能力类型包括 `skill`、`component`、`utility`、`example`、`project_rule`、`prompt`；来源包括 `company`、`project`、`user`。
+```text
+期望处理方式：修改并验证
+任务状态：待用户审查
+```
+
+禁止使用“执行方式：直接执行”，也不得把“帮我开发”理解成无需审查的执行授权。
+
+## 任务状态
+
+- `draft`：仍有一个会改变方向的阻塞问题，或存在尚未选择的组件/复用方法。
+- `ready_for_review`：话术已准备，等待用户审查。所有新生成和重新生成任务默认进入此状态。
+- `confirmed`：用户明确确认任务话术，可交给 Codex。
+- `revise`：用户要求调整任务。
+
+`requires_user_review` 始终为 `true`。不存在 `auto_execute`。不得根据沉默、“继续”或开发动词推断用户已经确认。
+
+## 能力候选
+
+能力至少包含：名称、类型、来源、索引到的真实路径、匹配原因、发现状态、选择状态、待验证内容和潜在风险。AI Talk 不打开该路径的业务源码；路径和元数据只用于自动选择或形成歧义候选。
+
+支持类型：`skill`、`component`、`utility`、`example`、`project_rule`、`prompt`。
+
+支持来源：`company`、`project`、`user`。
+
+发现状态：
+
+- `candidate_reuse`：候选复用。
+- `candidate_reference`：候选参考。
+- `low_relevance`：低相关，不默认展示。
+
+选择状态：
+
+- `auto_selected`：AI Talk 自动采用，不要求用户逐项确认。
+- `choice_required`：组件、utility、同类实现或复用方式存在真实歧义，需要用户选择。
+- `low_relevance`：不进入当前能力组合。
+
+自动选择规则：
 
 - 主 Skill、项目规则和适用 Prompt 自动采用。
-- 唯一且高相关的项目内组件或 utility 自动设为 `prefer_reuse`。
-- 唯一相关的项目内历史实现自动设为 `prefer_reference`。
-- 自动采用使用 `selection_source: ai_talk`，但 `execution_validation` 保持 `null`。
-- 多个高相关实现竞争同一职责，或只有公司级、共享、跨项目能力且适配不明确时，使用 `choice_required`。
-- 用户只选择 `choice_required` 项；选择写入 `selection_source: user`。
+- 唯一且高相关的项目内组件或 utility 自动写为 `prefer_reuse`。
+- 唯一相关的项目内历史实现自动写为 `prefer_reference`。
+- 自动选择使用 `selection_source: ai_talk`，但 `execution_validation` 仍为 `null`；自动采用不表示已经兼容。
+- 共享或跨项目的组件、utility、历史实现，以及同类型存在多个高相关结果时，使用 `choice_required`。
 
-执行验证状态 `confirmed_reuse`、`partial_reuse`、`incompatible`、`reference_only` 只能由开始执行后的 Codex 实际读取代码后给出。
+用户只选择 `choice_required` 项：
 
-## 规则冲突与风险
+- `prefer_reuse`：要求 Codex 优先验证复用。
+- `prefer_reference`：仅作参考，不作为依赖。
+- `excluded`：本次排除。
 
-发现用户要求、项目规则或多个 Skill 冲突时，不静默选择。任务卡显示冲突影响，并进入 `needs_confirmation`。
+执行验证状态 `confirmed_reuse`、`partial_reuse`、`incompatible`、`reference_only` 只能由确认后的 Codex 实际读取和验证代码后给出。AI Talk 必须保持 `execution_validation: null`，不得为了确认候选而提前读取业务源码，也不得把用户选择升级为兼容性结论。
 
-涉及公共组件、共享能力、跨项目复用或范围扩大时，在 `risks` 中清晰提示，但不要使用阻断式大段警告。只有信息缺失导致任务无法执行时才使用 `blocked`。
+每次最多自动采用一个主 Skill 和必要项目规则；组件、utility 和历史实现仍受三个高相关项、两个辅助参考的展示上限约束。优先级为当前项目实现、项目 Skill、公司 Skill、公司组件、历史项目、用户 Prompt、默认规则。自动选择结果可在最终任务审查时通过“调整任务”修改。
 
-## 降级输出
+## 规则冲突
 
-MCP Apps 工具不可用或宿主没有渲染 widget 时，使用工具 `content` 中的一屏摘要：任务类型、执行方式、目标、范围、内部 Skill、可复用能力、关键约束、风险和状态。禁止把摘要替换为“任务卡已生成”之类的状态句。
+发现用户要求、项目规则或多个 Skill 互相冲突时，不静默选择。显示冲突双方、影响和推荐处理方式，等待用户确认后再生成最终话术。
 
-- `ready`：提供“开始执行 / 插入输入框 / 调整”文本选项，等待明确选择。
-- `needs_confirmation`：只要求调整未决字段。
-- `blocked`：只询问一个 `blocking_question`。
-- `bypass`：不输出摘要，直接进入正常 Codex 流程。
+例如用户要求重新实现，而项目规则要求优先复用时，建议先验证已有能力；无法复用后再新增业务实现。该建议不能当作用户确认。
+
+## 最终输出
+
+默认先显示一屏内摘要：
+
+```text
+任务类型：
+期望处理方式：
+任务状态：待用户审查
+相关范围：
+主 Skill：
+自动采用能力：
+待选择候选：
+用户已选复用：
+用户已选参考：
+本次排除：
+尚未确认信息：
+```
+
+随后输出一个 `text` 代码块。按实际内容包含：当前需求、本轮目标、相关范围、期望处理方式、自动采用的主 Skill/规则/能力、用户对歧义候选的选择、项目约束、禁止事项、输出要求、验收要求和尚未确认的信息。省略没有实际内容的字段，简单任务控制在约 150 至 300 个中文字符。
+
+复用要求必须告诉 Codex：实现前读取候选真实代码；检查 props、数据结构、依赖、配置和样式覆盖能力；完全兼容时复用；部分兼容时说明适配范围；不兼容时说明原因；不得为了强行复用而大改公共组件；参考能力不得默认成为项目依赖。
+
+无可靠候选时说明检查过的范围，并要求 Codex 在执行阶段再次检查目标目录和同类实现，确认没有可复用能力后再新增。
+
+代码块后固定显示：
+
+```text
+任务话术已准备，等待审查。
+当前尚未执行代码修改。
+
+确认任务
+调整任务
+取消
+```
+
+进入 `ready_for_review` 后立即停止：不继续读取业务代码、不运行项目命令、不修改文件、不自动提交给 Codex。
 
 ## 统一约束
 
-- 只使用真实读取的项目事实和能力，不编造路径、Skill、组件、接口字段或兼容性结论。
+- 只使用真实读取的项目事实和能力，不编造路径、Skill、组件、接口字段、运行结果或上一轮结论。
 - 不读取 `.env`、密钥、令牌、依赖目录或构建产物，不把整个项目注入话术。
-- 路径不存在、公司目录未配置、能力搜索失败或 MCP Apps 不可用时正常降级。
-- 不重新开发模板管理、搜索、分类、模板编辑、导入导出、云同步、团队账号或复杂数据看板。
-- 卡片内容默认应在一屏内完成，避免大量说明和复杂动画。
+- 路径不存在、公司目录未配置或能力搜索失败时正常降级，不阻塞任务整理。
+- AI Talk 不维护模板管理系统，不开发独立 UI、MCP App、后台、导入导出、云同步、团队账号、插件市场、完整 Git 审计或复杂数据看板。
+- 不替 Codex Plan 展开详细实施步骤，不执行任何代码修改。

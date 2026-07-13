@@ -1,7 +1,7 @@
 interface:
   display_name: "AI Talk"
-  short_description: "识别任务和内部能力，用轻量确认卡连接到执行"
-  default_prompt: "使用 $ai-talk 识别我的研发任务和内部能力；复杂任务显示轻量确认卡，简单明确任务直接处理。"
+  short_description: "自动采用明确能力，只对歧义复用项请求用户选择并生成任务话术"
+  default_prompt: "使用 $ai-talk 轻量整理我的研发需求，自动选择明确能力，只对歧义复用项提问，并生成等待我审查的 Codex 任务话术。"
 
 policy:
   allow_implicit_invocation: false
