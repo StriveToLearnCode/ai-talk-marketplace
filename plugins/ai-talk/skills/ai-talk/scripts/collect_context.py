@@ -14,6 +14,8 @@ from typing import Any
 SKILL_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_PREFERENCES_PATH = SKILL_ROOT / "references" / "default-preferences.json"
 USER_PREFERENCES_PATH = Path.home() / ".codex" / "ai-talk" / "preferences.json"
+CAPABILITY_INDEX_SCRIPT = SKILL_ROOT / "scripts" / "build-capability-index.mjs"
+DEFAULT_CAPABILITY_LIMIT = 30
 
 SUPPORTED_PREFERENCES = {
     "language": lambda value: isinstance(value, str) and bool(value.strip()),
@@ -331,10 +333,129 @@ def collect_related(
     return related
 
 
+def empty_capability_context(
+    query: str | None,
+    status: str = "not-requested",
+) -> dict[str, Any]:
+    return {
+        "status": status,
+        "query": query.strip() if isinstance(query, str) and query.strip() else None,
+        "roots": [],
+        "stats": {
+            "total": 0,
+            "by_kind": {},
+            "by_scope": {},
+            "returned": 0,
+            "truncated": False,
+        },
+        "selected": [],
+        "candidates": [],
+        "warnings": [],
+    }
+
+
+def collect_capabilities(
+    root: Path,
+    query: str | None,
+    source_roots: list[str],
+    include_user_sources: bool,
+    limit: int,
+    warnings: list[str],
+) -> dict[str, Any]:
+    normalized_query = query.strip() if isinstance(query, str) else ""
+    if not normalized_query:
+        return empty_capability_context(query)
+
+    command = [
+        "node",
+        str(CAPABILITY_INDEX_SCRIPT),
+        "--root",
+        str(root),
+        "--query",
+        normalized_query,
+        "--limit",
+        str(limit),
+    ]
+    if not include_user_sources:
+        command.append("--no-user-sources")
+    for source_root in source_roots:
+        command.extend(["--source-root", source_root])
+
+    try:
+        result = subprocess.run(
+            command,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=20,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        message = f"Capability index is unavailable: {exc}"
+        warnings.append(message)
+        capability_context = empty_capability_context(normalized_query, "unavailable")
+        capability_context["warnings"].append(message)
+        return capability_context
+
+    if result.returncode != 0:
+        detail = result.stderr.strip() or f"exit code {result.returncode}"
+        message = f"Capability index failed and was skipped: {detail}"
+        warnings.append(message)
+        capability_context = empty_capability_context(normalized_query, "unavailable")
+        capability_context["warnings"].append(message)
+        return capability_context
+
+    try:
+        raw_payload = json.loads(result.stdout)
+    except json.JSONDecodeError as exc:
+        message = f"Capability index returned invalid JSON and was skipped: {exc}"
+        warnings.append(message)
+        capability_context = empty_capability_context(normalized_query, "unavailable")
+        capability_context["warnings"].append(message)
+        return capability_context
+
+    if not isinstance(raw_payload, dict):
+        message = "Capability index returned a non-object payload and was skipped."
+        warnings.append(message)
+        capability_context = empty_capability_context(normalized_query, "unavailable")
+        capability_context["warnings"].append(message)
+        return capability_context
+
+    return {
+        "status": "ready",
+        "query": raw_payload.get("query") or normalized_query,
+        "roots": raw_payload.get("roots", []),
+        "stats": raw_payload.get("stats", empty_capability_context(None)["stats"]),
+        "selected": raw_payload.get("selected", []),
+        "candidates": raw_payload.get("capabilities", []),
+        "warnings": raw_payload.get("warnings", []),
+    }
+
+
+def compose_task_context(payload: dict[str, Any]) -> dict[str, Any]:
+    capabilities = payload["capabilities"]
+    return {
+        "project": payload["project"],
+        "git": payload["git"],
+        "context_files": payload["context_files"],
+        "related_files": payload["related_files"],
+        "capabilities": {
+            "status": capabilities["status"],
+            "query": capabilities["query"],
+            "stats": capabilities["stats"],
+            "selected": capabilities["selected"],
+            "warnings": capabilities["warnings"],
+        },
+    }
+
+
 def collect_context(
     root: Path,
     related_paths: list[str] | None = None,
     preferences_path: Path | None = None,
+    query: str | None = None,
+    source_roots: list[str] | None = None,
+    include_user_sources: bool = True,
+    capability_limit: int = DEFAULT_CAPABILITY_LIMIT,
 ) -> tuple[dict[str, Any], int]:
     warnings: list[str] = []
     errors: list[str] = []
@@ -347,6 +468,7 @@ def collect_context(
     errors.extend(preference_errors)
 
     payload: dict[str, Any] = {
+        "schema_version": 2,
         "project": {
             "root": str(root),
             "types": [],
@@ -359,9 +481,12 @@ def collect_context(
         "git": {"is_repository": False, "branch": None, "changed_files": []},
         "context_files": [],
         "related_files": [],
+        "capabilities": empty_capability_context(query),
+        "task_context": {},
         "warnings": warnings,
         "errors": errors,
     }
+    payload["task_context"] = compose_task_context(payload)
 
     if not root.is_dir():
         errors.append(f"Project root is not a directory: {root}")
@@ -371,6 +496,15 @@ def collect_context(
     payload["git"] = collect_git(root, warnings)
     payload["context_files"] = collect_context_files(root)
     payload["related_files"] = collect_related(root, related_paths or [], warnings)
+    payload["capabilities"] = collect_capabilities(
+        root,
+        query,
+        source_roots or [],
+        include_user_sources,
+        capability_limit,
+        warnings,
+    )
+    payload["task_context"] = compose_task_context(payload)
     return payload, 2 if errors else 0
 
 
@@ -390,12 +524,43 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         type=Path,
         help="Optional preferences JSON path. Defaults to ~/.codex/ai-talk/preferences.json.",
     )
+    parser.add_argument(
+        "--query",
+        help="Task request used to rank and select capabilities into task_context.",
+    )
+    parser.add_argument(
+        "--source-root",
+        action="append",
+        default=[],
+        help="Company or team capability root as label=/absolute/path. Repeat as needed.",
+    )
+    parser.add_argument(
+        "--no-user-sources",
+        action="store_true",
+        help="Do not scan common user Skill roots or installed Codex plugin Skills.",
+    )
+    parser.add_argument(
+        "--capability-limit",
+        type=int,
+        default=DEFAULT_CAPABILITY_LIMIT,
+        help="Maximum ranked capability candidates included in task_context (default: 30).",
+    )
     return parser.parse_args(argv)
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
-    payload, exit_code = collect_context(args.root, args.related, args.preferences)
+    if not 1 <= args.capability_limit <= 5000:
+        raise SystemExit("--capability-limit must be between 1 and 5000")
+    payload, exit_code = collect_context(
+        args.root,
+        args.related,
+        args.preferences,
+        query=args.query,
+        source_roots=args.source_root,
+        include_user_sources=not args.no_user_sources,
+        capability_limit=args.capability_limit,
+    )
     json.dump(payload, sys.stdout, ensure_ascii=False, indent=2)
     sys.stdout.write("\n")
     return exit_code
