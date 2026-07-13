@@ -1,0 +1,4 @@
+interface:
+  display_name: "AI 沟通话术"
+  short_description: "智能补全关键信息，支持结构化与文本追问并生成开发任务话术"
+  default_prompt: "使用 $ai-talk 补全会影响方向的关键信息；优先使用可点击结构化选项，不可用时改用简短文本追问，再生成可直接复制的三阶段开发任务话术。"
