@@ -1,0 +1,9 @@
+{
+  "language": "zh-CN",
+  "default_mode": "plan-first",
+  "minimal_change": true,
+  "explain_commands": true,
+  "require_verification": true,
+  "avoid_unrelated_files": true,
+  "output_style": "concise"
+}
