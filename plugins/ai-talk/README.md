@@ -41,7 +41,9 @@ python3 skills/ai-talk/scripts/collect_context.py \
 
 当前公开 MCP Apps 协议没有只写入 Codex composer 草稿的接口。因此“插入输入框”在宿主不支持时复制完整话术，明确提示未自动发送；不会用发送消息来伪装插入。
 
-Codex CLI `0.143.0` 中 `enable_mcp_apps` 仍属于开发期开关。无法渲染 MCP App 的宿主会按 Skill 规则降级到紧凑文本确认。
+Codex CLI `0.143.0` 中 `enable_mcp_apps` 仍属于开发期开关。要在 Codex Desktop 中渲染真实任务卡，需要执行 `codex features enable enable_mcp_apps` 后完全退出并重新打开 Codex；可用 `codex features list` 确认状态。需要关闭时执行 `codex features disable enable_mcp_apps`。
+
+无法渲染 MCP App 的宿主会直接显示包含任务目标、范围、能力、约束和风险的紧凑文本确认，不会声称存在不可见卡片。
 
 ## 能力选择
 

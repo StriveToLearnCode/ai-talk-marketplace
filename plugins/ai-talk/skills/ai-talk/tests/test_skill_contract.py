@@ -58,6 +58,8 @@ class SkillContractTests(unittest.TestCase):
         self.assertIn("禁止使用 `ui/message` 冒充输入框插入", self.skill_text)
         self.assertIn("未经点击不得发送", self.skill_text)
         self.assertIn("一次点击即开始", self.skill_text)
+        self.assertIn("禁止把摘要替换为“任务卡已生成”", self.skill_text)
+        self.assertNotIn("请在卡片中点击", self.skill_text)
 
     def test_capability_lifecycle_is_separated(self):
         for choice in ("prefer_reuse", "prefer_reference", "excluded"):

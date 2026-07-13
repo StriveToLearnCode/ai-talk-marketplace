@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import process from "node:process";
 import readline from "node:readline";
 
-import { createTaskCardStore } from "./task-card.mjs";
+import { createTaskCardStore, formatFallbackTaskCard } from "./task-card.mjs";
 
 const WIDGET_URI = "ui://ai-talk/task-confirmation-v1.html";
 const WIDGET_MIME_TYPE = "text/html;profile=mcp-app";
@@ -72,9 +72,12 @@ const tools = [
 
 function toolResult(card, message) {
   return {
-    content: [{ type: "text", text: message }],
+    content: [{ type: "text", text: formatFallbackTaskCard(card) }],
     structuredContent: card,
-    _meta: { "openai/outputTemplate": WIDGET_URI },
+    _meta: {
+      "openai/outputTemplate": WIDGET_URI,
+      "ai-talk/status": message,
+    },
   };
 }
 
@@ -156,7 +159,7 @@ async function handleRequest(message) {
         return {
           jsonrpc: "2.0",
           id,
-          result: toolResult(card, "AI Talk 任务确认卡已生成。"),
+          result: toolResult(card, "ready"),
         };
       }
       if (params.name === "adjust_ai_talk_task") {
@@ -165,7 +168,7 @@ async function handleRequest(message) {
         return {
           jsonrpc: "2.0",
           id,
-          result: toolResult(card, "AI Talk 任务调整已保存。"),
+          result: toolResult(card, "updated"),
         };
       }
       return { jsonrpc: "2.0", id, result: errorResult("Unknown AI Talk tool.") };

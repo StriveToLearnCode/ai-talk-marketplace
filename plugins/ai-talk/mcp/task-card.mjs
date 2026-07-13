@@ -52,6 +52,38 @@ export function composeTaskPrompt(card) {
   return lines.join("\n");
 }
 
+export function formatFallbackTaskCard(card) {
+  if (card.state === "blocked") {
+    return [
+      "AI Talk 任务确认（文本模式）",
+      `状态：缺少信息`,
+      `阻塞问题：${card.blocking_question}`,
+    ].join("\n");
+  }
+
+  const skillNames = card.internal_skills.map((item) => item.name);
+  const reusableNames = card.reusable_capabilities.map((item) => item.name);
+  const lines = [
+    "AI Talk 任务确认（文本模式）",
+    `状态：${card.state === "ready" ? "可以执行" : "需要确认"}`,
+    `任务类型：${card.task_type.label}`,
+    `执行方式：${card.execution.label}`,
+    `任务目标：${card.goal}`,
+    `代码 / 页面范围：${card.scope.join("、")}`,
+    `内部 Skill：${skillNames.length ? skillNames.join("、") : "未匹配到"}`,
+    `可复用能力：${reusableNames.length ? reusableNames.join("、") : "未匹配到"}`,
+    `关键约束：${card.constraints.length ? card.constraints.join(" ") : "无额外约束"}`,
+    `风险与未确认信息：${card.risks.length ? card.risks.join(" ") : "无"}`,
+  ];
+
+  if (card.state === "ready") {
+    lines.push("可选操作：调整 / 插入输入框 / 开始执行");
+  } else {
+    lines.push("请先调整标记的范围或内部能力用法。");
+  }
+  return lines.join("\n");
+}
+
 export function normalizeTaskCard(input) {
   if (!input || typeof input !== "object") {
     throw new Error("confirmation must be an object");

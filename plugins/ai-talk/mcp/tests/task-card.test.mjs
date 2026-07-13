@@ -5,6 +5,7 @@ import test from "node:test";
 import {
   applyTaskCardAdjustments,
   createTaskCardStore,
+  formatFallbackTaskCard,
   normalizeTaskCard,
 } from "../task-card.mjs";
 
@@ -54,6 +55,24 @@ test("normalizes the confirmation card and keeps composer insertion non-sending"
   assert.equal(card.state, "needs_confirmation");
   assert.equal(card.actions.insert_into_composer.auto_send, false);
   assert.match(card.task_prompt, /任务目标：实现榜单页面/);
+});
+
+test("text fallback contains the complete task instead of a fake card-success message", () => {
+  const fallback = formatFallbackTaskCard(normalizeTaskCard(sampleCard()));
+
+  for (const label of [
+    "任务类型",
+    "执行方式",
+    "任务目标",
+    "代码 / 页面范围",
+    "内部 Skill",
+    "可复用能力",
+    "关键约束",
+    "风险与未确认信息",
+  ]) {
+    assert.match(fallback, new RegExp(label));
+  }
+  assert.doesNotMatch(fallback, /任务卡已生成|请在卡片中点击/);
 });
 
 test("adjustment changes only mode, scope, and capability usage", () => {

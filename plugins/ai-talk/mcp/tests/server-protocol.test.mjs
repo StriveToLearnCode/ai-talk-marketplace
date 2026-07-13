@@ -91,4 +91,7 @@ test("stdio MCP server exposes the widget resource and task tools", async (t) =>
   assert.equal(shown.result.structuredContent.state, "ready");
   assert.equal(shown.result.structuredContent.actions.insert_into_composer.auto_send, false);
   assert.ok(shown.result.structuredContent.card_id);
+  assert.match(shown.result.content[0].text, /任务目标：实现任务确认卡/);
+  assert.match(shown.result.content[0].text, /可选操作：调整 \/ 插入输入框 \/ 开始执行/);
+  assert.doesNotMatch(shown.result.content[0].text, /任务卡已生成|请在卡片中点击/);
 });

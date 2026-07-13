@@ -14,11 +14,11 @@ description: 在用户显式调用 $ai-talk 时，识别自然语言研发任务
 3. 使用 `task_context.task` 识别场景和期望执行方式，使用 `task_context.capabilities` 自动采用明确能力，并使用 `task_context.confirmation` 决定是否展示任务卡。
 4. 按场景读取 AI Talk 自身的 reference。reference 中的定位、实现和验证要求只写入完整任务话术，AI Talk 准备阶段不得提前执行。
 5. `confirmation.presentation == bypass` 时，不展示确认卡、不要求用户输入“继续”或“确认任务”。直接结束 AI Talk 准备阶段，把 `confirmation.task_prompt` 作为当前任务交给正常 Codex 流程继续处理。
-6. `confirmation.presentation == card` 时，调用 MCP 工具 `show_ai_talk_task`，参数只传完整的 `task_context.confirmation`。工具可用后不要再重复输出一份长文本卡片。
+6. `confirmation.presentation == card` 时，调用 MCP 工具 `show_ai_talk_task`，参数只传完整的 `task_context.confirmation`。工具的 `structuredContent` 用于 widget，`content` 是宿主未渲染 widget 时的完整文本降级。调用后停止，不再追加成功占位或引导用户操作不可见卡片。
 7. `confirmation.state == ready` 时等待用户点击“开始执行”；点击产生的完整任务消息就是明确执行授权，后续进入正常 Codex 流程。
 8. `confirmation.state == needs_confirmation` 时只突出需要调整的范围、规则冲突或复用方式。用户完成选择后卡片回到 `ready`。
 9. `confirmation.state == blocked` 时只询问 `blocking_question` 这一项。不得一次列出多个问题。
-10. MCP Apps 不可用时降级为紧凑文本确认摘要，仍遵守相同状态和调整边界；不得虚构可点击按钮或输入框写入能力。
+10. MCP Apps 不可用时直接保留工具返回的紧凑文本确认摘要，仍遵守相同状态和调整边界；不得虚构可点击按钮、不可见卡片或输入框写入能力。
 
 ## 准备与执行边界
 
@@ -111,7 +111,7 @@ description: 在用户显式调用 $ai-talk 时，识别自然语言研发任务
 
 ## 降级输出
 
-MCP Apps 工具不可用时，输出一屏内摘要：任务类型、执行方式、目标、范围、内部 Skill、可复用能力、关键约束、风险和状态。
+MCP Apps 工具不可用或宿主没有渲染 widget 时，使用工具 `content` 中的一屏摘要：任务类型、执行方式、目标、范围、内部 Skill、可复用能力、关键约束、风险和状态。禁止把摘要替换为“任务卡已生成”之类的状态句。
 
 - `ready`：提供“开始执行 / 插入输入框 / 调整”文本选项，等待明确选择。
 - `needs_confirmation`：只要求调整未决字段。
