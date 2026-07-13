@@ -1,0 +1,540 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AI Talk 任务确认</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #151716;
+        --surface: #1d201f;
+        --surface-strong: #252927;
+        --border: #353a37;
+        --text: #f2f4f2;
+        --muted: #aeb5b0;
+        --green: #75d59a;
+        --green-strong: #99e4b4;
+        --green-ink: #102819;
+        --amber: #e7b96b;
+        --amber-bg: #2c271c;
+        --danger: #e38b82;
+        --focus: #9bb7ff;
+      }
+
+      * { box-sizing: border-box; }
+
+      body {
+        margin: 0;
+        padding: 10px;
+        background: transparent;
+        color: var(--text);
+        font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        font-size: 13px;
+        line-height: 1.45;
+        letter-spacing: 0;
+      }
+
+      button, input, select, textarea { font: inherit; letter-spacing: 0; }
+
+      .task-card {
+        width: min(720px, 100%);
+        margin: 0 auto;
+        overflow: hidden;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: var(--surface);
+        box-shadow: 0 10px 24px rgb(0 0 0 / 18%);
+      }
+
+      .header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 14px 16px 12px;
+        border-bottom: 1px solid var(--border);
+      }
+
+      .title { margin: 0; font-size: 15px; font-weight: 650; }
+      .subtitle { margin: 3px 0 0; color: var(--muted); font-size: 12px; }
+
+      .status {
+        flex: 0 0 auto;
+        padding: 3px 8px;
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        color: var(--muted);
+        background: var(--surface-strong);
+        font-size: 11px;
+      }
+
+      .status.ready { border-color: #356a49; color: var(--green-strong); }
+      .status.needs_confirmation { border-color: #705b32; color: var(--amber); }
+      .status.blocked { border-color: #71423f; color: var(--danger); }
+
+      .content { padding: 10px 16px 4px; }
+
+      .summary-grid {
+        display: grid;
+        grid-template-columns: 112px minmax(0, 1fr);
+      }
+
+      .summary-row { display: contents; }
+
+      .label, .value {
+        min-width: 0;
+        padding: 7px 0;
+        border-bottom: 1px solid rgb(255 255 255 / 6%);
+      }
+
+      .label { color: var(--muted); }
+      .value { overflow-wrap: anywhere; }
+
+      .tags { display: flex; flex-wrap: wrap; gap: 5px; }
+
+      .tag {
+        display: inline-flex;
+        align-items: center;
+        min-height: 23px;
+        padding: 2px 7px;
+        border: 1px solid #3d4941;
+        border-radius: 5px;
+        color: #dce8df;
+        background: #252d28;
+        font-size: 12px;
+      }
+
+      .empty { color: #7f8782; }
+
+      .risk {
+        margin: 10px 0 4px;
+        padding: 9px 10px;
+        border-left: 3px solid var(--amber);
+        background: var(--amber-bg);
+        color: #e8d4ae;
+      }
+
+      .risk strong { display: block; margin-bottom: 3px; color: #f1d79f; }
+      .risk ul { margin: 0; padding-left: 17px; }
+
+      .blocking {
+        margin: 6px 0 10px;
+        padding: 14px;
+        border: 1px solid #6f423e;
+        border-radius: 6px;
+        background: #2b1f1e;
+        color: #f0c4bf;
+        font-size: 14px;
+      }
+
+      .adjust-panel {
+        display: none;
+        padding: 12px 16px 14px;
+        border-top: 1px solid var(--border);
+        background: #191c1b;
+      }
+
+      .adjust-panel.open { display: block; }
+
+      .adjust-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px 12px;
+      }
+
+      .field { min-width: 0; }
+      .field.full { grid-column: 1 / -1; }
+      .field > label, .field-title {
+        display: block;
+        margin-bottom: 5px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      select, textarea {
+        width: 100%;
+        border: 1px solid var(--border);
+        border-radius: 5px;
+        outline: 0;
+        background: var(--surface-strong);
+        color: var(--text);
+      }
+
+      select { min-height: 34px; padding: 5px 8px; }
+      textarea { min-height: 58px; resize: vertical; padding: 8px; }
+      select:focus, textarea:focus { border-color: var(--focus); }
+
+      .toggle-row {
+        display: flex;
+        align-items: center;
+        min-height: 34px;
+        gap: 8px;
+        color: var(--text);
+      }
+
+      .toggle-row input { accent-color: var(--green); }
+
+      .choices { display: grid; gap: 7px; }
+      .choice {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 160px;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .choice-name { overflow-wrap: anywhere; }
+      .choice-name small { display: block; color: var(--muted); }
+
+      .adjust-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+
+      .footer {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 8px;
+        padding: 12px 16px;
+        border-top: 1px solid var(--border);
+        background: #191b1a;
+      }
+
+      button {
+        min-height: 34px;
+        padding: 6px 11px;
+        border: 1px solid var(--border);
+        border-radius: 5px;
+        cursor: pointer;
+        color: var(--text);
+        background: var(--surface-strong);
+      }
+
+      button:hover:not(:disabled) { border-color: #626a65; background: #2c312f; }
+      button:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+      button:disabled { cursor: not-allowed; opacity: 0.42; }
+
+      .primary {
+        border-color: var(--green);
+        background: var(--green);
+        color: var(--green-ink);
+        font-weight: 650;
+      }
+
+      .primary:hover:not(:disabled) { border-color: var(--green-strong); background: var(--green-strong); }
+
+      .toast {
+        min-height: 18px;
+        margin-right: auto;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      @media (max-width: 560px) {
+        body { padding: 6px; }
+        .header, .content, .adjust-panel, .footer { padding-left: 12px; padding-right: 12px; }
+        .summary-grid { grid-template-columns: 88px minmax(0, 1fr); }
+        .adjust-grid { grid-template-columns: 1fr; }
+        .field.full { grid-column: auto; }
+        .choice { grid-template-columns: 1fr; }
+        .footer { flex-wrap: wrap; }
+        .toast { width: 100%; order: -1; }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="task-card" aria-labelledby="card-title">
+      <header class="header">
+        <div>
+          <h1 class="title" id="card-title">AI Talk 任务确认</h1>
+          <p class="subtitle" id="subtitle">确认后开始执行</p>
+        </div>
+        <span class="status" id="status"></span>
+      </header>
+
+      <section class="content" id="content"></section>
+
+      <section class="adjust-panel" id="adjust-panel" aria-label="调整任务">
+        <div class="adjust-grid">
+          <div class="field">
+            <label for="execution-mode">执行方式</label>
+            <select id="execution-mode">
+              <option value="analyze">只分析</option>
+              <option value="plan">先给方案</option>
+              <option value="modify_and_verify">修改并验证</option>
+              <option value="review">只审查</option>
+            </select>
+          </div>
+          <div class="field">
+            <span class="field-title">内部能力</span>
+            <label class="toggle-row">
+              <input id="use-capabilities" type="checkbox" />
+              使用自动匹配到的内部能力
+            </label>
+          </div>
+          <div class="field full">
+            <label for="scope">任务范围（每行一项）</label>
+            <textarea id="scope" rows="2"></textarea>
+          </div>
+          <div class="field full" id="choice-field">
+            <span class="field-title">待选择的复用方式</span>
+            <div class="choices" id="choices"></div>
+          </div>
+        </div>
+        <div class="adjust-actions">
+          <button type="button" id="cancel-adjust">取消</button>
+          <button type="button" class="primary" id="save-adjust">保存调整</button>
+        </div>
+      </section>
+
+      <footer class="footer">
+        <span class="toast" id="toast" role="status" aria-live="polite"></span>
+        <button type="button" id="adjust">调整</button>
+        <button type="button" id="insert" title="宿主不支持草稿写入时复制完整话术">插入输入框</button>
+        <button type="button" class="primary" id="start">开始执行</button>
+      </footer>
+    </main>
+
+    <script>
+      const fallbackCard = {
+        card_id: "preview",
+        state_version: 1,
+        state: "ready",
+        task_type: { label: "功能开发" },
+        execution: { mode: "modify_and_verify", label: "修改并验证" },
+        goal: "实现 AI Talk 轻量任务确认卡",
+        scope: ["plugins/ai-talk"],
+        internal_skills: [{ name: "ai-talk" }],
+        reusable_capabilities: [],
+        choice_required: [],
+        constraints: ["保持最小修改，避免无关重构。"],
+        risks: [],
+        blocking_question: null,
+        adjustable: {
+          execution_mode: "modify_and_verify",
+          scope: ["plugins/ai-talk"],
+          use_capabilities: true,
+          capability_preferences: {},
+        },
+        actions: {
+          insert_into_composer: { enabled: true, auto_send: false },
+          start_execution: { enabled: true },
+        },
+        task_prompt: "实现 AI Talk 轻量任务确认卡",
+      };
+
+      let card = window.openai?.toolOutput ?? fallbackCard;
+      let requestId = 0;
+      let bridgeReady = null;
+      const pending = new Map();
+      const $ = (selector) => document.querySelector(selector);
+
+      function escapeHtml(value) {
+        return String(value ?? "")
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;")
+          .replaceAll("'", "&#039;");
+      }
+
+      function rpcRequest(method, params) {
+        requestId += 1;
+        const id = requestId;
+        window.parent.postMessage({ jsonrpc: "2.0", id, method, params }, "*");
+        return new Promise((resolve, reject) => pending.set(id, { resolve, reject }));
+      }
+
+      function rpcNotify(method, params) {
+        window.parent.postMessage({ jsonrpc: "2.0", method, params }, "*");
+      }
+
+      async function initializeBridge() {
+        if (window.parent === window) return false;
+        await rpcRequest("ui/initialize", {
+          appInfo: { name: "ai-talk-task-card", version: "0.2.0" },
+          appCapabilities: {},
+          protocolVersion: "2026-01-26",
+        });
+        rpcNotify("ui/notifications/initialized", {});
+        return true;
+      }
+
+      window.addEventListener("message", (event) => {
+        const message = event.data;
+        if (!message || message.jsonrpc !== "2.0") return;
+        if (typeof message.id === "number") {
+          const handler = pending.get(message.id);
+          if (!handler) return;
+          pending.delete(message.id);
+          if (message.error) handler.reject(message.error);
+          else handler.resolve(message.result);
+          return;
+        }
+        if (message.method === "ui/notifications/tool-result") {
+          card = message.params?.structuredContent ?? card;
+          render();
+        }
+      });
+
+      bridgeReady = initializeBridge().catch(() => false);
+
+      function tags(items) {
+        if (!items?.length) return '<span class="empty">未匹配到</span>';
+        return `<div class="tags">${items
+          .map((item) => `<span class="tag">${escapeHtml(item.name)}</span>`)
+          .join("")}</div>`;
+      }
+
+      function row(label, value) {
+        return `<div class="summary-row"><div class="label">${label}</div><div class="value">${value}</div></div>`;
+      }
+
+      function renderChoices() {
+        const choices = card.choice_required ?? [];
+        $("#choice-field").hidden = choices.length === 0;
+        $("#choices").innerHTML = choices
+          .map((item) => {
+            const selected = card.adjustable.capability_preferences?.[item.id] ?? "";
+            return `<div class="choice">
+              <div class="choice-name">${escapeHtml(item.name)}<small>${escapeHtml(item.type)} · ${escapeHtml(item.source)}</small></div>
+              <select data-capability-id="${escapeHtml(item.id)}" aria-label="${escapeHtml(item.name)} 的复用方式">
+                <option value="" ${selected ? "" : "selected"}>请选择</option>
+                <option value="prefer_reuse" ${selected === "prefer_reuse" ? "selected" : ""}>优先验证复用</option>
+                <option value="prefer_reference" ${selected === "prefer_reference" ? "selected" : ""}>仅供参考</option>
+                <option value="excluded" ${selected === "excluded" ? "selected" : ""}>本次排除</option>
+              </select>
+            </div>`;
+          })
+          .join("");
+      }
+
+      function render() {
+        const statusText = {
+          ready: "可以执行",
+          needs_confirmation: "需要确认",
+          blocked: "缺少信息",
+        }[card.state];
+        $("#status").className = `status ${card.state}`;
+        $("#status").textContent = statusText;
+        $("#subtitle").textContent = card.state === "ready" ? "确认后开始执行" : "请先处理标记的信息";
+
+        if (card.state === "blocked") {
+          $("#content").innerHTML = `<div class="blocking">${escapeHtml(card.blocking_question)}</div>`;
+        } else {
+          const risk = card.risks?.length
+            ? `<div class="risk"><strong>风险与未确认信息</strong><ul>${card.risks
+                .map((item) => `<li>${escapeHtml(item)}</li>`)
+                .join("")}</ul></div>`
+            : "";
+          $("#content").innerHTML = `<div class="summary-grid">
+            ${row("任务类型", escapeHtml(card.task_type.label))}
+            ${row("执行方式", escapeHtml(card.execution.label))}
+            ${row("任务目标", escapeHtml(card.goal))}
+            ${row("代码 / 页面范围", escapeHtml(card.scope.join("、")))}
+            ${row("内部 Skill", tags(card.internal_skills))}
+            ${row("可复用能力", tags(card.reusable_capabilities))}
+            ${row("关键约束", card.constraints?.length ? escapeHtml(card.constraints.join(" ")) : '<span class="empty">无额外约束</span>')}
+          </div>${risk}`;
+        }
+
+        $("#execution-mode").value = card.adjustable.execution_mode;
+        $("#use-capabilities").checked = card.adjustable.use_capabilities;
+        $("#scope").value = card.adjustable.scope.join("\n");
+        renderChoices();
+        $("#insert").disabled = !card.actions?.insert_into_composer?.enabled;
+        $("#start").disabled = !card.actions?.start_execution?.enabled;
+
+        if (card.state === "needs_confirmation") $("#adjust-panel").classList.add("open");
+      }
+
+      function setToast(message) {
+        $("#toast").textContent = message;
+        window.setTimeout(() => {
+          if ($("#toast").textContent === message) $("#toast").textContent = "";
+        }, 3500);
+      }
+
+      async function copyPrompt() {
+        try {
+          await navigator.clipboard.writeText(card.task_prompt);
+        } catch {
+          const textarea = document.createElement("textarea");
+          textarea.value = card.task_prompt;
+          textarea.style.position = "fixed";
+          textarea.style.opacity = "0";
+          document.body.append(textarea);
+          textarea.select();
+          document.execCommand("copy");
+          textarea.remove();
+        }
+        setToast("当前宿主不支持直接写入输入框，完整话术已复制，未自动发送。 ");
+      }
+
+      $("#adjust").addEventListener("click", () => {
+        $("#adjust-panel").classList.toggle("open");
+      });
+      $("#cancel-adjust").addEventListener("click", () => {
+        $("#adjust-panel").classList.remove("open");
+        render();
+      });
+      $("#insert").addEventListener("click", copyPrompt);
+
+      $("#save-adjust").addEventListener("click", async () => {
+        const capabilityPreferences = {};
+        document.querySelectorAll("[data-capability-id]").forEach((select) => {
+          if (select.value) capabilityPreferences[select.dataset.capabilityId] = select.value;
+        });
+        const args = {
+          card_id: card.card_id,
+          execution_mode: $("#execution-mode").value,
+          scope: $("#scope").value.split("\n").map((item) => item.trim()).filter(Boolean),
+          use_capabilities: $("#use-capabilities").checked,
+          capability_preferences: capabilityPreferences,
+        };
+
+        $("#save-adjust").disabled = true;
+        try {
+          const ready = await bridgeReady;
+          if (!ready) {
+            card.execution.mode = args.execution_mode;
+            card.adjustable.execution_mode = args.execution_mode;
+            card.scope = args.scope;
+            card.adjustable.scope = args.scope;
+            card.adjustable.use_capabilities = args.use_capabilities;
+            setToast("预览模式下已更新本地显示。 ");
+          } else {
+            const response = await rpcRequest("tools/call", {
+              name: "adjust_ai_talk_task",
+              arguments: args,
+            });
+            if (response?.isError) throw new Error(response.content?.[0]?.text ?? "调整失败");
+            card = response?.structuredContent ?? card;
+            setToast("任务调整已保存。 ");
+          }
+          $("#adjust-panel").classList.remove("open");
+          render();
+        } catch (error) {
+          setToast(error?.message ?? "任务调整失败。 ");
+        } finally {
+          $("#save-adjust").disabled = false;
+        }
+      });
+
+      $("#start").addEventListener("click", async () => {
+        if (card.state !== "ready") return;
+        const ready = await bridgeReady;
+        if (!ready) {
+          setToast("预览模式不能开始执行。 ");
+          return;
+        }
+        $("#start").disabled = true;
+        rpcNotify("ui/message", {
+          role: "user",
+          content: [{ type: "text", text: card.task_prompt }],
+        });
+        setToast("任务已提交执行。 ");
+      });
+
+      render();
+    </script>
+  </body>
+</html>

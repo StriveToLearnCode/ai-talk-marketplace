@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "ai-talk": {
+      "command": "node",
+      "args": ["./mcp/server.mjs", "--stdio"],
+      "cwd": ".",
+      "tool_timeout_sec": 60
+    }
+  }
+}
