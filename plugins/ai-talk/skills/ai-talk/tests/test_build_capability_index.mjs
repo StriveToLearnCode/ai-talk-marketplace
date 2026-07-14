@@ -58,7 +58,7 @@ description: 联调奖励接口，核对请求参数、响应映射和异常状�
 async function runIndex(root, ...args) {
   const { stdout } = await execFileAsync(
     process.execPath,
-    [SCRIPT_PATH, "--root", root, "--no-user-sources", ...args],
+    [SCRIPT_PATH, "--root", root, ...args],
     { encoding: "utf8" },
   );
   return JSON.parse(stdout);
@@ -70,7 +70,7 @@ test("indexes project skills, prompts, standards, components, utilities and impl
 
   const payload = await runIndex(root);
 
-  assert.equal(payload.schema_version, 3);
+  assert.equal(payload.schema_version, 4);
   assert.equal(payload.stats.by_kind.skill, 1);
   assert.equal(payload.stats.by_kind.prompt, 1);
   assert.equal(payload.stats.by_kind.standard, 1);
@@ -89,10 +89,13 @@ test("selects a main capability, complementary helpers, and automatic supplement
   assert.ok(payload.selected.length >= 1 && payload.selected.length <= 6);
   assert.equal(payload.selected[0].role, "main");
   assert.ok(payload.selected.slice(1).every((item) => item.role === "auxiliary"));
-  assert.ok(payload.selected.some((item) => ["skill", "prompt", "component"].includes(item.kind)));
+  assert.ok(payload.selected.some((item) => ["prompt", "component"].includes(item.kind)));
+  assert.ok(payload.selected.every((item) => item.kind !== "skill"));
   assert.ok(payload.capabilities.every((item) => item.score > 0));
   assert.deepEqual(payload.lifecycle.user_choice_states, ["prefer_reuse", "prefer_reference", "excluded"]);
   assert.deepEqual(payload.lifecycle.selection_states, ["auto_selected", "choice_required", "low_relevance"]);
+  assert.deepEqual(payload.lifecycle.skill_candidate_states, ["candidate"]);
+  assert.deepEqual(payload.lifecycle.skill_invocation_states, ["not_invoked", "invoked", "failed", "empty"]);
   assert.deepEqual(payload.lifecycle.execution_validation_states, [
     "confirmed_reuse",
     "partial_reuse",
@@ -108,7 +111,8 @@ test("selects a main capability, complementary helpers, and automatic supplement
     assert.ok(candidate.pending_validation.length > 0);
     assert.ok(candidate.potential_risks.length > 0);
   }
-  assert.ok(payload.automatic.some((item) => item.kind === "skill"));
+  assert.ok(payload.skill_candidates.some((item) => item.kind === "skill"));
+  assert.ok(payload.skill_candidates.every((item) => item.invocation_status === "not_invoked"));
   assert.deepEqual(payload.choice_required, []);
 });
 
@@ -155,10 +159,12 @@ description: 前端 Bug 必须先定位根因和运行证据，再决定最小�
     "前端 Bug 先定位根因",
   );
 
-  assert.equal(payload.selected[0].source, "frontend-platform");
-  assert.equal(payload.selected[0].scope, "company");
-  assert.equal(payload.selected[0].selection_status, "auto_selected");
-  assert.equal(payload.selected[0].usage_preference, "apply");
+  assert.equal(payload.selected.length, 0);
+  assert.equal(payload.skill_candidates[0].source, "frontend-platform");
+  assert.equal(payload.skill_candidates[0].scope, "company");
+  assert.equal(payload.skill_candidates[0].selection_status, "candidate");
+  assert.equal(payload.skill_candidates[0].invocation_status, "not_invoked");
+  assert.equal(payload.skill_candidates[0].usage_preference, null);
   assert.ok(payload.roots.some((item) => item.label === "frontend-platform"));
 });
 
@@ -231,7 +237,7 @@ test("returns no forced selection when the task has no relevant match", async (t
   assert.deepEqual(payload.capabilities, []);
 });
 
-test("does not fill helper slots with overlapping capabilities", async (t) => {
+test("keeps overlapping skills as invocation candidates instead of auto-selecting them", async (t) => {
   const root = await mkdtemp(path.join(os.tmpdir(), "ai-talk-overlap-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   await mkdir(path.join(root, "skills/debug-one"), { recursive: true });
@@ -246,6 +252,38 @@ description: 前端 Bug 先定位根因并收集调试证据。
 
   const payload = await runIndex(root, "--query", "前端 Bug 先定位根因");
 
-  assert.equal(payload.selected.length, 1);
-  assert.equal(payload.selected[0].role, "main");
+  assert.equal(payload.selected.length, 0);
+  assert.equal(payload.skill_candidates.length, 2);
+  assert.ok(payload.skill_candidates.every((item) => item.selection_status === "candidate"));
+});
+
+test("does not let a generic frontend skill override a specialized component search skill", async (t) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ai-talk-skill-specificity-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await mkdir(path.join(root, "skills/frontend-dev-coach"), { recursive: true });
+  await mkdir(path.join(root, "skills/company-component-search"), { recursive: true });
+  await writeFile(
+    path.join(root, "skills/frontend-dev-coach/SKILL.md"),
+    `---
+name: frontend-dev-coach
+description: 通用前端开发、修改、验证和教学指导。
+---
+`,
+  );
+  await writeFile(
+    path.join(root, "skills/company-component-search/SKILL.md"),
+    `---
+name: company-component-search
+description: 查询公司封装的 Vue 弹窗组件、组件文档、props 和事件。
+---
+`,
+  );
+
+  const payload = await runIndex(root, "--query", "开发 Vue 弹窗并查找公司封装组件");
+
+  assert.equal(payload.selected.length, 0);
+  assert.ok(payload.skill_candidates.some((item) => item.name === "company-component-search"));
+  assert.ok(payload.skill_candidates.some((item) => item.name === "frontend-dev-coach"));
+  assert.ok(payload.skill_candidates.every((item) => item.invocation_status === "not_invoked"));
+  assert.deepEqual(payload.roots, [{ label: "project", root, scope: "project" }]);
 });

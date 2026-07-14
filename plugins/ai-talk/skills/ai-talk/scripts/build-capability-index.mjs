@@ -3,7 +3,6 @@
 import { createHash } from "node:crypto";
 import { constants as fsConstants } from "node:fs";
 import { access, readFile, readdir, realpath, stat, writeFile } from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
@@ -63,13 +62,13 @@ const TEXT_EXTENSIONS = new Set([
 const SCOPE_PRIORITY = {
   project: 5,
   company: 4,
-  user: 3,
-  installed: 2,
 };
 
 const CAPABILITY_LIFECYCLE = {
   discovery_states: ["candidate_reuse", "candidate_reference", "low_relevance"],
   selection_states: ["auto_selected", "choice_required", "low_relevance"],
+  skill_candidate_states: ["candidate"],
+  skill_invocation_states: ["not_invoked", "invoked", "failed", "empty"],
   usage_preferences: ["apply", "prefer_reuse", "prefer_reference", "excluded"],
   user_choice_states: ["prefer_reuse", "prefer_reference", "excluded"],
   execution_validation_states: [
@@ -91,7 +90,6 @@ Options:
   --source-root <label=path>   Add a company or team capability root. Repeat as needed.
   --output <path>              Write JSON to a file instead of stdout.
   --limit <number>             Maximum capabilities included in output (default: 200).
-  --no-user-sources            Only scan the project and explicit source roots.
   --help                       Show this help.
 
 Environment:
@@ -106,7 +104,6 @@ function parseArgs(argv) {
     query: "",
     output: null,
     sourceRoots: [],
-    includeUserSources: true,
     limit: 200,
   };
 
@@ -116,11 +113,6 @@ function parseArgs(argv) {
       process.stdout.write(usage());
       process.exit(0);
     }
-    if (value === "--no-user-sources") {
-      args.includeUserSources = false;
-      continue;
-    }
-
     const next = argv[index + 1];
     if (["--root", "--query", "--source-root", "--output", "--limit"].includes(value)) {
       if (!next) {
@@ -172,22 +164,6 @@ function parseSourceRoot(raw, defaultLabel = "company") {
     };
   }
   return { label: defaultLabel, root: path.resolve(raw) };
-}
-
-function installedPluginSkillRoots(home) {
-  return [{ label: "codex-plugin-cache", root: path.join(home, ".codex", "plugins", "cache") }];
-}
-
-function commonUserSkillRoots(home) {
-  return [
-    ["agents-skills", ".agents/skills"],
-    ["codex-skills", ".codex/skills"],
-    ["claude-skills", ".claude/skills"],
-    ["cc-switch-skills", ".cc-switch/skills"],
-    ["cursor-skills", ".cursor/skills-cursor"],
-    ["gemini-skills", ".gemini/skills"],
-    ["hermes-skills", ".hermes/skills"],
-  ].map(([label, relative]) => ({ label, root: path.join(home, relative) }));
 }
 
 async function walkFiles(root, maxDepth, visitor, relative = "", depth = 0) {
@@ -556,10 +532,11 @@ function candidateDetails(item, mainScore) {
 }
 
 function selectCapabilities(ranked) {
-  if (!ranked.length || ranked[0].score <= 0) return [];
-  const main = ranked[0];
+  const reusableRanked = ranked.filter((item) => item.kind !== "skill");
+  if (!reusableRanked.length || reusableRanked[0].score <= 0) return [];
+  const main = reusableRanked[0];
   const minimumHelperScore = Math.max(6, Math.floor(main.score * 0.3));
-  const candidates = ranked.slice(1).filter((item) => item.score >= minimumHelperScore);
+  const candidates = reusableRanked.slice(1).filter((item) => item.score >= minimumHelperScore);
   const helpers = [];
   const coveredTerms = new Set(main.matched_terms);
   const remaining = [...candidates];
@@ -681,21 +658,6 @@ async function buildIndex(args) {
   const warnings = [];
   const roots = [{ label: "project", root: projectRoot, scope: "project" }];
   const capabilities = await discoverProjectCapabilities(projectRoot, warnings);
-  const home = os.homedir();
-
-  if (args.includeUserSources) {
-    for (const source of commonUserSkillRoots(home)) {
-      if (!(await exists(source.root))) continue;
-      roots.push({ ...source, scope: "user" });
-      capabilities.push(...(await discoverSkills(source.root, "user", source.label)));
-    }
-    for (const source of installedPluginSkillRoots(home)) {
-      if (!(await exists(source.root))) continue;
-      roots.push({ ...source, scope: "installed" });
-      capabilities.push(...(await discoverSkills(source.root, "installed", source.label)));
-    }
-  }
-
   const environmentRoots = (process.env.AI_TALK_CAPABILITY_ROOTS || "")
     .split(path.delimiter)
     .map((item) => item.trim())
@@ -716,7 +678,7 @@ async function buildIndex(args) {
     : unique
         .map((item) => ({ ...item, score: 0, matched_terms: [] }))
         .sort((left, right) => left.scope.localeCompare(right.scope) || left.path.localeCompare(right.path));
-  const mainScore = ranked[0]?.score || 0;
+  const mainScore = ranked.find((item) => item.kind !== "skill")?.score || 0;
   const baseSelected = args.query ? selectCapabilities(ranked) : [];
   const supplemented = args.query
     ? [...baseSelected, ...automaticSupplements(ranked, baseSelected, mainScore)]
@@ -734,24 +696,38 @@ async function buildIndex(args) {
   const selected = classifiedSelection.filter((item) => includedIds.has(item.id));
   const selectedById = new Map(selected.map((item) => [item.id, item]));
   const rankedCapabilities = args.query ? ranked.filter((item) => item.score > 0) : ranked;
-  const outputCapabilities = rankedCapabilities
-    .slice(0, args.limit)
+  const limitedCapabilities = rankedCapabilities.slice(0, args.limit);
+  const outputCapabilities = limitedCapabilities
+    .filter((item) => item.kind !== "skill")
     .map((item) => selectedById.get(item.id) || candidateDetails(item, mainScore));
+  const skillMainScore = ranked.find((item) => item.kind === "skill")?.score || 0;
+  const skillCandidates = limitedCapabilities
+    .filter((item) => item.kind === "skill")
+    .map((item) => ({
+      ...candidateDetails(item, skillMainScore),
+      selection_status: "candidate",
+      invocation_status: "not_invoked",
+      usage_preference: null,
+      selection_source: null,
+      choice_reason:
+        "Skill metadata is discovery evidence only. Codex must confirm semantic applicability, read SKILL.md completely, and run its read-only workflow before using its findings.",
+    }));
 
   return {
-    schema_version: 3,
+    schema_version: 4,
     project_root: projectRoot,
     query: args.query || null,
     roots,
     lifecycle: CAPABILITY_LIFECYCLE,
     stats: {
       ...summarize(unique),
-      returned: outputCapabilities.length,
-      truncated: outputCapabilities.length < rankedCapabilities.length,
+      returned: limitedCapabilities.length,
+      truncated: limitedCapabilities.length < rankedCapabilities.length,
     },
     selected,
     automatic,
     choice_required: choiceRequired,
+    skill_candidates: skillCandidates,
     capabilities: outputCapabilities,
     warnings,
   };

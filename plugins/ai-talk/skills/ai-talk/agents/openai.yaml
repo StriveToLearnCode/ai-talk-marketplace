@@ -1,7 +1,7 @@
 interface:
   display_name: "AI Talk"
-  short_description: "自动采用明确能力，只对歧义复用项请求用户选择并生成任务话术"
-  default_prompt: "使用 $ai-talk 轻量整理我的研发需求，自动选择明确能力，只对歧义复用项提问，并生成等待我审查的 Codex 任务话术。"
+  short_description: "优先检索公司组件与现有能力，生成 Codex 任务话术"
+  default_prompt: "使用 $ai-talk 整理我的组件开发需求，先按当前项目和使用场景检索公司封装组件，再生成可直接交给 Codex 的任务话术。"
 
 policy:
   allow_implicit_invocation: false

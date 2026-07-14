@@ -1,67 +1,70 @@
 # AI Talk Plugin
 
-AI Talk 将自然语言研发需求整理成必须经过用户审查的 Codex 任务话术。它读取有限项目上下文，自动采用明确能力，只在组件或复用方式存在歧义时让用户选择，但不执行代码、不替代 Codex Plan，也不维护模板管理系统。
+AI Talk 将自然语言研发需求整理成可直接交给 Codex 的任务话术。它优先实际调用当前会话中适用的项目或公司 Skill 执行只读能力发现，再使用项目本地索引补充规则、组件、utility、Prompt 和历史实现。
 
-## 第一版流程
+AI Talk 不执行最终开发任务，不修改业务代码，也不提供任务确认卡或伪按钮。
+
+## 工作流
 
 ```text
-理解任务 → 补充必要上下文 → 搜索并自动采用明确能力
-→ 有歧义时用户选择 → 生成话术
-→ ready_for_review → 用户确认 → confirmed → 可交给 Codex
+理解需求
+→ 从当前 Available Skills 选择专用 Skill
+→ 完整读取并执行其只读发现流程
+→ 组件需求先检索公司封装组件
+→ 确定则采用，存疑则展示最多 3 个候选
+→ 无公司组件时由用户选择检查项目或新建本地组件
+→ 生成任务话术
 ```
 
-所有新任务的 `requires_user_review` 为 `true`。开发、接入或修复类表达只会把期望处理方式识别为 `modify_and_verify`，不会授权 AI Talk 修改代码。
+专用组件目录、物料平台、活动开发或接口契约 Skill 优先于通用前端、教学和调试 Skill。Skill 仅被索引到不代表已经使用；只有实际读取并执行后才会出现在“实际调用 Skill”中。
 
-## 统一上下文
+## 本地上下文
 
 ```bash
 python3 skills/ai-talk/scripts/collect_context.py \
   --root /path/to/project \
-  --query '帮我根据截图开发一个独立榜单页面' \
-  --related src/pages/rank.vue
+  --query '开发带确认和加载状态的操作入口' \
+  --defer-project-component-choice \
+  --related apps/short/current-activity
 ```
 
 输出 `task_context`，包含：
 
-- `task.scenes`：五类核心场景，可同时命中多个。
+- `task.scenes`：任务场景，可同时命中多个。
 - `task.handling_mode`：`analyze / plan / modify_and_verify / review`。
-- `task.status`：`draft / ready_for_review / confirmed / revise`。
-- `task.requires_user_review`：始终为 `true`。
-- 项目类型、包管理器、scripts、Git 状态和相关路径。
-- 自动采用能力、歧义候选及用户选择。
+- `task.prompt_state`：`draft / ready`。
+- `capabilities.skill_candidates`：项目或显式目录发现的 Skill 提示，尚未调用。
+- `capabilities.automatic`：明确的项目规则和本地复用候选。
+- `capabilities.choice_required`：需要用户选择的真实复用歧义。
+- `capabilities.project_component_selection_deferred`：公司组件阶段是否暂缓展示和选择项目组件。
 
-只有用户明确确认后才传入 `--task-action confirm`。用户要求调整时使用 `--task-action revise`；重新生成使用 `--task-action regenerate`。AI Talk 本身仍不执行代码。
+索引只扫描项目根目录和显式 `--source-root`，不会扫描用户 Skill 目录或插件缓存。当前会话的 Available Skills 是 Skill 发现的权威来源。
 
-## 能力候选
+## 公司组件检索
 
-`build-capability-index.mjs` 通过一次受限索引发现并分类 Skill、Prompt、项目规则、组件、utility 和同类实现。AI Talk 不再额外打开候选业务源码、消费者、测试或同类页面。能力包含名称、类型、来源、索引路径、匹配原因、发现状态、`selection_status`、`usage_preference`、`selection_source`、`choice_reason`、待验证内容、潜在风险、`user_choice` 和 `execution_validation`。
+- 不预设 Skill 或组件名称，只根据用户需求、真实项目技术栈和使用场景检索。
+- 唯一明显最佳且证据充分的结果直接采用，但仍要求后续验证兼容性。
+- 结果不确定时最多展示 3 个候选，每项只显示组件名称和匹配原因。
+- 没有合适公司组件时明确提示，并让用户选择“检查当前项目已有实现”或“新建本地组件”。
+- 公司候选与项目候选严格分阶段处理；未选择项目检查前不得自动展示本地组件。
 
-主 Skill、项目规则、适用 Prompt、唯一项目组件/utility/历史实现进入 `automatic`；共享能力或同类型多项竞争进入 `choice_required`。没有未选项时任务直接进入 `ready_for_review`，只有未解决歧义才进入 `draft`。
+## 输出
 
-用户选择通过可重复参数写入：
+AI Talk 输出一屏任务摘要、一个完整任务话术代码块，以及：
 
-```bash
---capability-choice <id>=prefer_reuse
---capability-choice <id>=prefer_reference
---capability-choice <id>=excluded
+```text
+任务话术已生成，当前尚未执行代码修改。
 ```
 
-`user_choice` 初始为 `null`。`execution_validation` 在 AI Talk 阶段始终为 `null`，只有 Codex 实际验证后才能更新。
+不存在确认、取消、开始执行或插入输入框动作。用户要求调整时，AI Talk 根据完整对话重新生成话术。
 
 ## 安全边界
 
-- 不扫描 `.env`、密钥、`node_modules` 或构建产物。
-- 不递归注入整个项目。
-- 相关路径不存在、公司目录缺失或索引失败时返回 warning 并继续。
-- 不编造 Skill、组件、路径、接口字段或兼容性结论。
-- AI Talk 阶段只允许运行一次 `collect_context.py`，不额外定位分支、读取业务源码、运行测试或分析根因。
-- 进入 `ready_for_review` 后停止读取业务代码、运行命令和修改文件。
-
-## 第一版范围
-
-重点支持 Bug 定位、UI/截图还原、多语言迁移、接口联调、新页面或新模块。代码清理、测试补充、返工模板和技术讨论不是第一版核心流程，不作为验收门槛。
-
-不提供独立 UI、MCP App、模板后台、导入导出、云同步、团队账号、插件市场、完整 Git 审计或复杂数据看板。
+- AI Talk 每轮只运行一次 `collect_context.py`；用户选择项目检查后可在下一轮取消组件选择延迟。
+- 被调用 Skill 只执行与当前任务有关的只读检索步骤。
+- 不运行 formatter、lint、测试、构建、开发服务器、部署或提交。
+- 不读取 `.env`、密钥、依赖目录和构建产物。
+- 不把候选发现写成兼容性结论；后续 Codex 必须检查真实 props、事件、依赖、数据结构和样式覆盖能力。
 
 ## 验证
 

@@ -1,19 +1,19 @@
 # AI Talk
 
-AI Talk 是一个 Codex 插件，帮助用户把研发需求表达清楚，并推荐公司或项目已有的 Skill、Prompt、组件、工具函数、同类实现和规范。
+AI Talk 是一个 Codex 插件，用于实际调用适用的项目或公司 Skill 做只读能力发现，并把自然语言研发需求整理成可直接交给 Codex 的任务话术。
 
-AI Talk 只准备任务，不替代 Codex Plan，不生成完整技术实施步骤，也不修改代码。所有任务话术都必须经过用户审查后才能交给 Codex。
+AI Talk 不执行最终任务、不修改业务代码，也不提供确认卡或伪交互按钮。
 
 核心流程：
 
 ```text
 用户自然语言
-→ 理解任务并补充必要上下文
-→ 自动采用明确能力
-→ 存在歧义时用户选择复用、参考或排除
+→ 从当前 Available Skills 选择专用 Skill
+→ 完整读取并执行只读发现流程
+→ 组件需求先检索公司封装组件
+→ 确定则采用，存疑则展示最多 3 个候选
+→ 无公司组件时由用户选择检查项目或新建本地组件
 → 生成最终任务话术
-→ 用户审查
-→ 确认后交给 Codex
 ```
 
 ## 安装
@@ -43,11 +43,27 @@ $ai-talk <自然语言研发需求>
 第一版重点支持 Bug 定位、UI 或截图还原、多语言迁移检查、接口联调、新页面或新模块开发。
 
 ```text
+$ai-talk 开发一个带二次确认和加载状态的操作入口，并整理成开发任务话术
 $ai-talk 轮播图偶尔不切换，先帮我看看，不要修改代码
-$ai-talk 根据截图开发一个独立榜单页面
-$ai-talk 活动从俄语迁移成法语，看看还有哪些没替换
 $ai-talk 根据接口文档接入奖励接口，不要编造字段
 ```
+
+## Skill 调用
+
+当前 Codex 会话提供的 Available Skills 是权威来源。AI Talk 根据 Skill 描述的完整语义选择最小适用集合：
+
+- 专用组件目录、物料平台、活动开发或接口契约 Skill 优先。
+- `frontend-dev-coach` 等通用 Skill 不会因为“开发、修改、验证”等常见词覆盖专用 Skill。
+- 命中的 Skill 必须完整读取并执行只读发现流程，不能只把 Skill 名称写进任务话术。
+- 组件需求不预设 Skill 或组件名称，只用需求、项目技术栈和使用场景检索公司封装组件。
+- 唯一明确结果直接采用；存在不确定性时最多展示 3 个组件名称和匹配原因。
+- 没有合适公司组件时明确提示，并让用户选择检查当前项目已有实现或新建本地组件。
+
+## 公司组件流程
+
+公司组件候选与项目本地候选分阶段处理。公司检索阶段运行本地上下文脚本时增加 `--defer-project-component-choice`，项目组件不会混入公司候选或阻塞话术状态。用户选择检查项目后，才取消延迟并启用本地组件候选。
+
+推荐确定不等于兼容性已验证。最终话术始终要求后续 Codex 读取真实代码并检查 props、事件、数据结构、依赖、配置和样式覆盖。
 
 ## 期望处理方式
 
@@ -60,53 +76,42 @@ AI Talk 识别的是后续 Codex 的期望处理方式，不是当前执行授�
 | “帮我开发”“接入”“修复” | `modify_and_verify`，修改并验证 |
 | “审查代码” | `review`，只审查 |
 
-用户未说明时默认 `plan`。即使识别为 `modify_and_verify`，AI Talk 也只生成待审查任务话术，不会直接修改代码。
+## Prompt 状态
 
-## 任务状态
+- `draft`：仍有阻塞问题或真实复用歧义。
+- `ready`：信息足够，可以生成话术。
 
-- `draft`：仍有阻塞问题。
-- `ready_for_review`：话术已准备，等待审查。
-- `confirmed`：用户明确确认，可交给 Codex。
-- `revise`：用户要求调整。
-
-所有新任务默认进入 `ready_for_review`，`requires_user_review` 始终为 `true`。有效操作文案为“确认任务 / 调整任务 / 取消”，不使用含义模糊的“继续”。
+不存在确认、调整、取消或自动移交状态。用户后续要求修改话术时，AI Talk 根据完整对话重新生成。
 
 ## 能力复用
 
-AI Talk 通过一次轻量索引搜索公司级和项目级 Skill、Prompt、组件、utility、同类页面及项目规则，不打开业务源码、不定位根因、不运行测试。主 Skill、项目规则和明确匹配的项目能力自动写入话术；只有组件、方法或复用方向存在歧义时才需要用户选择：
+AI Talk 的本地索引只搜索项目根目录和显式 `--source-root` 中的项目规则、组件、utility、Prompt、历史实现和未注册 Skill，不扫描用户 Skill 目录或插件缓存。
 
-- `prefer_reuse`：优先验证复用。
+- `prefer_reuse`：要求后续 Codex 优先验证复用。
 - `prefer_reference`：仅作参考。
 - `excluded`：本次排除。
 
-选择“优先复用”不代表已经兼容。只有确认后的 Codex 实际读取和验证代码后，才能给出 `confirmed_reuse`、`partial_reuse`、`incompatible` 或 `reference_only`。
+选择候选不代表兼容。只有后续 Codex 实际读取代码后才能给出 `confirmed_reuse`、`partial_reuse`、`incompatible` 或 `reference_only`。
 
-没有歧义候选时直接生成待审查话术；存在未选择的歧义候选时任务暂处 `draft`，完成选择后回到 `ready_for_review`。
+## 最终输出
 
-## 强制审查
-
-最终输出会明确显示：
+AI Talk 输出任务摘要、完整任务话术和以下事实说明：
 
 ```text
-任务状态：待用户审查
-任务话术已准备，等待审查。
-当前尚未执行代码修改。
+任务话术已生成，当前尚未执行代码修改。
 ```
-
-生成后 AI Talk 立即停止，不继续读取业务代码、不运行项目命令、不修改文件，也不自动提交给 Codex。
 
 ## 公司能力目录
 
-公司目录不硬编码。已知目录时传给统一上下文脚本：
+公司目录不硬编码。明确知道目录时可传给本地索引：
 
 ```bash
 python3 plugins/ai-talk/skills/ai-talk/scripts/collect_context.py \
   --root /path/to/project \
   --query '当前需求' \
-  --source-root frontend-platform=/absolute/path
+  --source-root frontend-platform=/absolute/path \
+  --defer-project-component-choice
 ```
-
-目录不存在或搜索失败时会降级，不会编造能力。
 
 ## 开发验证
 
@@ -116,4 +121,4 @@ PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover \
 node --test plugins/ai-talk/skills/ai-talk/tests/test_build_capability_index.mjs
 ```
 
-第一版人工验收用例见 [acceptance-cases.md](plugins/ai-talk/tests/acceptance-cases.md)。
+人工验收用例见 [acceptance-cases.md](plugins/ai-talk/tests/acceptance-cases.md)。
