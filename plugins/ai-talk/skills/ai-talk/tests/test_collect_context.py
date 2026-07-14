@@ -99,10 +99,12 @@ class CollectContextTests(unittest.TestCase):
     def test_required_inputs_map_to_first_version_scenes_and_modes(self) -> None:
         cases = [
             ("轮播图偶尔不切换，先帮我看看", ["bug_debugging"], "analyze"),
-            ("根据截图还原这个活动页面", ["ui_reconstruction"], "plan"),
+            ("根据截图还原这个活动页面", ["ui_reconstruction"], "modify_and_verify"),
             ("活动从俄语迁移成法语，看看还有哪些没替换", ["localization_migration"], "analyze"),
             ("根据接口文档接入奖励接口", ["api_integration"], "modify_and_verify"),
             ("帮我开发一个独立榜单页面", ["feature_development"], "modify_and_verify"),
+            ("这部分需要奖励预览", ["unknown"], "modify_and_verify"),
+            ("这个奖励预览先给方案", ["unknown"], "plan"),
         ]
 
         for query, expected_scenes, expected_mode in cases:
@@ -444,8 +446,8 @@ class CollectContextTests(unittest.TestCase):
         self.addCleanup(first_temporary.cleanup)
         self.addCleanup(second_temporary.cleanup)
 
-        first_skill = first_root / "skills" / "reward-api"
-        second_skill = second_root / "skills" / "reward-component"
+        first_skill = first_root / ".agents" / "skills" / "reward-api"
+        second_skill = second_root / ".agents" / "skills" / "reward-component"
         first_skill.mkdir(parents=True)
         second_skill.mkdir(parents=True)
         (first_skill / "SKILL.md").write_text(

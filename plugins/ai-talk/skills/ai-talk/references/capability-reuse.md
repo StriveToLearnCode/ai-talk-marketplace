@@ -4,15 +4,16 @@
 
 ## 1. 选择发现来源
 
-当前会话的 Available Skills 是权威 Skill 目录。项目本地索引用于搜索项目根目录和显式来源中的项目规则与复用候选。两者是按需选择的发现来源，不是每轮固定执行的两层流程。
+目标项目的 `.agents/skills` 是项目执行 Skill 的权威目录；当前会话的 Available Skills 是插件和会话已注册 Skill 的目录。项目本地索引用于搜索项目规则与复用候选。三者按需选择，不是每轮固定执行的多层流程。
 
-1. 专用 Skill 能直接提供所需事实时，先完整读取其 `SKILL.md` 和必要 reference，并执行相关只读发现流程。
-2. 需要项目本地规则、组件、utility、Prompt 或历史实现时，运行本地索引。
-3. 不得因为查询中出现“开发”“组件”“验证”等常见词调用通用 Skill。
-4. 不得默认同时调用专用 Skill 和本地索引。只有第一种来源结果不足，且第二种来源能直接解决阻塞时才继续。
-5. 被调用 Skill 中的修改文件、构建、部署、提交和外部写入动作必须跳过。
+1. 新增交互、展示能力或业务逻辑时，先对 `.agents/skills` 运行 Skill-only 索引，选择负责实际代码生成或修改的项目 Skill。
+2. 专用 Skill 能直接提供所需事实时，先完整读取其 `SKILL.md` 和必要 reference，并执行相关只读发现流程。
+3. 需要项目本地规则、组件、utility、Prompt 或历史实现时，运行完整本地索引。
+4. 不得因为查询中出现“开发”“组件”“验证”等常见词调用通用 Skill。
+5. 不得默认同时调用专用 Skill 和完整本地索引。只有第一种来源结果不足，且第二种来源能直接解决阻塞时才继续。
+6. AI Talk 只读取项目执行 Skill 以确认适用性和模式，不执行其中的修改文件、构建、部署、提交和外部写入动作。
 
-Skill 元数据匹配不等于 Skill 已经被调用。索引中的 `skill_candidates` 只是发现提示，必须重新判断语义适用性并实际调用，才能列入“实际调用 Skill”。
+Skill 元数据匹配不等于 Skill 已经被调用。索引中的 `skill_candidates` 只是发现提示；最终话术应写成要求下游 Codex 调用 `$<skill-name>`，AI Talk 不得列为“实际调用 Skill”。
 
 ## 2. 公司组件检索
 
@@ -26,6 +27,25 @@ Skill 元数据匹配不等于 Skill 已经被调用。索引中的 `skill_candi
 推荐确定性和执行兼容性必须分开。直接采用只表示推荐方向明确，`execution_validation` 仍为 `null`。
 
 ## 3. 项目本地索引
+
+### 项目 Skill-only 索引
+
+新增交互、展示能力或业务逻辑时只扫描项目 `.agents/skills`：
+
+```bash
+node <AI Talk Skill 目录>/scripts/build-capability-index.mjs \
+  --root <项目根目录> \
+  --skills-only \
+  --intent modify_and_verify \
+  --skill-limit 10 \
+  --query '<用户需求与已确认边界>'
+```
+
+`skill_candidates` 独立排序和截断，不受普通能力 `--limit` 影响。局部 UI、交互或逻辑修改应优先匹配描述中明确支持“生成代码、局部生成、加逻辑、local-patch、incremental”的执行 Skill，不得用只生成方案的 Skill、积木组件规范或通用 Vue 指南替代。
+
+选择后完整读取真实 `SKILL.md`，把 `$<skill-name>`、Skill 路径和执行模式写入话术。若 Skill 要求读取 `docs/knowledge/component-registry.md` 或真实组件文档，要求下游 Codex 执行该发现并优先复用已有组件；AI Talk 不指定未经该 Skill 验证的组件名。
+
+### 完整能力索引
 
 仅在需要项目本地发现时运行一次：
 
@@ -45,7 +65,7 @@ python3 <AI Talk Skill 目录>/scripts/collect_context.py \
 
 此时 `task_context.capabilities.project_component_selection_deferred` 为 `true`，项目组件和历史实现不得混入公司候选。用户选择“检查当前项目已有实现”后，在新一轮运行本地索引且不使用该参数，直接启用项目组件选择。
 
-索引只扫描项目根目录和显式 `--source-root`。它不扫描 `~/.codex/skills`、`~/.cc-switch/skills`、插件缓存或其他用户 Skill 目录。
+完整索引只扫描项目根目录和显式 `--source-root`；项目 Skill 候选单独来自 `.agents/skills`。它不扫描 `.claude/skills`、`~/.codex/skills`、`~/.cc-switch/skills`、插件缓存或其他用户 Skill 目录。
 
 ## 4. 结果处理
 

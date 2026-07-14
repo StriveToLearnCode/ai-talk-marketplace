@@ -53,10 +53,12 @@ class SkillContractTests(unittest.TestCase):
         )
         self.assertIn("明确的 Bug 现象", self.skill_text)
         self.assertIn("明确的代码审查范围", self.skill_text)
+        self.assertIn("新增交互、展示能力或业务逻辑不是机械修改", self.skill_text)
 
     def test_discovery_is_conditional_and_uses_minimum_sources(self):
         for trigger in (
             "核心交付物是可复用 UI 组件",
+            "需要新增交互、展示能力或业务逻辑",
             "用户明确要求查找、复用或参考现有",
             "任务话术必须引用用户尚未提供的接口契约",
             "存在会改变任务方向的真实歧义",
@@ -64,13 +66,45 @@ class SkillContractTests(unittest.TestCase):
             self.assertIn(trigger, self.skill_text)
         self.assertIn("不得默认同时执行两者", self.skill_text)
         self.assertIn("才继续第二种发现", self.skill_text)
-        self.assertIn("不是每轮固定执行的两层流程", self.capability_text)
+        self.assertIn("不是每轮固定执行的多层流程", self.capability_text)
 
     def test_available_skills_are_authoritative_when_discovery_is_needed(self):
         self.assertIn("Available Skills", self.skill_text)
+        self.assertIn("项目执行 Skill 从目标项目的 `.agents/skills` 发现", self.skill_text)
         self.assertIn("完整读取其 `SKILL.md`", self.skill_text)
         self.assertIn("只执行与当前任务相关的只读发现步骤", self.skill_text)
         self.assertIn("Skill 元数据匹配不等于 Skill 已经被调用", self.capability_text)
+
+    def test_project_skill_routing_is_lightweight_and_execution_first(self):
+        for text in (
+            "## 项目 Skill 轻量路由",
+            "--skills-only",
+            "--intent <analyze|plan|modify_and_verify|review>",
+            "--skill-limit 10",
+            "<项目根目录>/.agents/skills/**/SKILL.md",
+            "生成代码、局部生成、加逻辑、补逻辑、local-patch、incremental",
+            "不受普通 `capabilities` 的 `--limit` 截断影响",
+            "不得宣称已经调用或执行",
+            "不得用方案 Skill 代替执行 Skill",
+        ):
+            self.assertIn(text, self.skill_text)
+        self.assertIn("不得扫描 `.claude/skills`", self.skill_text)
+        self.assertIn("AI Talk 不硬编码具体组件名", self.skill_text)
+
+    def test_local_patch_prompt_delegates_component_discovery(self):
+        for text in (
+            "$<skill-name>",
+            "`local-patch`",
+            "`incremental`",
+            "目标文件",
+            "直接修改和验证要求",
+            "组件注册表",
+            "真实组件文档",
+            "不绕过注册表创建平行实现",
+        ):
+            self.assertIn(text, self.skill_text)
+        self.assertNotIn("ui-prop-wrapper", self.skill_text)
+        self.assertNotIn("ui-prop-wrapper", self.capability_text)
 
     def test_company_component_search_remains_semantic_and_separate(self):
         self.assertIn("## 公司组件优先流程", self.skill_text)
@@ -127,7 +161,7 @@ class SkillContractTests(unittest.TestCase):
         self.assertIn("不生成验收标准", self.clarifying_text)
 
     def test_local_index_does_not_scan_user_skill_directories(self):
-        for path in ("~/.codex/skills", "~/.cc-switch/skills", "插件缓存"):
+        for path in (".claude/skills", "~/.codex/skills", "~/.cc-switch/skills", "插件缓存"):
             self.assertIn(path, self.capability_text)
         self.assertIn("它不扫描", self.capability_text)
 
@@ -136,6 +170,10 @@ class SkillContractTests(unittest.TestCase):
             self.assertIn(f"`{mode}`", self.skill_text)
         self.assertIn("后续 Codex 的行为", self.skill_text)
         self.assertIn("不是 AI Talk 当前执行授权", self.skill_text)
+        self.assertIn("默认意图是让 Codex 执行任务", self.skill_text)
+        self.assertIn("否则使用 `modify_and_verify`", self.skill_text)
+        self.assertIn("不得把可由 Codex 从项目读取", self.skill_text)
+        self.assertIn("先确认后给方案", self.skill_text)
 
     def test_prompt_only_contract_has_no_fake_actions(self):
         self.assertIn("`draft`", self.skill_text)
@@ -180,8 +218,10 @@ class SkillContractTests(unittest.TestCase):
         for text in (
             "direct 快速路径",
             "discovery",
-            "只读能力发现",
-            "只生成任务话术",
+            ".agents/skills",
+            "local-patch",
+            "incremental",
+            "组件注册表",
             "不修改业务代码",
         ):
             self.assertIn(text, description)

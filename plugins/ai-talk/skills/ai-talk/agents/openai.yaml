@@ -1,7 +1,7 @@
 interface:
   display_name: "AI Talk"
-  short_description: "明确需求直接生成，复杂需求按需发现并整理有来源的任务话术"
-  default_prompt: "使用 $ai-talk 快速整理我的研发需求；信息明确时直接生成话术，只有需要关键事实时才执行只读发现。"
+  short_description: "简单修改直接生成，新增 UI 或逻辑先选择项目执行 Skill"
+  default_prompt: "使用 $ai-talk 整理我的研发需求；新增交互、展示能力或业务逻辑时先从项目 .agents/skills 选择执行 Skill，再要求 Codex 直接修改并验证。"
 
 policy:
   allow_implicit_invocation: false

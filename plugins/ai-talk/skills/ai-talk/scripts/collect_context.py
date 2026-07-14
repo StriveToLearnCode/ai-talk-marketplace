@@ -482,7 +482,7 @@ def infer_task(query: str | None, blocking_question: str | None) -> dict[str, An
     if not scenes:
         scenes = ["unknown"]
 
-    if any(term in lowered for term in ("审查代码", "代码审查", "review code", "code review")):
+    if any(term in lowered for term in ("审查", "review")):
         handling_mode = "review"
     elif any(
         term in lowered
@@ -491,13 +491,8 @@ def infer_task(query: str | None, blocking_question: str | None) -> dict[str, An
         handling_mode = "analyze"
     elif any(term in lowered for term in ("先给方案", "只给方案", "先分析怎么改", "讨论方案")):
         handling_mode = "plan"
-    elif any(
-        term in lowered
-        for term in ("帮我开发", "开发", "实现", "新增", "创建", "接入", "修复", "改好", "完成并验证")
-    ):
-        handling_mode = "modify_and_verify"
     else:
-        handling_mode = "plan"
+        handling_mode = "modify_and_verify"
 
     prompt_state = "draft" if not text or blocking_question else "ready"
 

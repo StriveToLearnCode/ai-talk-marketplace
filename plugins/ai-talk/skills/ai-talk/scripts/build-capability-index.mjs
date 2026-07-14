@@ -2,7 +2,7 @@
 
 import { createHash } from "node:crypto";
 import { constants as fsConstants } from "node:fs";
-import { access, readFile, readdir, realpath, stat, writeFile } from "node:fs/promises";
+import { access, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
@@ -10,6 +10,31 @@ import { fileURLToPath } from "node:url";
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const AI_TALK_SKILL_ROOT = path.resolve(SCRIPT_DIR, "..");
 const MAX_FILE_BYTES = 256 * 1024;
+const PROJECT_SKILL_DIRECTORY = path.join(".agents", "skills");
+const IGNORED_CAPABILITY_DIRECTORIES = new Set([
+  ".agents/skills",
+  ".claude/skills",
+]);
+const VALID_INTENTS = new Set(["analyze", "plan", "modify_and_verify", "review"]);
+
+const INTENT_PROFILES = {
+  analyze: {
+    positive: ["分析", "定位", "排查", "根因", "analyze", "debug"],
+    negative: ["生成代码", "直接修改", "local-patch", "incremental"],
+  },
+  plan: {
+    positive: ["生成前端方案", "生成前端计划", "生成方案文档", "前端方案", "plan"],
+    negative: ["生成代码", "局部生成", "加逻辑", "local-patch", "incremental"],
+  },
+  modify_and_verify: {
+    positive: ["生成代码", "局部生成", "加逻辑", "补逻辑", "local-patch", "incremental"],
+    negative: ["生成前端方案", "生成前端计划", "生成方案文档", "只输出方案", "不生成代码"],
+  },
+  review: {
+    positive: ["review", "审查", "评审", "代码审查"],
+    negative: ["生成代码", "直接修改", "local-patch", "incremental"],
+  },
+};
 
 const IGNORED_DIRECTORIES = new Set([
   ".git",
@@ -105,6 +130,9 @@ Options:
   --source-root <label=path>   Add a company or team capability root. Repeat as needed.
   --output <path>              Write JSON to a file instead of stdout.
   --limit <number>             Maximum capabilities included in output (default: 200).
+  --skill-limit <number>       Maximum Skill candidates included in output (default: 10).
+  --intent <intent>            Rank for analyze, plan, modify_and_verify, or review.
+  --skills-only                Scan Skill directories only; skip ordinary capabilities.
   --help                       Show this help.
 
 Environment:
@@ -120,6 +148,9 @@ function parseArgs(argv) {
     output: null,
     sourceRoots: [],
     limit: 200,
+    skillLimit: 10,
+    intent: null,
+    skillsOnly: false,
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -128,8 +159,12 @@ function parseArgs(argv) {
       process.stdout.write(usage());
       process.exit(0);
     }
+    if (value === "--skills-only") {
+      args.skillsOnly = true;
+      continue;
+    }
     const next = argv[index + 1];
-    if (["--root", "--query", "--source-root", "--output", "--limit"].includes(value)) {
+    if (["--root", "--query", "--source-root", "--output", "--limit", "--skill-limit", "--intent"].includes(value)) {
       if (!next) {
         throw new Error(`${value} requires a value.`);
       }
@@ -138,12 +173,25 @@ function parseArgs(argv) {
       if (value === "--query") args.query = next;
       if (value === "--source-root") args.sourceRoots.push(next);
       if (value === "--output") args.output = next;
+      if (value === "--intent") {
+        if (!VALID_INTENTS.has(next)) {
+          throw new Error("--intent must be one of: analyze, plan, modify_and_verify, review.");
+        }
+        args.intent = next;
+      }
       if (value === "--limit") {
         const parsed = Number.parseInt(next, 10);
         if (!Number.isInteger(parsed) || parsed < 1 || parsed > 5000) {
           throw new Error("--limit must be an integer between 1 and 5000.");
         }
         args.limit = parsed;
+      }
+      if (value === "--skill-limit") {
+        const parsed = Number.parseInt(next, 10);
+        if (!Number.isInteger(parsed) || parsed < 1 || parsed > 100) {
+          throw new Error("--skill-limit must be an integer between 1 and 100.");
+        }
+        args.skillLimit = parsed;
       }
       continue;
     }
@@ -195,6 +243,8 @@ async function walkFiles(root, maxDepth, visitor, relative = "", depth = 0) {
     const childRelative = path.join(relative, entry.name);
     if (entry.isSymbolicLink()) continue;
     if (entry.isDirectory()) {
+      const normalizedChild = childRelative.split(path.sep).join("/");
+      if (IGNORED_CAPABILITY_DIRECTORIES.has(normalizedChild)) continue;
       if (IGNORED_DIRECTORIES.has(entry.name) || isSensitive(childRelative)) continue;
       await walkFiles(root, maxDepth, visitor, childRelative, depth + 1);
       continue;
@@ -282,7 +332,7 @@ function classifyProjectFile(relativePath) {
   const extension = path.extname(lowered);
   const parts = lowered.split("/");
 
-  if (basename === "skill.md") return "skill";
+  if (basename === "skill.md") return null;
   if (basename === "agents.md") return "standard";
   if (parts.some((part) => part === "prompts" || part === "prompt") || basename.includes("prompt")) {
     return TEXT_EXTENSIONS.has(extension) ? "prompt" : null;
@@ -366,13 +416,13 @@ async function discoverProjectCapabilities(projectRoot, warnings) {
   return capabilities;
 }
 
-async function discoverSkills(sourceRoot, scope, source) {
+async function discoverSkills(sourceRoot, scope, source, relativePrefix = "") {
   const capabilities = [];
   await walkFiles(sourceRoot, 9, async (filePath, relativePath) => {
     if (path.basename(filePath).toLowerCase() !== "skill.md") return;
     const capability = await makeCapability({
       filePath,
-      relativePath,
+      relativePath: path.join(relativePrefix, relativePath),
       kind: "skill",
       scope,
       source,
@@ -382,10 +432,18 @@ async function discoverSkills(sourceRoot, scope, source) {
   return capabilities;
 }
 
+async function discoverProjectSkills(projectRoot) {
+  const skillRoot = path.join(projectRoot, PROJECT_SKILL_DIRECTORY);
+  if (!(await exists(skillRoot))) return [];
+  return discoverSkills(skillRoot, "project", "project", PROJECT_SKILL_DIRECTORY);
+}
+
 async function discoverExternalCapabilities(sourceRoot, source) {
   const capabilities = [];
   await walkFiles(sourceRoot, 8, async (filePath, relativePath) => {
-    const kind = classifyProjectFile(relativePath);
+    const kind = path.basename(filePath).toLowerCase() === "skill.md"
+      ? "skill"
+      : classifyProjectFile(relativePath);
     if (!kind) return;
     const capability = await makeCapability({
       filePath,
@@ -429,7 +487,11 @@ function tokenize(value) {
   return [...tokens];
 }
 
-function rankCapability(capability, query) {
+function containsTerm(text, tokenSet, term) {
+  return /^[a-z0-9._-]+$/.test(term) ? tokenSet.has(term) : text.includes(term);
+}
+
+function rankCapability(capability, query, intent = null) {
   const queryTokens = tokenize(query).filter((token) => !QUERY_STOP_TOKENS.has(token));
   const queryTokenSet = new Set(queryTokens);
   const fields = {
@@ -469,9 +531,6 @@ function rankCapability(capability, query) {
   ];
   const searchable = `${capability.name} ${capability.description} ${capability.relative_path}`.toLowerCase();
   const searchableTokens = new Set(tokenize(searchable));
-  const containsTerm = (text, tokenSet, term) => (
-    /^[a-z0-9._-]+$/.test(term) ? tokenSet.has(term) : text.includes(term)
-  );
   for (const rule of intentRules) {
     const matchedQueryTerms = rule.query.filter((term) => containsTerm(query.toLowerCase(), queryTokenSet, term));
     if (matchedQueryTerms.length && rule.hints.some((term) => containsTerm(searchable, searchableTokens, term))) {
@@ -480,7 +539,21 @@ function rankCapability(capability, query) {
     }
   }
 
+  if (capability.kind === "skill" && intent) {
+    const profile = INTENT_PROFILES[intent];
+    for (const hint of profile.positive) {
+      if (containsTerm(searchable, searchableTokens, hint)) {
+        score += 12;
+        matched.add(`intent:${hint}`);
+      }
+    }
+    for (const hint of profile.negative) {
+      if (containsTerm(searchable, searchableTokens, hint)) score -= 14;
+    }
+  }
+
   if (score > 0) score += SCOPE_PRIORITY[capability.scope] || 0;
+  if (score < 0) score = 0;
   return {
     ...capability,
     score,
@@ -679,12 +752,24 @@ async function buildIndex(args) {
 
   const warnings = [];
   const roots = [{ label: "project", root: projectRoot, scope: "project" }];
-  const capabilities = await discoverProjectCapabilities(projectRoot, warnings);
+  const capabilities = args.skillsOnly
+    ? await discoverProjectSkills(projectRoot)
+    : [
+        ...(await discoverProjectCapabilities(projectRoot, warnings)),
+        ...(await discoverProjectSkills(projectRoot)),
+      ];
+  if (args.skillsOnly && !capabilities.length) {
+    warnings.push(`No project Skills were discovered under ${path.join(projectRoot, PROJECT_SKILL_DIRECTORY)}.`);
+  }
   const environmentRoots = (process.env.AI_TALK_CAPABILITY_ROOTS || "")
     .split(path.delimiter)
     .map((item) => item.trim())
     .filter(Boolean);
-  for (const raw of [...args.sourceRoots, ...environmentRoots]) {
+  const externalRoots = [...args.sourceRoots, ...environmentRoots];
+  if (args.skillsOnly && externalRoots.length) {
+    warnings.push("--skills-only ignores external capability roots and scans only project .agents/skills.");
+  }
+  for (const raw of args.skillsOnly ? [] : externalRoots) {
     const source = parseSourceRoot(raw);
     if (!(await exists(source.root))) {
       warnings.push(`Capability source is not readable and was skipped: ${source.root}`);
@@ -696,17 +781,19 @@ async function buildIndex(args) {
 
   const unique = deduplicate(capabilities);
   const ranked = args.query
-    ? unique.map((item) => rankCapability(item, args.query)).sort(compareRanked)
+    ? unique.map((item) => rankCapability(item, args.query, args.intent)).sort(compareRanked)
     : unique
         .map((item) => ({ ...item, score: 0, matched_terms: [] }))
         .sort((left, right) => left.scope.localeCompare(right.scope) || left.path.localeCompare(right.path));
-  const mainScore = ranked.find((item) => item.kind !== "skill")?.score || 0;
-  const baseSelected = args.query ? selectCapabilities(ranked) : [];
+  const rankedSkills = ranked.filter((item) => item.kind === "skill");
+  const rankedOrdinary = args.skillsOnly ? [] : ranked.filter((item) => item.kind !== "skill");
+  const mainScore = rankedOrdinary[0]?.score || 0;
+  const baseSelected = args.query ? selectCapabilities(rankedOrdinary) : [];
   const supplemented = args.query
-    ? [...baseSelected, ...automaticSupplements(ranked, baseSelected, mainScore)]
+    ? [...baseSelected, ...automaticSupplements(rankedOrdinary, baseSelected, mainScore)]
     : [];
   const classification = args.query
-    ? classifySelections(supplemented, ranked, mainScore)
+    ? classifySelections(supplemented, rankedOrdinary, mainScore)
     : { classified: [], alternatives: [] };
   const classifiedSelection = [...classification.classified, ...classification.alternatives]
     .filter((item, index, items) => items.findIndex((candidate) => candidate.id === item.id) === index);
@@ -717,14 +804,18 @@ async function buildIndex(args) {
   const includedIds = new Set([...automatic, ...choiceRequired].map((item) => item.id));
   const selected = classifiedSelection.filter((item) => includedIds.has(item.id));
   const selectedById = new Map(selected.map((item) => [item.id, item]));
-  const rankedCapabilities = args.query ? ranked.filter((item) => item.score > 0) : ranked;
+  const rankedCapabilities = args.query
+    ? rankedOrdinary.filter((item) => item.score > 0)
+    : rankedOrdinary;
   const limitedCapabilities = rankedCapabilities.slice(0, args.limit);
   const outputCapabilities = limitedCapabilities
-    .filter((item) => item.kind !== "skill")
     .map((item) => selectedById.get(item.id) || candidateDetails(item, mainScore));
-  const skillMainScore = ranked.find((item) => item.kind === "skill")?.score || 0;
-  const skillCandidates = limitedCapabilities
-    .filter((item) => item.kind === "skill")
+  const rankedSkillCandidates = args.query
+    ? rankedSkills.filter((item) => item.score > 0)
+    : rankedSkills;
+  const limitedSkills = rankedSkillCandidates.slice(0, args.skillLimit);
+  const skillMainScore = rankedSkills[0]?.score || 0;
+  const skillCandidates = limitedSkills
     .map((item) => ({
       ...candidateDetails(item, skillMainScore),
       selection_status: "candidate",
@@ -739,12 +830,16 @@ async function buildIndex(args) {
     schema_version: 4,
     project_root: projectRoot,
     query: args.query || null,
+    intent: args.intent,
+    skills_only: args.skillsOnly,
     roots,
     lifecycle: CAPABILITY_LIFECYCLE,
     stats: {
       ...summarize(unique),
       returned: limitedCapabilities.length,
       truncated: limitedCapabilities.length < rankedCapabilities.length,
+      skill_returned: limitedSkills.length,
+      skill_truncated: limitedSkills.length < rankedSkillCandidates.length,
     },
     selected,
     automatic,

@@ -116,3 +116,23 @@ $ai-talk 根据项目里的 OpenAPI 文档接入榜单接口，不要编造字�
 完成任意 `prompt_state: ready` 任务。
 
 通过条件：输出一屏摘要、一个 `text` 代码块和“任务话术已生成，当前尚未执行代码修改”；不输出确认、取消或开始按钮，不执行最终任务。
+
+## 15. 声明式需求默认执行
+
+输入：
+
+```text
+$ai-talk 这部分需要奖励预览。目标文件：apps/short/20260724-dragon/pages-O/recharge/mods/tab2/mod1.vue。点击不同奖励时预览当前点击的奖励，不要修改无关代码。
+```
+
+并附上目标区域截图。项目 `.agents/skills` 中同时存在 `gen-code`、`gen-frontend-plan`、`custom-components-skill` 和通用 Vue 指南，普通能力索引中存在大量组件与历史实现。
+
+通过条件：
+
+- 识别为 `discovery + modify_and_verify`，只运行 `.agents/skills` 的 Skill-only 索引，目标耗时 1 秒内；不运行 `collect_context.py`，不扫描普通组件、模板或历史实现。
+- `gen-code` 为首位 Skill 候选，不选择 `gen-frontend-plan`、`custom-components-skill` 或通用 Vue 指南；普通能力 `--limit` 不得挤掉 Skill 候选。
+- 最终话术包含 `$gen-code`、真实 Skill 路径、`local-patch`、`incremental`、目标文件、直接修改和验证要求；不得写“先确认数据源和调用方式，再给出实现方案”。
+- 最终话术要求 `$gen-code` 读取 `docs/knowledge/component-registry.md` 和真实组件文档后优先复用已有公司组件，不绕过注册表创建平行实现。
+- AI Talk 不直接指定 `ui-prop-wrapper` 或其他具体组件；组件选择由 `$gen-code` 根据真实注册表和文档完成。
+- 端到端执行后，点击不同奖励应预览当前循环项；若组件在 `v-for="reward in previewRewardList"` 中绑定奖励 id，应使用 `reward.id`，不得使用列表对象的 `previewRewardList.id`。
+- 完整话术目标耗时 30 秒内；AI Talk 阶段不修改业务文件。
