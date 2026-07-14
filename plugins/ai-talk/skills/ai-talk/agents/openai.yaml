@@ -1,7 +1,7 @@
 interface:
   display_name: "AI Talk"
-  short_description: "整理有来源事实并检索公司组件，生成不脑补的任务话术"
-  default_prompt: "使用 $ai-talk 整理我的研发需求，只保留有来源的事实，不补充我没有说过的功能，并生成可直接交给 Codex 的任务话术。"
+  short_description: "明确需求直接生成，复杂需求按需发现并整理有来源的任务话术"
+  default_prompt: "使用 $ai-talk 快速整理我的研发需求；信息明确时直接生成话术，只有需要关键事实时才执行只读发现。"
 
 policy:
   allow_implicit_invocation: false
