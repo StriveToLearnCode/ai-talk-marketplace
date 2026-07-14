@@ -412,6 +412,62 @@ test("skills-only scans .agents/skills and returns no ordinary capabilities", as
   assert.ok(payload.skill_candidates.every((item) => item.name !== "legacy-code"));
 });
 
+test("Skill ranking uses frontmatter only and never falls back to the body", async (t) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ai-talk-frontmatter-only-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await mkdir(path.join(root, ".agents/skills/body-match"), { recursive: true });
+  await mkdir(path.join(root, ".agents/skills/missing-description"), { recursive: true });
+  await mkdir(path.join(root, ".agents/skills/frontmatter-match"), { recursive: true });
+  await writeFile(
+    path.join(root, ".agents/skills/body-match/SKILL.md"),
+    `---
+name: body-match
+description: 处理无关的发布流程。
+---
+
+# Hidden workflow
+
+生成代码、局部生成、加逻辑、local-patch、incremental。
+`,
+  );
+  await writeFile(
+    path.join(root, ".agents/skills/missing-description/SKILL.md"),
+    `---
+name: missing-description
+---
+
+生成代码、局部生成、加逻辑、local-patch、incremental。
+`,
+  );
+  await writeFile(
+    path.join(root, ".agents/skills/frontmatter-match/SKILL.md"),
+    `---
+name: frontmatter-match
+description: 生成代码、局部生成并为现有页面加逻辑。
+---
+
+正文不应影响排序。
+`,
+  );
+
+  const payload = await runIndex(
+    root,
+    "--skills-only",
+    "--intent",
+    "modify_and_verify",
+    "--query",
+    "这部分需要奖励预览",
+  );
+
+  assert.equal(payload.skill_candidates[0].name, "frontmatter-match");
+  assert.ok(payload.skill_candidates.every((item) => item.name !== "body-match"));
+  assert.ok(payload.skill_candidates.every((item) => item.name !== "missing-description"));
+  assert.ok(payload.skill_candidates.every((item) => item.choice_reason.includes("must not read or invoke")));
+  assert.ok(payload.skill_candidates.every((item) => item.pending_validation[0].includes("must not read")));
+  assert.ok(payload.skill_candidates.every((item) => !item.choice_reason.includes("read SKILL.md completely")));
+  assert.equal(payload.stats.by_kind.skill, 2);
+});
+
 test("plan intent favors the plan Skill instead of the code generation Skill", async (t) => {
   const root = await mkdtemp(path.join(os.tmpdir(), "ai-talk-plan-intent-"));
   t.after(() => rm(root, { recursive: true, force: true }));

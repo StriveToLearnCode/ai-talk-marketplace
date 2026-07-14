@@ -2,7 +2,7 @@
 
 import { createHash } from "node:crypto";
 import { constants as fsConstants } from "node:fs";
-import { access, readFile, readdir, stat, writeFile } from "node:fs/promises";
+import { access, open, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
@@ -10,6 +10,7 @@ import { fileURLToPath } from "node:url";
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const AI_TALK_SKILL_ROOT = path.resolve(SCRIPT_DIR, "..");
 const MAX_FILE_BYTES = 256 * 1024;
+const MAX_FRONTMATTER_BYTES = 16 * 1024;
 const PROJECT_SKILL_DIRECTORY = path.join(".agents", "skills");
 const IGNORED_CAPABILITY_DIRECTORIES = new Set([
   ".agents/skills",
@@ -265,6 +266,22 @@ async function readBounded(filePath) {
   }
 }
 
+async function readSkillFrontmatter(filePath) {
+  let handle;
+  try {
+    handle = await open(filePath, "r");
+    const buffer = Buffer.alloc(MAX_FRONTMATTER_BYTES);
+    const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
+    const content = buffer.subarray(0, bytesRead).toString("utf8");
+    if (!content.startsWith("---") || content.indexOf("\n---", 3) === -1) return null;
+    return content;
+  } catch {
+    return null;
+  } finally {
+    await handle?.close();
+  }
+}
+
 function cleanText(value, maxLength = 320) {
   return value
     .replace(/```[\s\S]*?```/g, " ")
@@ -302,6 +319,15 @@ function markdownMetadata(content, fallbackName) {
   return {
     name: frontmatter.name || heading || fallbackName,
     description: frontmatter.description || paragraphs[0] || "",
+  };
+}
+
+function skillFrontmatterMetadata(content) {
+  const frontmatter = parseFrontmatter(content);
+  if (!frontmatter.name || !frontmatter.description) return null;
+  return {
+    name: frontmatter.name,
+    description: frontmatter.description,
   };
 }
 
@@ -370,13 +396,18 @@ function capabilityId(kind, source, relativePath) {
 
 async function makeCapability({ filePath, relativePath, kind, scope, source }) {
   if (path.resolve(filePath) === path.join(AI_TALK_SKILL_ROOT, "SKILL.md")) return null;
-  const content = await readBounded(filePath);
+  const content = kind === "skill"
+    ? await readSkillFrontmatter(filePath)
+    : await readBounded(filePath);
   if (content === null) return null;
 
   const fallbackName = humanize(filePath);
-  const metadata = TEXT_EXTENSIONS.has(path.extname(filePath).toLowerCase()) || kind === "skill"
-    ? markdownMetadata(content, fallbackName)
-    : { name: fallbackName, description: "" };
+  const metadata = kind === "skill"
+    ? skillFrontmatterMetadata(content)
+    : TEXT_EXTENSIONS.has(path.extname(filePath).toLowerCase())
+      ? markdownMetadata(content, fallbackName)
+      : { name: fallbackName, description: "" };
+  if (metadata === null) return null;
   if (kind === "skill" && metadata.name.trim().toLowerCase() === "ai-talk") return null;
   const symbols = SOURCE_EXTENSIONS.has(path.extname(filePath).toLowerCase())
     ? exportedSymbols(content)
@@ -818,12 +849,16 @@ async function buildIndex(args) {
   const skillCandidates = limitedSkills
     .map((item) => ({
       ...candidateDetails(item, skillMainScore),
+      pending_validation: [
+        "AI Talk must not read this Skill body, references, scripts, or resources.",
+        "The downstream Codex may read and invoke this Skill only after the generated prompt is submitted for execution.",
+      ],
       selection_status: "candidate",
       invocation_status: "not_invoked",
       usage_preference: null,
       selection_source: null,
       choice_reason:
-        "Skill metadata is discovery evidence only. Codex must confirm semantic applicability, read SKILL.md completely, and run its read-only workflow before using its findings.",
+        "Frontmatter metadata is prompt-routing evidence only. AI Talk must not read or invoke this Skill in the current turn.",
     }));
 
   return {
