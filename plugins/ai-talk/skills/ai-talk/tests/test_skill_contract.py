@@ -18,6 +18,12 @@ class SkillContractTests(unittest.TestCase):
         cls.capability_text = (
             SKILL_DIR / "references" / "capability-reuse.md"
         ).read_text(encoding="utf-8")
+        cls.feature_text = (
+            SKILL_DIR / "references" / "feature-development.md"
+        ).read_text(encoding="utf-8")
+        cls.clarifying_text = (
+            SKILL_DIR / "references" / "clarifying-questions.md"
+        ).read_text(encoding="utf-8")
         cls.manifest = json.loads(
             (PLUGIN_DIR / ".codex-plugin" / "plugin.json").read_text(encoding="utf-8")
         )
@@ -40,8 +46,8 @@ class SkillContractTests(unittest.TestCase):
         self.assertIn("## 公司组件优先流程", self.skill_text)
         self.assertIn("不得硬编码 Skill 名称", self.skill_text)
         self.assertIn("不得加入猜测的组件名", self.skill_text)
-        self.assertIn("真实项目技术栈", self.skill_text)
-        self.assertIn("目标页面或模块", self.skill_text)
+        self.assertIn("已验证且直接相关的项目约束", self.skill_text)
+        self.assertIn("用户明确给出的目标位置", self.skill_text)
 
     def test_company_component_candidate_contract_is_bounded(self):
         self.assertIn("最多展示三个", self.skill_text)
@@ -63,6 +69,35 @@ class SkillContractTests(unittest.TestCase):
         self.assertIn("只表示推荐确定", self.skill_text)
         self.assertIn("不表示代码兼容性已经验证", self.skill_text)
         self.assertIn("`execution_validation` 仍为 `null`", self.capability_text)
+
+    def test_facts_only_policy_separates_information_sources(self):
+        self.assertIn("## 信息来源与事实边界", self.skill_text)
+        for category in ("`用户事实`", "`项目事实`", "`检索事实`", "`未确认信息`"):
+            self.assertIn(category, self.skill_text)
+        self.assertIn("默认不输出 Assumption", self.skill_text)
+        self.assertIn("建议（非需求）", self.skill_text)
+        self.assertIn("用户确认前不得并入最终任务话术", self.skill_text)
+
+    def test_component_capabilities_do_not_become_requirements(self):
+        self.assertIn("`组件支持某能力` 不等于 `本需求要求该能力`", self.skill_text)
+        for item in ("标题", "内容", "按钮", "关闭方式", "props", "事件", "数据结构"):
+            self.assertIn(item, self.skill_text)
+        self.assertIn("组件其余能力不得进入需求", self.capability_text)
+        self.assertIn("不得固定罗列完整组件 API", self.capability_text)
+
+    def test_feature_prompt_is_minimal_and_omits_empty_fields(self):
+        for field in ("用户明确需求", "已验证约束", "已选择能力", "未确认信息", "执行边界"):
+            self.assertIn(field, self.feature_text)
+        self.assertIn("没有则省略整个字段", self.feature_text)
+        self.assertIn("用户明确提供验收要求时才增加验收字段", self.feature_text)
+        self.assertNotIn("目标是【用户结果】", self.feature_text)
+        self.assertNotIn("验收标准为【可观察结果】", self.feature_text)
+
+    def test_non_blocking_unknowns_are_omitted_without_defaults(self):
+        self.assertIn("非阻塞项省略", self.clarifying_text)
+        self.assertIn("未回答时保持为未知", self.clarifying_text)
+        self.assertIn("不选择产品或技术默认值", self.clarifying_text)
+        self.assertIn("不生成验收标准", self.clarifying_text)
 
     def test_local_index_does_not_scan_user_skill_directories(self):
         for path in (

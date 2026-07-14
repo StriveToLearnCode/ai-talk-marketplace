@@ -1,7 +1,7 @@
 interface:
   display_name: "AI Talk"
-  short_description: "优先检索公司组件与现有能力，生成 Codex 任务话术"
-  default_prompt: "使用 $ai-talk 整理我的组件开发需求，先按当前项目和使用场景检索公司封装组件，再生成可直接交给 Codex 的任务话术。"
+  short_description: "整理有来源事实并检索公司组件，生成不脑补的任务话术"
+  default_prompt: "使用 $ai-talk 整理我的研发需求，只保留有来源的事实，不补充我没有说过的功能，并生成可直接交给 Codex 的任务话术。"
 
 policy:
   allow_implicit_invocation: false

@@ -110,6 +110,8 @@ test("selects a main capability, complementary helpers, and automatic supplement
     assert.ok(candidate.match_reason.length > 0);
     assert.ok(candidate.pending_validation.length > 0);
     assert.ok(candidate.potential_risks.length > 0);
+    assert.ok(candidate.pending_validation.every((item) => !item.includes("data shape")));
+    assert.ok(candidate.potential_risks.some((item) => item.includes("not automatically a user requirement")));
   }
   assert.ok(payload.skill_candidates.some((item) => item.kind === "skill"));
   assert.ok(payload.skill_candidates.every((item) => item.invocation_status === "not_invoked"));
@@ -235,6 +237,21 @@ test("returns no forced selection when the task has no relevant match", async (t
 
   assert.deepEqual(payload.selected, []);
   assert.deepEqual(payload.capabilities, []);
+});
+
+test("does not promote README examples or generic query words into project constraints", async (t) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ai-talk-readme-fact-boundary-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await writeFile(
+    path.join(root, "README.md"),
+    "# Examples\n\n开发一个普通弹窗只是文档示例，不是项目约束。\n",
+  );
+
+  const payload = await runIndex(root, "--query", "开发一个普通弹窗");
+
+  assert.deepEqual(payload.selected, []);
+  assert.deepEqual(payload.automatic, []);
+  assert.deepEqual(payload.choice_required, []);
 });
 
 test("keeps overlapping skills as invocation candidates instead of auto-selecting them", async (t) => {

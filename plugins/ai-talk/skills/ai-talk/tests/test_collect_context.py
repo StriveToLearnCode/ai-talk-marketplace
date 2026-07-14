@@ -159,14 +159,39 @@ class CollectContextTests(unittest.TestCase):
         task = collect_context.infer_task("奖励接口联调", None)
 
         self.assertTrue(task["output_contract"]["stop_after_prompt_ready"])
+        self.assertEqual(
+            {
+                "mode": "facts_only",
+                "source_required": True,
+                "assumption_handling": "omit",
+                "allowed_sources": ["user", "project", "skill", "user_selection"],
+            },
+            task["information_policy"],
+        )
         self.assertIn("handling_mode", task["output_contract"]["summary_fields"])
         self.assertIn("prompt_state", task["output_contract"]["summary_fields"])
-        self.assertIn("invoked_skills", task["output_contract"]["summary_fields"])
-        self.assertIn("skill_findings", task["output_contract"]["summary_fields"])
-        self.assertIn("checked_sources", task["output_contract"]["summary_fields"])
-        self.assertIn("automatic_capabilities", task["output_contract"]["summary_fields"])
-        self.assertIn("choice_required", task["output_contract"]["summary_fields"])
-        self.assertIn("acceptance_requirements", task["output_contract"]["final_task_fields"])
+        for field in (
+            "user_facts",
+            "verified_project_constraints",
+            "relevant_discovery_facts",
+            "selected_capability",
+            "blocking_unknowns",
+        ):
+            self.assertIn(field, task["output_contract"]["summary_fields"])
+        self.assertEqual(
+            [
+                "user_facts",
+                "verified_project_constraints",
+                "relevant_discovery_facts",
+                "selected_capability",
+                "blocking_unknowns",
+                "execution_boundaries",
+                "explicit_acceptance_requirements",
+            ],
+            task["output_contract"]["final_task_fields"],
+        )
+        for removed in ("current_goal", "acceptance_requirements", "project_constraints"):
+            self.assertNotIn(removed, task["output_contract"]["final_task_fields"])
 
     def test_non_node_project_returns_package_warning(self) -> None:
         temporary, root = self.make_root()
@@ -252,7 +277,7 @@ class CollectContextTests(unittest.TestCase):
         )
 
         self.assertEqual(0, exit_code)
-        self.assertEqual(6, payload["schema_version"])
+        self.assertEqual(7, payload["schema_version"])
         self.assertEqual("ready", payload["capabilities"]["status"])
         self.assertEqual(
             "api-integration", payload["capabilities"]["skill_candidates"][0]["name"]

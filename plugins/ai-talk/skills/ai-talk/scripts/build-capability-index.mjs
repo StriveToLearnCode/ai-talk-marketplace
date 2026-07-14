@@ -64,6 +64,21 @@ const SCOPE_PRIORITY = {
   company: 4,
 };
 
+const QUERY_STOP_TOKENS = new Set([
+  "一个",
+  "这个",
+  "当前",
+  "帮我",
+  "请在",
+  "需要",
+  "the",
+  "and",
+  "for",
+  "with",
+  "this",
+  "that",
+]);
+
 const CAPABILITY_LIFECYCLE = {
   discovery_states: ["candidate_reuse", "candidate_reference", "low_relevance"],
   selection_states: ["auto_selected", "choice_required", "low_relevance"],
@@ -415,7 +430,7 @@ function tokenize(value) {
 }
 
 function rankCapability(capability, query) {
-  const queryTokens = tokenize(query);
+  const queryTokens = tokenize(query).filter((token) => !QUERY_STOP_TOKENS.has(token));
   const queryTokenSet = new Set(queryTokens);
   const fields = {
     name: tokenize(capability.name),
@@ -516,10 +531,11 @@ function candidateDetails(item, mainScore) {
     discovery_status: discoveryStatus(item, mainScore),
     pending_validation: [
       "Read the real file before relying on this capability.",
-      "Verify API, data shape, dependencies, configuration, and applicable constraints.",
+      "Verify only integration details required by explicit user facts and directly relevant project constraints.",
     ],
     potential_risks: [
       "Metadata similarity does not prove runtime compatibility.",
+      "A capability supported by this component is not automatically a user requirement.",
       "Do not change a shared capability solely to force reuse.",
     ],
     selection_status: "low_relevance",
@@ -531,8 +547,14 @@ function candidateDetails(item, mainScore) {
   };
 }
 
+function isSelectableCapability(item) {
+  if (item.kind !== "standard") return true;
+  const basename = path.posix.basename(item.relative_path.toLowerCase());
+  return !basename.startsWith("readme") && !basename.startsWith("contributing");
+}
+
 function selectCapabilities(ranked) {
-  const reusableRanked = ranked.filter((item) => item.kind !== "skill");
+  const reusableRanked = ranked.filter((item) => item.kind !== "skill" && isSelectableCapability(item));
   if (!reusableRanked.length || reusableRanked[0].score <= 0) return [];
   const main = reusableRanked[0];
   const minimumHelperScore = Math.max(6, Math.floor(main.score * 0.3));
@@ -631,7 +653,7 @@ function automaticSupplements(ranked, selected, mainScore) {
   const selectedIds = new Set(selected.map((item) => item.id));
   const isRelevant = (item) => discoveryStatus(item, mainScore) !== "low_relevance";
   const projectRules = ranked
-    .filter((item) => item.kind === "standard" && item.scope === "project" && !selectedIds.has(item.id) && isRelevant(item))
+    .filter((item) => item.kind === "standard" && item.scope === "project" && isSelectableCapability(item) && !selectedIds.has(item.id) && isRelevant(item))
     .slice(0, 2)
     .map((item) => ({ role: "constraint", ...candidateDetails(item, mainScore) }));
   const prompts = ranked
