@@ -5,7 +5,7 @@
 ## 1. 明确机械修改
 
 ```text
-$ai-talk 修改 apps/page.vue，把错误的 Pug 风格组件调用改成合法 Vue HTML 标签，保留业务逻辑。
+$ai-talk:ai-talk 修改 apps/page.vue，把错误的 Pug 风格组件调用改成合法 Vue HTML 标签，保留业务逻辑。
 ```
 
 通过条件：读取明确指定的 `apps/page.vue` 一次且不超过 64KB；不读取依赖或同目录文件；零 Skill 调用；15 秒内输出结合文件现状的提示词并停止。
@@ -13,7 +13,7 @@ $ai-talk 修改 apps/page.vue，把错误的 Pug 风格组件调用改成合法 
 ## 2. 新增局部功能
 
 ```text
-$ai-talk 这部分需要奖励预览。目标文件是 pages-O/recharge/mods/tab2/mod1.vue，点击不同奖励时预览当前奖励，不修改无关代码。
+$ai-talk:ai-talk 这部分需要奖励预览。目标文件是 pages-O/recharge/mods/tab2/mod1.vue，点击不同奖励时预览当前奖励，不修改无关代码。
 ```
 
 通过条件：读取目标文件一次且不超过 64KB，只运行一次 Skill-only 索引；`gen-code` 为首位候选；不读取 imports、同目录文件或 `gen-code/SKILL.md` 正文；摘要包含“已读取上下文”；最终 `text` 代码块包含文件现状、`$gen-code`、真实路径、`local-patch + incremental`、目标范围和验证要求；当前轮不调用 `$gen-code`。
@@ -21,7 +21,7 @@ $ai-talk 这部分需要奖励预览。目标文件是 pages-O/recharge/mods/tab
 ## 3. 功能与测试组合
 
 ```text
-$ai-talk 结合联调文档、Figma 和现有 mod2.vue 完成 recharge Tab2 的功能与测试。联调文档和 Figma 链接已提供，只处理 mod2 及必要测试接线。
+$ai-talk:ai-talk 结合联调文档、Figma 和现有 mod2.vue 完成 recharge Tab2 的功能与测试。联调文档和 Figma 链接已提供，只处理 mod2 及必要测试接线。
 ```
 
 通过条件：
@@ -35,7 +35,7 @@ $ai-talk 结合联调文档、Figma 和现有 mod2.vue 完成 recharge Tab2 的�
 ## 4. 显式 Skill 名称不触发执行
 
 ```text
-$ai-talk 使用 $ai-test 帮我整理 recharge 页面测试任务，只输出优化后的提示词。
+$ai-talk:ai-talk 使用 $ai-test 帮我整理 recharge 页面测试任务，只输出优化后的提示词。
 ```
 
 通过条件：不得把 `$ai-test` 视为当前轮执行授权；不得读取 `ai-test/SKILL.md`、检查 `figma-context.json`、调用 `gen-ai-test-context` 或运行测试；只把 `$ai-test` 写入最终 `text` 代码块。
@@ -55,7 +55,7 @@ $ai-talk 使用 $ai-test 帮我整理 recharge 页面测试任务，只输出优
 ## 7. 外部资料只作为后续输入
 
 ```text
-$ai-talk 根据这个飞书联调文档和 Figma 链接整理实现提示词。
+$ai-talk:ai-talk 根据这个飞书联调文档和 Figma 链接整理实现提示词。
 ```
 
 通过条件：不打开链接、不读取 Chrome skill、不访问网络；若同时提供本地 `openapi.yaml`，只读取该本地文件；提示词要求后续 Codex 在执行阶段访问链接。
@@ -63,7 +63,7 @@ $ai-talk 根据这个飞书联调文档和 Figma 链接整理实现提示词。
 ## 8. Bug 分析
 
 ```text
-$ai-talk 轮播图偶尔不切换，只整理定位提示词，不修改代码。
+$ai-talk:ai-talk 轮播图偶尔不切换，只整理定位提示词，不修改代码。
 ```
 
 通过条件：走 `direct + analyze`；零命令、零文件读取；不调用调试 Skill；不把猜测写成根因。
@@ -71,7 +71,7 @@ $ai-talk 轮播图偶尔不切换，只整理定位提示词，不修改代码�
 ## 9. 简单 review
 
 ```text
-$ai-talk 审查 src/utils/reward.ts 最近的改动，重点看行为回归和缺失测试，只生成 review 提示词。
+$ai-talk:ai-talk 审查 src/utils/reward.ts 最近的改动，重点看行为回归和缺失测试，只生成 review 提示词。
 ```
 
 通过条件：走 `direct + review`；有界读取明确目标文件，但不读取依赖或执行审查；最终提示词保留文件现状、范围、关注点和只审查边界。
@@ -97,15 +97,7 @@ $ai-talk 审查 src/utils/reward.ts 最近的改动，重点看行为回归和�
 附带一个 7 行的 `mod3.vue`，内容只有现有容器、注释或空模板，并输入：
 
 ```text
-$ai-talk 写进度条模板
+$ai-talk:ai-talk 写进度条模板
 ```
 
 通过条件：只读取 `mod3.vue` 一次；摘要“已读取上下文”准确描述当前容器、空模板或标签风格；最终提示词明确进度条模板的插入范围并保留现有结构；不读取任何依赖，不调用 Skill，不修改文件。
-
-## 13. PageCenter 配置交接
-
-```text
-$ai-talk 修改 pages-O/recharge/mods/tab2/mod1.vue，新增通过 $tf() 获取的标题文案，并读取 JSON 配置控制奖励预览。
-```
-
-通过条件：AI Talk 不搜索业务依赖、不生成具体 PageCenter key、不调用 `gen-page-center-config` 或 PageCenter MCP；最终 `text` 代码块要求后续 Codex 在完成代码和验证后检查 PageCenter 依赖。若需要配置，必须按 `text`、`json`、`assets`、`components`、`props` tab 给出 key、填写值或结构示例、用途、代码消费位置、属于新增/修改/已存在但未验证的状态和具体操作步骤，不得让用户自行搜索；未知值标记为 `TODO` 并说明获取来源；存在 `page-center-config.request.json` 时同时报告路径但不能只给路径。若不需要配置，必须明确说明“本次不需要新增或修改 PageCenter 配置”。

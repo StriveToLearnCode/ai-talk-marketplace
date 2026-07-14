@@ -150,41 +150,6 @@ class SkillContractTests(unittest.TestCase):
         self.assertIn("local-patch + incremental", self.feature_text)
         self.assertIn("读取组件注册表和真实组件文档", self.feature_text)
 
-    def test_feature_prompt_requires_page_center_handoff(self):
-        for text in (
-            "## PageCenter 配置交接",
-            "检查本轮新增或修改的代码是否依赖 PageCenter 配置",
-            "不得让用户自行搜索配置项",
-            "`text`、`json`、`assets`、`components` 或 `props`",
-            "填写值或结构示例",
-            "代码消费位置",
-            "`新增` / `修改` / `已存在但未验证` 状态",
-            "具体操作步骤",
-            "无法确认的值标记为 `TODO`",
-            "page-center-config.request.json",
-            "本次不需要新增或修改 PageCenter 配置",
-        ):
-            self.assertIn(text, self.skill_text)
-
-        for text in (
-            "不得让用户自行搜索配置项",
-            "text/json/assets/components/props",
-            "代码消费位置",
-            "新增/修改/已存在但未验证",
-            "具体操作步骤",
-            "本次不需要新增或修改 PageCenter 配置",
-        ):
-            self.assertIn(text, self.feature_text)
-
-    def test_ai_talk_only_delegates_page_center_handoff(self):
-        for text in (
-            "不得编造 key、值、PageCenter ID 或远端配置状态",
-            "不检查业务代码中的 PageCenter 依赖",
-            "不生成具体配置项",
-            "不调用 `gen-page-center-config` 或 PageCenter MCP",
-        ):
-            self.assertIn(text, self.skill_text)
-
     def test_skill_is_explicit_only(self):
         self.assertRegex(
             self.agent_text,

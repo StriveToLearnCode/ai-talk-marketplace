@@ -1,6 +1,6 @@
 ---
 name: ai-talk
-description: 在用户显式调用 $ai-talk 时，把研发需求整理成可复制给后续 Codex 执行的优化提示词。允许有界读取用户明确附带或给出精确路径的本地目标文件，最多 3 个、每个最多 64KB；不扫描项目或读取依赖。新增交互、展示能力、业务逻辑或测试任务时，最多运行一次项目 .agents/skills frontmatter 索引。AI Talk 不读取下游 Skill 正文，不调用 Skill，不访问 Figma、飞书、浏览器或网络，不修改业务代码。
+description: 在用户显式调用 $ai-talk:ai-talk 时，把研发需求整理成可复制给后续 Codex 执行的优化提示词。允许有界读取用户明确附带或给出精确路径的本地目标文件，最多 3 个、每个最多 64KB；不扫描项目或读取依赖。新增交互、展示能力、业务逻辑或测试任务时，最多运行一次项目 .agents/skills frontmatter 索引。AI Talk 不读取下游 Skill 正文，不调用 Skill，不访问 Figma、飞书、浏览器或网络，不修改业务代码。
 ---
 
 # AI Talk
@@ -95,16 +95,6 @@ node <AI Talk Skill 目录>/scripts/build-capability-index.mjs \
 
 用户把提示词交给 Codex 通常是为了执行。除非用户明确要求 `analyze`、`plan` 或 `review`，否则使用 `modify_and_verify`，不得写成“先确认后给方案”。
 
-## PageCenter 配置交接
-
-对所有会修改代码的提示词，要求后续 Codex 在完成代码和验证后检查本轮新增或修改的代码是否依赖 PageCenter 配置：
-
-- 需要配置时，不得让用户自行搜索配置项。按 PageCenter tab 列出每个需要新增或修改的 `text`、`json`、`assets`、`components` 或 `props` key，并给出填写值或结构示例、用途、代码消费位置、`新增` / `修改` / `已存在但未验证` 状态和具体操作步骤。
-- 无法确认的值标记为 `TODO`，并说明获取来源；不得编造 key、值、PageCenter ID 或远端配置状态。
-- 若生成了 `page-center-config.request.json`，同时报告文件路径，但不得只给文件路径而省略人工配置说明。
-- 不需要配置时，明确说明“本次不需要新增或修改 PageCenter 配置”。
-- AI Talk 当前轮只把本交接要求写入提示词，不检查业务代码中的 PageCenter 依赖，不生成具体配置项，不调用 `gen-page-center-config` 或 PageCenter MCP。
-
 ## 最终输出
 
 先输出一屏内摘要，只显示有值字段：
@@ -129,8 +119,6 @@ node <AI Talk Skill 目录>/scripts/build-capability-index.mjs \
 2. 功能完成后使用项目 Skill $ai-test（路径：<真实路径>），仅为 <目标范围> 生成或执行测试，不扩散到其他页面。
 
 不要先输出方案，不要修改无关代码。报告实际修改和验证结果。
-
-完成代码和验证后，检查本轮新增或修改的代码是否依赖 PageCenter 配置。如果需要，不得让用户自行搜索配置项；请按 PageCenter tab 列出每个需要新增或修改的 key、填写值或结构示例、用途、代码消费位置、属于新增/修改/已存在但未验证的状态及具体配置步骤。无法确认的值标记为 TODO 并说明获取来源，不得编造；若生成了 page-center-config.request.json，同时提供文件路径，但不能只给文件路径。如果不需要，明确说明“本次不需要新增或修改 PageCenter 配置”。
 ```
 
 代码块后只显示：

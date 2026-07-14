@@ -2,11 +2,12 @@
 
 AI Talk 是一个只生成研发任务提示词的 Codex 插件。它不会执行提示词中的任务。
 
-纯文案、语法和明确机械修改直接生成；新增交互、业务逻辑或测试任务时，最多运行一次 `.agents/skills` frontmatter 索引来选择后续执行 Skill。AI Talk 不读取业务文件、下游 Skill 正文、Figma、飞书或浏览器，也不修改代码和运行测试。
+AI Talk 可以读取用户明确附带或指定的本地目标文件，最多 3 个、每个最多 64KB，用文件现状优化提示词。新增交互、业务逻辑或测试任务时，最多再运行一次 `.agents/skills` frontmatter 索引。它不扫描项目、不读取依赖或下游 Skill 正文，也不访问 Figma、飞书或浏览器，不修改代码和运行测试。
 
 ```text
 用户自然语言
-→ direct：零命令直接整理
+→ 有明确文件：有界读取最多 3 个目标文件
+→ direct：不扫描项目，直接整理
 → discovery：一次 frontmatter-only Skill 索引
 → 把 $skill-name 和执行顺序写入 text 代码块
 → 输出提示词并立即停止
@@ -42,14 +43,16 @@ $ai-talk 这部分需要奖励预览，完成后补目标范围测试
 $ai-talk 审查 src/utils/reward.ts，只审查不要修改
 ```
 
-## 纯提示词模式
+## 有界提示词模式
 
-- `direct` 不运行任何项目命令。
+- 本地附件和精确路径可以读取；最多 3 个文件，每个最多读取一次、最多 64KB。
+- 不跟踪 imports，不读取同目录文件、`AGENTS.md`、项目配置、Git 状态或其他依赖。
+- 第 4 个及之后的文件不读取，写入提示词交给后续 Codex。
 - `discovery` 只运行一次 `build-capability-index.mjs --skills-only`。
 - 索引只使用 `.agents/skills/**/SKILL.md` 的 `name` 和 `description` frontmatter，不读取正文。
 - 不运行 `collect_context.py`，不搜索组件、模板、历史实现或项目规则。
 - 不调用 `$gen-code`、`$ai-test` 或其他 Skill；这些名称只出现在 fenced `text` 代码块中。
-- 不访问目标文件、Figma、飞书、Chrome、接口文档或网络。
+- Figma、飞书等 URL 不打开；本地 `openapi.yaml` 等明确附件可以有界读取。
 - 输出“任务话术已生成，当前尚未执行代码修改”后立即停止。
 
 功能开发与测试同时存在时，提示词安排后续 Codex 先执行代码 Skill，再执行测试 Skill。例如候选为 `gen-code` 和 `ai-test` 时：
@@ -58,6 +61,8 @@ $ai-talk 审查 src/utils/reward.ts，只审查不要修改
 1. 使用 $gen-code，以 local-patch + incremental 模式完成目标范围功能并验证。
 2. 功能完成后使用 $ai-test，仅生成或执行目标范围测试。
 ```
+
+所有会修改代码的提示词还会要求后续 Codex 在收尾时检查 PageCenter 依赖。需要配置时，必须按 `text`、`json`、`assets`、`components`、`props` tab 直接列出 key、填写值或结构示例、用途、代码消费位置、属于新增/修改/已存在但未验证的状态和操作步骤，不能让用户自行搜索；若有 `page-center-config.request.json`，同时报告路径。无需配置时必须明确说明“本次不需要新增或修改 PageCenter 配置”。AI Talk 当前轮不会自行检查依赖、生成具体配置项或推送 PageCenter。
 
 ## 验证
 
