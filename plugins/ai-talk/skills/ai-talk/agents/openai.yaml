@@ -1,7 +1,7 @@
 interface:
   display_name: "AI Talk"
-  short_description: "有界读取明确文件，只生成优化提示词"
-  default_prompt: "使用 $ai-talk 把我的研发需求整理成可复制执行的提示词；可读取我明确附带或指定的最多 3 个本地文件，每个最多 64KB，但不要扫描项目、读取依赖、调用 Skill 或执行任务。"
+  short_description: "基于明确证据整理研发需求并生成可直接复制的执行提示词"
+  default_prompt: "使用 $ai-talk 结合我附带的截图和需求，把相关区域、直接证据与任务指令逐项对应，区分 AI 语义判断、建议和待确认信息，再生成可复制提示词；不要执行任务。"
 
 policy:
   allow_implicit_invocation: false
