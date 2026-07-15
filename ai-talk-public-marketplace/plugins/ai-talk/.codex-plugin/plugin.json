@@ -1,35 +1,30 @@
 {
   "name": "ai-talk",
-  "version": "0.2.1",
-  "description": "AI Talk \u57fa\u4e8e\u660e\u786e\u8bc1\u636e\u5efa\u7acb\u9700\u6c42\u5bf9\u5e94\uff0c\u53ea\u8f93\u51fa\u53ef\u590d\u5236\u6267\u884c\u7684\u4f18\u5316\u63d0\u793a\u8bcd\u3002",
-  "author": {
-    "name": "sf"
-  },
+  "version": "0.3.0",
+  "description": "AI Talk 将用户原话和明确证据归一化为检索画像，并路由真实项目 Skill。",
+  "author": { "name": "sf" },
   "skills": "./skills/",
   "interface": {
     "displayName": "AI Talk",
-    "shortDescription": "用短摘要理解研发需求，并折叠生成可复制的完整执行提示词",
-    "longDescription": "AI Talk 对用户原话、截图和明确目标文件进行证据化需求理解，区分直接证据、AI 语义判断、建议和待确认信息，并建立证据与任务指令的对应关系。它最多读取 3 个用户明确附带或指定的本地目标文件，每个最多一次、最多 64KB；需要项目 Skill 时最多运行一次 .agents/skills frontmatter 索引。AI Talk 不扫描项目、不读取依赖、不读取下游 Skill 正文、不调用下游 Skill，不访问外部工具，也不修改代码或运行测试。它先显示目标、事实和执行时自动补充，再在默认关闭的“查看完整 Prompt”区域提供精简、自包含、可复制的执行提示词，总耗时目标 15 秒内。插件另提供显式调用的 $ai-talk:ui-self-check。",
+    "shortDescription": "将口语和截图归一化为检索画像并路由真实项目 Skill",
+    "longDescription": "AI Talk 是只读公司 Skill 路由器。它原样保留用户目标，生成 task_action、target_category、desired_output、execution_mode、evidence_types、intent_terms、exclusion_terms 和 unknowns 八字段检索画像；同义扩展词只用于召回，不作为用户已确认需求。索引仅来自真实运行时 SKILL.md 的 frontmatter、description 和明确标记的触发条件/适用场景，检测重复 name 并报告冲突。默认返回 Top 1、最多 2 个备选、推荐依据与相近 Skill 排除原因；没有真正阻塞项时不追问。它不读取或复制 Skill 知识库，不生成执行 Prompt，不调用下游 Skill，也不修改代码。",
     "developerName": "sf",
     "category": "Productivity",
     "capabilities": [
-      "Direct prompt fast path",
-      "Prompt-only generation",
-      "Frontmatter-only Skill routing",
-      "Zero downstream execution",
-      "Evidence-based requirement mapping",
-      "Screenshot-to-task semantic mapping",
-      "OpenAPI contract-first prompt guidance",
-      "Optional companion UI self-check",
-      "Read-only capability discovery",
-      "Codex task prompt generation",
-      "Collapsed full prompt preview"
+      "Intent normalization",
+      "Structured Skill query profiles",
+      "Real project Skill routing",
+      "Bounded applicability metadata reads",
+      "Synonym-expanded retrieval queries",
+      "Desired-output-aware Skill routing",
+      "Duplicate Skill name detection",
+      "Top 1 and Top 3 recommendations",
+      "Zero downstream execution"
     ],
     "defaultPrompt": [
-      "$ai-talk:ai-talk 结合我附带的页面截图和需求，先显示目标、事实和执行时自动补充，再折叠精简且可复制的完整 Prompt；不要执行任务。",
-      "$ai-talk:ai-talk \u6709\u754c\u8bfb\u53d6\u672c\u5730 openapi.yaml\uff0c\u5e76\u628a\u8054\u8c03\u66f4\u65b0\u6574\u7406\u6210\u540e\u7eed Codex \u63d0\u793a\u8bcd\uff1b\u4e0d\u8981\u6253\u5f00 Figma \u6216\u98de\u4e66\u94fe\u63a5",
-      "$ai-talk:ai-talk \u5ba1\u67e5 src/utils/reward.ts\uff0c\u53ea\u751f\u6210 review \u63d0\u793a\u8bcd\uff0c\u4e0d\u8981\u6267\u884c\u5ba1\u67e5",
-      "$ai-talk:ui-self-check \u68c0\u67e5 recharge tab2 \u7684\u79fb\u52a8\u7aef\u5e03\u5c40\u548c\u4ea4\u4e92\uff1b\u53d1\u73b0\u672c\u6b21\u8303\u56f4\u5185\u95ee\u9898\u65f6\u4fee\u590d\u5e76\u590d\u9a8c\u3002"
+      "$ai-talk:ai-talk 新增奖励确认弹窗，不改领取逻辑；生成检索画像并路由真实 Skill",
+      "$ai-talk:ai-talk 结合现状图和目标图整理 UI 改造检索词，不补充交互",
+      "$ai-talk:ai-talk 排查 reward.ts 的偶发错误，匹配真实调试 Skill，不执行修改"
     ]
   }
 }

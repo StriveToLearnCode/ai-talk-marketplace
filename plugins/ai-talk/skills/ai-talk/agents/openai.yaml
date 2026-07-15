@@ -1,7 +1,7 @@
 interface:
   display_name: "AI Talk"
-  short_description: "用短摘要理解研发需求，并折叠生成可复制的完整执行提示词"
-  default_prompt: "使用 $ai-talk 结合我附带的截图和需求，先用目标、事实和执行时自动补充给出短摘要，再将精简且可复制的完整 Prompt 默认折叠；不要执行任务。"
+  short_description: "根据期望产物和执行方式推荐真实公司 Skill"
+  default_prompt: "使用 $ai-talk 保留我的原始目标，生成检索画像，推荐 Top 1 公司 Skill 和最多 2 个备选，并解释相近 Skill 的排除原因；不要执行任务。"
 
 policy:
   allow_implicit_invocation: false

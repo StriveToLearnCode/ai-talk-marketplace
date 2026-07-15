@@ -1,0 +1,174 @@
+[
+  {
+    "id": "ui-live",
+    "clarity": "clear",
+    "prompt": "用浏览器检查 recharge Tab2 的视觉、交互和响应式，发现问题直接修复并复验",
+    "expected_skill": "ui-self-check"
+  },
+  {
+    "id": "ui-generic",
+    "clarity": "clear",
+    "prompt": "这个活动页面帮我测一下，看看按钮点击和布局有没有问题",
+    "expected_skill": "ui-self-check"
+  },
+  {
+    "id": "ui-shot",
+    "clarity": "clear",
+    "prompt": "按参考截图做页面截图对比，只检查不修改",
+    "expected_skill": "ui-self-check"
+  },
+  {
+    "id": "ui-console",
+    "clarity": "clear",
+    "prompt": "打开页面检查交互，同时看控制台报错和失败网络请求",
+    "expected_skill": "ui-self-check"
+  },
+  {
+    "id": "ui-no-file",
+    "clarity": "clear",
+    "prompt": "测一下充值页的移动端布局，不要生成测试文件",
+    "expected_skill": "ui-self-check"
+  },
+  {
+    "id": "test-new",
+    "clarity": "clear",
+    "prompt": "为 recharge 页面生成 midscene-test.ts 自动化测试文件",
+    "expected_skill": "ai-test"
+  },
+  {
+    "id": "test-maintain",
+    "clarity": "clear",
+    "prompt": "维护现有 Midscene 用例，补上领奖弹窗断言并跑测试",
+    "expected_skill": "ai-test"
+  },
+  {
+    "id": "test-cases",
+    "clarity": "clear",
+    "prompt": "根据需求文档给活动页写自动化测试用例和测试结果报告",
+    "expected_skill": "ai-test"
+  },
+  {
+    "id": "test-run",
+    "clarity": "clear",
+    "prompt": "运行这个活动现有的 Midscene 自动化测试并更新报告",
+    "expected_skill": "ai-test"
+  },
+  {
+    "id": "plan-docs",
+    "clarity": "clear",
+    "prompt": "读取原型和 OpenAPI，输出 docs/plan 前端实施计划",
+    "expected_skill": "gen-frontend-plan"
+  },
+  {
+    "id": "plan-only",
+    "clarity": "clear",
+    "prompt": "先给 recharge 页出前端方案文档，只出方案，不生成代码",
+    "expected_skill": "gen-frontend-plan"
+  },
+  {
+    "id": "plan-assets",
+    "clarity": "clear",
+    "prompt": "根据墨刀、Figma UI Meta 和 pageCenter 资料整理前端计划",
+    "expected_skill": "gen-frontend-plan"
+  },
+  {
+    "id": "code-plan",
+    "clarity": "clear",
+    "prompt": "根据现有 docs/plan 直接生成页面代码并完成验证",
+    "expected_skill": "gen-code"
+  },
+  {
+    "id": "code-logic",
+    "clarity": "clear",
+    "prompt": "给 recharge 页面加上领取奖励逻辑，实际修改代码",
+    "expected_skill": "gen-code"
+  },
+  {
+    "id": "code-page",
+    "clarity": "clear",
+    "prompt": "把这个活动页做出来，包含 UI 和业务逻辑",
+    "expected_skill": "gen-code"
+  },
+  {
+    "id": "figma-doc",
+    "clarity": "clear",
+    "prompt": "分析这个 Figma 原型，输出页面、弹窗和交互的 Markdown 方案文档",
+    "expected_skill": "figma-analyze"
+  },
+  {
+    "id": "figma-code",
+    "clarity": "clear",
+    "prompt": "参考这个 Figma 直接做页面，不要单独分析 Figma",
+    "expected_skill": "gen-code"
+  },
+  {
+    "id": "figma-meta",
+    "clarity": "clear",
+    "prompt": "把这个 Figma 链接转成 figma-ui-meta.json，调用 Mercury 输出配置",
+    "expected_skill": "figma-to-ui-meta"
+  },
+  {
+    "id": "shot-code",
+    "clarity": "clear",
+    "prompt": "按这张截图实现 Vue 活动页面并修改代码",
+    "expected_skill": "gen-code",
+    "evidence_types": [
+      "screenshot"
+    ]
+  },
+  {
+    "id": "pc-push",
+    "clarity": "clear",
+    "prompt": "生成 page-center-config.json 并把 text、assets 配置推送到 PageCenter",
+    "expected_skill": "gen-page-center-config"
+  },
+  {
+    "id": "pc-nochange",
+    "clarity": "clear",
+    "prompt": "修改页面领取逻辑，PageCenter 不动，只改前端代码",
+    "expected_skill": "gen-code"
+  },
+  {
+    "id": "block",
+    "clarity": "clear",
+    "prompt": "新建一个活动积木组件，根据 uiMeta 渲染可配置礼盒玩法块",
+    "expected_skill": "custom-components-skill"
+  },
+  {
+    "id": "component",
+    "clarity": "clear",
+    "prompt": "做一个普通 Vue 按钮组件，不接 uiMeta，直接写代码",
+    "expected_skill": "gen-code"
+  },
+  {
+    "id": "ui2",
+    "clarity": "clear",
+    "prompt": "把这个 ui-components 组件迁移到 ui2-components，按 ui2 规范升级",
+    "expected_skill": "ui2-upgrade-guide"
+  },
+  {
+    "id": "service",
+    "clarity": "clear",
+    "prompt": "把 OpenAPI YAML 转成 TypeScript service 和接口类型文件",
+    "expected_skill": "gen-service"
+  },
+  {
+    "id": "amb-figma",
+    "clarity": "ambiguous",
+    "prompt": "帮我看一下这个 Figma",
+    "expected_skill": "figma-analyze"
+  },
+  {
+    "id": "amb-page",
+    "clarity": "ambiguous",
+    "prompt": "把这个页面做一下",
+    "expected_skill": "gen-code"
+  },
+  {
+    "id": "amb-component",
+    "clarity": "ambiguous",
+    "prompt": "帮我做个组件",
+    "expected_skill": "gen-code"
+  }
+]
+
