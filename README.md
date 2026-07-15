@@ -4,10 +4,14 @@ AI Talk 是一个 Codex 插件，用于基于用户原话、截图和明确目�
 
 ## 安装
 
-需要支持 `codex plugin` 命令的 Codex CLI。添加 Marketplace 并安装插件：
+完整安装、调用、更新和常见问题说明见 [USAGE.md](USAGE.md)。
+
+需要支持 `codex plugin` 命令的 Codex CLI。clone 仓库、添加公开 Marketplace 子目录并安装插件：
 
 ```bash
-codex plugin marketplace add StriveToLearnCode/ai-talk-marketplace --ref master
+git clone https://github.com/StriveToLearnCode/ai-talk-marketplace.git
+cd ai-talk-marketplace
+codex plugin marketplace add "$PWD/ai-talk-public-marketplace"
 codex plugin add ai-talk@ai-talk-marketplace
 ```
 
@@ -54,13 +58,15 @@ $ai-talk:ui-self-check 只检查不修改
 - 简单任务直接生成提示词；需要项目 Skill 时最多运行一次 `.agents/skills` frontmatter 索引。
 - 不读取或执行下游 Skill 正文，不访问 Figma、飞书、浏览器或网络。
 - 不修改业务代码，不运行测试、构建、开发服务器、部署或提交。
+- 接口任务要求后续 Codex 以 OpenAPI YAML 和生成类型为权威契约，不把已类型化响应字段降级为 `unknown`，不添加无依据的 normalize、业务校验或静默 fallback。
 
 完整行为说明见 [插件文档](plugins/ai-talk/README.md)。
 
 ## 更新
 
 ```bash
-codex plugin marketplace upgrade ai-talk-marketplace
+cd /path/to/ai-talk-marketplace
+git pull
 codex plugin add ai-talk@ai-talk-marketplace
 ```
 
