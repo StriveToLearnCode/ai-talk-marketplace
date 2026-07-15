@@ -1,7 +1,7 @@
 interface:
   display_name: "AI Talk"
-  short_description: "基于明确证据整理研发需求并生成可直接复制的执行提示词"
-  default_prompt: "使用 $ai-talk:ai-talk 结合我附带的截图和需求，把相关区域、直接证据与任务指令逐项对应，区分 AI 语义判断、建议和待确认信息，再生成可复制提示词；不要执行任务。"
+  short_description: "用短摘要理解研发需求，并折叠生成可复制的完整执行提示词"
+  default_prompt: "使用 $ai-talk:ai-talk 结合我附带的截图和需求，先用目标、事实和执行时自动补充给出短摘要，再将精简且可复制的完整 Prompt 默认折叠；不要执行任务。"
 
 policy:
   allow_implicit_invocation: false

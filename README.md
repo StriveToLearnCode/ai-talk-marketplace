@@ -10,7 +10,8 @@ AI Talk 可以结合用户原话、截图和最多 3 个明确本地目标文件
 → 有截图或多模块：建立证据与需求的对应关系
 → direct：不扫描项目，直接整理
 → discovery：一次 frontmatter-only Skill 索引
-→ 把紧凑任务、$skill-name 和执行顺序写入一个自包含的 text 代码块
+→ 首屏只显示目标、事实和执行时自动补充
+→ 把紧凑任务、$skill-name 和执行顺序写入默认折叠的自包含 text 代码块
 → 输出提示词并立即停止
 ```
 
@@ -56,12 +57,12 @@ $ai-talk 审查 src/utils/reward.ts，只审查不要修改
 - `discovery` 只运行一次 `build-capability-index.mjs --skills-only`。
 - 索引只使用 `.agents/skills/**/SKILL.md` 的 `name` 和 `description` frontmatter，不读取正文。
 - 不运行 `collect_context.py`，不搜索组件、模板、历史实现或项目规则。
-- 不调用 `$gen-code`、`$ai-test` 或其他 Skill；这些名称只出现在 fenced `text` 代码块中。
+- 不调用 `$gen-code`、`$ai-test` 或其他 Skill；带 `$` 的调用语法只出现在折叠的 fenced `text` 代码块中。
 - Figma、飞书等 URL 不打开；本地 `openapi.yaml` 等明确附件可以有界读取。
 - 接口任务要求后续 Codex 以 OpenAPI YAML 和生成类型为权威契约，不把已类型化响应字段降级为 `unknown`，不添加无依据的 normalize、业务校验或静默 fallback。
 - 输出“任务话术已生成，当前尚未执行代码修改”后立即停止。
 
-最终先展示最多 4 行的“需求理解”摘要，再给出一个无需依赖摘要、可直接复制给后续 Codex 的 `text` 代码块。普通任务默认限制为 20 行、约 900 个中文字符；复杂任务最多 30 行、约 1400 个中文字符。相同事实只写一次，不再输出重复的证据段和通用“工程实现约束”清单。
+最终首屏只展示“目标”“事实”“自动补充”：事实最多 3 条且只来自直接证据，自动补充最多 3 条且统一使用“执行时……”表述，不暗示当前轮已经读取项目资料。完整 Prompt 放在默认关闭的“查看完整 Prompt”区域内，保持自包含和可复制；普通任务最多 12 行、约 500 个中文字符，复杂任务最多 18 行、约 800 个中文字符。相同事实只写一次，不输出固定的执行、交付或通用约束段落。
 
 功能开发与测试同时存在时，提示词安排后续 Codex 先执行代码 Skill，再执行测试 Skill。例如候选为 `gen-code` 和 `ai-test` 时：
 

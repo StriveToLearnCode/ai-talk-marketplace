@@ -112,9 +112,10 @@ class SkillContractTests(unittest.TestCase):
 
     def test_skill_names_are_fenced_prompt_text_only(self):
         self.assertIn(
-            "只能作为 fenced `text` 代码块中的文本",
+            "调用语法只能作为 fenced `text` 代码块中的文本",
             self.skill_text,
         )
+        self.assertIn("首屏只能使用 `GenCode Skill`、`AI Test Skill`", self.skill_text)
         self.assertIn(
             "Skill 名称即使带 `$` 也只是待复制的提示词文本",
             self.skill_text,
@@ -246,28 +247,53 @@ class SkillContractTests(unittest.TestCase):
         self.assertIn("不得写成“先确认后给方案”", self.skill_text)
 
     def test_output_contract_stops_after_prompt(self):
-        self.assertIn("需求理解：", self.skill_text)
-        self.assertIn("最多 4 个单行项目", self.skill_text)
-        self.assertIn("默认不超过 20 行、约 900 个中文字符", self.skill_text)
-        self.assertIn("才可放宽到 30 行、约 1400 个中文字符", self.skill_text)
+        for heading in ("目标", "事实", "自动补充"):
+            self.assertIn(heading, self.skill_text)
+        self.assertIn("`事实` 只写用户原话、截图可见内容和已读取文件结构", self.skill_text)
+        self.assertIn("每条必须以“执行时”开头", self.skill_text)
+        self.assertIn("普通任务默认不超过 12 行、约 500 个中文字符", self.skill_text)
+        self.assertIn("才可放宽到 18 行、约 800 个中文字符", self.skill_text)
         self.assertIn("同一事实只写一次", self.skill_text)
         self.assertIn("不输出“用户明确需求”“已读取上下文”“AI 语义判断”“证据与对应”“工程实现约束”", self.skill_text)
         self.assertIn("不复述通用工程常识", self.skill_text)
-        self.assertIn("随后只输出一个 fenced `text` 代码块", self.skill_text)
+        self.assertIn("使用默认关闭的 `<details>` 包裹完整 Prompt", self.skill_text)
+        self.assertIn("`<summary>` 固定为 `查看完整 Prompt`", self.skill_text)
+        self.assertIn("`<details>` 不得带 `open` 属性", self.skill_text)
         self.assertIn("代码块必须自包含", self.skill_text)
         self.assertIn("任务话术已生成，当前尚未执行代码修改", self.skill_text)
         self.assertIn("不得继续读取、调用或执行", self.skill_text)
         self.assertIn("不得输出确认、取消、开始等伪交互文案", self.skill_text)
 
+        summary = self.skill_text.split("固定使用 `目标`、`事实`、`自动补充` 三组", 1)[1]
+        summary = summary.split("```text", 1)[1].split("```", 1)[0].strip()
+        supplements = summary.split("自动补充", 1)[1].strip().splitlines()
+        self.assertTrue(supplements)
+        self.assertTrue(all(line.startswith("✔ 执行时") for line in supplements))
+        self.assertNotIn("$", summary)
+        self.assertNotIn("已读取", summary)
+        self.assertNotIn("已验证", summary)
+
+        details = self.skill_text.split("````markdown", 1)[1].split("````", 1)[0]
+        self.assertIn("<details>", details)
+        self.assertIn("<summary>查看完整 Prompt</summary>", details)
+        self.assertEqual(details.count("```text"), 1)
+        self.assertLess(details.index("<details>"), details.index("```text"))
+        self.assertLess(details.index("```text"), details.index("</details>"))
+        self.assertNotIn("<details open", details)
+
         example = self.skill_text.split("局部功能与测试任务可使用以下结构", 1)[1]
         example = example.split("```text", 1)[1].split("```", 1)[0].strip()
-        self.assertLessEqual(len(example.splitlines()), 20)
+        self.assertLessEqual(len(example.splitlines()), 12)
+        self.assertLessEqual(len(example), 500)
         for heading in (
             "用户明确需求：",
             "已读取上下文：",
             "AI 语义判断：",
             "证据与对应：",
             "工程实现约束：",
+            "执行：",
+            "交付：",
+            "约束：",
         ):
             self.assertNotIn(heading, example)
 
@@ -285,7 +311,7 @@ class SkillContractTests(unittest.TestCase):
     def test_feature_prompt_delegates_real_discovery_downstream(self):
         self.assertIn("$<skill-name>", self.feature_text)
         self.assertIn("local-patch + incremental", self.feature_text)
-        self.assertIn("读取实现所需的组件注册表和真实组件文档", self.feature_text)
+        self.assertIn("按需读取组件注册表和真实组件文档", self.feature_text)
         self.assertIn("[事实/推导/待确认]", self.feature_text)
         self.assertIn("最多 4 条", self.feature_text)
         self.assertIn("同一事实只出现一次", self.feature_text)
@@ -301,7 +327,11 @@ class SkillContractTests(unittest.TestCase):
             "写简短注释；注释解释原因",
         ):
             self.assertIn(text, self.skill_text)
-        self.assertIn("约束：", self.feature_text)
+        self.assertIn("任务边界：", self.feature_text)
+        self.assertIn("执行补充：", self.feature_text)
+        self.assertNotIn("\n执行：", self.feature_text)
+        self.assertNotIn("\n交付：", self.feature_text)
+        self.assertNotIn("\n约束：", self.feature_text)
         self.assertNotIn("工程实现约束：", self.feature_text)
         self.assertIn("`analyze`、`plan`、`review` 不得因此变成代码修改任务", self.skill_text)
 
@@ -427,9 +457,8 @@ class SkillContractTests(unittest.TestCase):
         self.assertLessEqual(len(match.group(1)), 64)
         for text in (
             "截图",
-            "逐项对应",
-            "AI 语义判断",
-            "待确认信息",
+            "目标、事实和执行时自动补充",
+            "完整 Prompt 默认折叠",
             "不要执行任务",
         ):
             self.assertIn(text, self.agent_text)
@@ -453,6 +482,11 @@ class SkillContractTests(unittest.TestCase):
         )
         self.assertIn(
             "OpenAPI contract-first prompt guidance",
+            self.manifest["interface"]["capabilities"],
+        )
+        self.assertIn("查看完整 Prompt", description)
+        self.assertIn(
+            "Collapsed full prompt preview",
             self.manifest["interface"]["capabilities"],
         )
 
