@@ -29,7 +29,7 @@ $ai-talk 结合联调文档、Figma 和现有 mod2.vue 完成 recharge Tab2 的�
 - 只运行一次 `.agents/skills` frontmatter 索引，总耗时 15 秒内。
 - 有界读取用户明确提供的本地 `mod2.vue` 和本地联调文档，每个最多一次、最多 64KB；不打开 Figma URL，不读取项目规则、imports、候选 Skill 正文或 reference。
 - 不调用 Chrome、浏览器、飞书、Figma、Agent、MCP 或任何下游 Skill。
-- 最终 `text` 代码块先安排 `$gen-code` 使用 `local-patch + incremental` 完成功能，再安排 `$ai-test` 处理目标范围测试，最后进行 PageCenter 配置交接和结果报告；Figma 链接和 UI 功能本身不得触发 `$ai-talk:ui-self-check`。
+- 最终 `text` 代码块先安排 `$gen-code` 使用 `local-patch + incremental` 完成功能，再安排 `$ai-test` 处理目标范围测试，最后进行 PageCenter 配置闭环和结果报告；Figma 链接和 UI 功能本身不得触发 `$ai-talk:ui-self-check`。
 - `$gen-code` 和 `$ai-test` 只出现在待复制提示词中；输出后立即停止。
 
 ## 4. 显式 Skill 名称不触发执行
@@ -84,13 +84,13 @@ $ai-talk 审查 src/utils/reward.ts 最近的改动，重点看行为回归和�
 
 ## 11. 输出契约
 
-任意 ready 任务都必须输出一屏“需求理解与对应”摘要、一个且仅一个自包含的 fenced `text` 代码块和：
+任意 ready 任务都必须输出最多 4 个单行项目的“需求理解”摘要、一个且仅一个自包含的 fenced `text` 代码块和：
 
 ```text
 任务话术已生成，当前尚未执行代码修改。
 ```
 
-代码块后不得继续读取、调用或执行，不得显示确认、取消或开始按钮。
+普通任务的代码块默认不超过 20 行、约 900 个中文字符；多个目标文件或真实歧义无法压缩时最多 30 行、约 1400 个中文字符。绝对路径和 URL 各只出现一次且不计入字符预算。同一事实不得在摘要、目标、证据和约束中重复改写，不得输出通用“工程实现约束”清单。代码块后不得继续读取、调用或执行，不得显示确认、取消或开始按钮。
 
 ## 12. 七行进度条目标文件
 
@@ -102,13 +102,13 @@ $ai-talk 写进度条模板
 
 通过条件：只读取 `mod3.vue` 一次；摘要“已读取上下文”准确描述当前容器、空模板或标签风格；最终提示词明确进度条模板的插入范围并保留现有结构；不读取任何依赖，不调用 Skill，不修改文件。
 
-## 13. PageCenter 配置交接
+## 13. PageCenter 配置闭环
 
 ```text
 $ai-talk 修改 pages-O/recharge/mods/tab2/mod1.vue，新增通过 $tf() 获取的标题文案，并读取 JSON 配置控制奖励预览。
 ```
 
-通过条件：AI Talk 不搜索业务依赖、不生成具体 PageCenter key、不调用 `gen-page-center-config` 或 PageCenter MCP；最终 `text` 代码块要求后续 Codex 在完成代码和验证后检查 PageCenter 依赖。若需要配置，必须按 `text`、`json`、`assets`、`components`、`props` tab 给出 key、填写值或结构示例、用途、代码消费位置、属于新增/修改/已存在但未验证的状态和具体操作步骤，不得让用户自行搜索；未知值标记为 `TODO` 并说明获取来源；存在 `page-center-config.request.json` 时同时报告路径但不能只给路径。若不需要配置，必须明确说明“本次不需要新增或修改 PageCenter 配置”。
+通过条件：AI Talk 不搜索业务依赖、不生成具体 PageCenter key、不调用 `gen-page-center-config` 或 PageCenter MCP；最终 `text` 代码块要求后续 Codex 在完成代码和验证后闭环 PageCenter 依赖，并在最终报告中输出“外部操作：PageCenter”及“已完成”“需要用户手动操作”或“无需配置”状态。具备 PageCenter Skill、MCP、项目脚本、账号和权限时必须实际配置并验证；无法代操作或写入失败时，必须说明具体原因，并按 `text`、`json`、`assets`、`components`、`props` tab 给出用户可直接照做的 key、填写值或结构示例、目标环境、用途、代码消费位置、操作步骤和未配置影响，不得只给 key 或让用户自行搜索。未知值标记为 `TODO`，说明准确获取来源、需要用户补充或确认的内容和未完成影响；存在 `page-center-config.request.json` 时同时报告路径但不能只给路径。配置未完成时不得声称任务全部完成；若不需要配置，必须明确说明“本次不需要新增或修改 PageCenter 配置”。
 
 ## 14. 多模块截图对应
 
@@ -160,7 +160,7 @@ $ai-talk 修改 pages/recharge.vue 的奖励卡片布局和点击选中态，完
 $ai-talk 修改 pages/recharge.vue 并验证移动端布局问题，完成后需要 UI 自测。
 ```
 
-通过条件：最终提示词依次安排 `$gen-code`、用户明确要求的目标测试、`$ai-talk:ui-self-check`、PageCenter 配置交接和最终报告；AI Talk 当前轮不读取或调用 companion Skill，不启动浏览器。
+通过条件：最终提示词依次安排 `$gen-code`、用户明确要求的目标测试、`$ai-talk:ui-self-check`、PageCenter 配置闭环和最终报告；AI Talk 当前轮不读取或调用 companion Skill，不启动浏览器。
 
 ## 20. 独立 UI 自测默认修复并复验
 
@@ -248,3 +248,13 @@ OpenAPI 将 `rewardId` 声明为可选但非 nullable，并将 `rewardName` 声�
 联调中发现真实 `rewardId` 与 OpenAPI 的 `integer` 契约不一致。
 
 通过条件：最终提示词要求报告契约不一致并沿用项目现有请求错误处理或上报方式，不得在消费层通过 `Number()`、默认值、空值或静默 fallback 修正响应；请求失败处理不得扩散成字段级 normalize。
+
+## 32. 双图调整页面的紧凑输出
+
+附带现状图、目标图和 `mod2.vue` 的明确行号范围，并输入：
+
+```text
+$ai-talk 在这个代码的基础上调整，第一张图是目标。
+```
+
+通过条件：摘要最多 4 行；`text` 代码块默认不超过 20 行、约 900 个中文字符。目标文件路径只出现一次；现状图、目标图和代码事实使用最多 4 条 `[事实]` / `[推导]` / `[待确认]` 紧凑对应。不得分别输出“直接证据”“证据与对应”“工程实现约束”等重复段落，不得复述通用代码规范；只保留目标、范围、会改变实现的图片对应、所选 Skill、任务特有边界、验证和一条紧凑的 PageCenter 闭环。
