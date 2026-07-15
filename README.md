@@ -16,6 +16,8 @@ AI Talk 可以结合用户原话、截图和最多 3 个明确本地目标文件
 
 ## 安装
 
+面向其他用户的完整安装、调用、更新和常见问题说明见 [USAGE.md](USAGE.md)。
+
 ```bash
 codex plugin marketplace add StriveToLearnCode/ai-talk-marketplace --ref master
 codex plugin add ai-talk@personal
@@ -32,7 +34,7 @@ codex plugin add ai-talk@personal
 
 ## 使用
 
-AI Talk 只在显式调用时启用：
+安装后，AI Talk 只在显式调用时启用：
 
 ```text
 $ai-talk <自然语言研发需求>
@@ -56,6 +58,7 @@ $ai-talk 审查 src/utils/reward.ts，只审查不要修改
 - 不运行 `collect_context.py`，不搜索组件、模板、历史实现或项目规则。
 - 不调用 `$gen-code`、`$ai-test` 或其他 Skill；这些名称只出现在 fenced `text` 代码块中。
 - Figma、飞书等 URL 不打开；本地 `openapi.yaml` 等明确附件可以有界读取。
+- 接口任务要求后续 Codex 以 OpenAPI YAML 和生成类型为权威契约，不把已类型化响应字段降级为 `unknown`，不添加无依据的 normalize、业务校验或静默 fallback。
 - 输出“任务话术已生成，当前尚未执行代码修改”后立即停止。
 
 最终先展示一屏“需求理解与对应”摘要，再给出一个无需依赖摘要、可直接复制给后续 Codex 的 `text` 代码块。

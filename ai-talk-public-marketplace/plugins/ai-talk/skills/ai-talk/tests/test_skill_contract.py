@@ -22,6 +22,9 @@ class SkillContractTests(unittest.TestCase):
         cls.feature_text = (
             SKILL_DIR / "references" / "feature-development.md"
         ).read_text(encoding="utf-8")
+        cls.api_text = (
+            SKILL_DIR / "references" / "api-integration.md"
+        ).read_text(encoding="utf-8")
         cls.clarifying_text = (
             SKILL_DIR / "references" / "clarifying-questions.md"
         ).read_text(encoding="utf-8")
@@ -275,6 +278,84 @@ class SkillContractTests(unittest.TestCase):
         self.assertIn("证据与对应：", self.feature_text)
         self.assertIn("明确/推导/待确认", self.feature_text)
 
+    def test_code_writing_prompts_include_engineering_constraints(self):
+        for text in (
+            "## 工程实现约束",
+            "对所有会写代码的 `modify_and_verify` 提示词写入以下默认约束",
+            "不为假设场景新增抽象、辅助函数、状态、依赖或文件",
+            "真实不可信边界",
+            "必要注释保持简短并解释原因",
+        ):
+            self.assertIn(text, self.skill_text)
+        self.assertIn("工程实现约束：", self.feature_text)
+        self.assertIn("`analyze`、`plan`、`review` 不得因此变成代码修改任务", self.skill_text)
+
+    def test_openapi_contract_is_authoritative(self):
+        for source in (self.skill_text, self.api_text):
+            for text in (
+                "OpenAPI YAML",
+                "生成类型",
+                "真实请求封装",
+                "权威契约",
+                "不得降级为 `unknown`",
+                "不在消费层偷偷修正",
+            ):
+                self.assertIn(text, source)
+
+    def test_typed_api_fields_are_not_normalized_defensively(self):
+        for text in (
+            "`Number()`",
+            "`String()`",
+            "`parseInt()`",
+            "`Boolean()`",
+            "`Number.isInteger()`",
+            "`> 0`",
+            "`undefined` fallback",
+            "猜测性标准化",
+        ):
+            self.assertIn(text, self.skill_text)
+            self.assertIn(text, self.api_text)
+        self.assertIn(
+            "OpenAPI、用户需求和现有业务规则都未声明的校验",
+            self.skill_text,
+        )
+
+    def test_openapi_nullable_and_true_boundaries_are_distinguished(self):
+        for source in (self.skill_text, self.api_text):
+            self.assertIn("nullable 或 optional", source)
+            self.assertIn("`null` / `undefined`", source)
+            self.assertIn("用户输入、URL 参数、localStorage", source)
+            self.assertIn("第三方无类型数据", source)
+
+    def test_api_types_reuse_generated_contracts(self):
+        for source in (self.skill_text, self.api_text):
+            self.assertIn("API 类型直接复用生成类型", source)
+            self.assertIn("一次性响应优先依赖", source)
+            self.assertIn("最小局部类型", source)
+        self.assertIn("不得重新手写平行的响应 `type` / `interface`", self.skill_text)
+        self.assertIn("不新建独立类型文件或完整建模未使用字段", self.api_text)
+
+    def test_api_states_are_not_added_by_default(self):
+        self.assertIn("不得默认补齐全部状态", self.api_text)
+        self.assertIn(
+            "只处理需求明确要求、OpenAPI 明确表达或现有页面已经存在",
+            self.skill_text,
+        )
+        self.assertNotIn(
+            "覆盖加载、空数据、业务失败、网络失败、重复点击或重复请求",
+            self.api_text,
+        )
+
+    def test_ui_fixes_follow_openapi_contract(self):
+        for text in (
+            "接口相关修复以项目 OpenAPI YAML",
+            "不得把已类型化服务端响应字段降级为 `unknown`",
+            "normalize helper",
+            "API 类型直接复用生成类型",
+            "最小局部类型",
+        ):
+            self.assertIn(text, self.ui_skill_text)
+
     def test_feature_prompt_requires_page_center_handoff(self):
         for text in (
             "## PageCenter 配置交接",
@@ -343,9 +424,13 @@ class SkillContractTests(unittest.TestCase):
             "15 秒",
         ):
             self.assertIn(text, description)
-        self.assertTrue(self.manifest["version"].startswith("0.2.0"))
+        self.assertTrue(self.manifest["version"].startswith("0.2.1"))
         self.assertIn(
             "Optional companion UI self-check",
+            self.manifest["interface"]["capabilities"],
+        )
+        self.assertIn(
+            "OpenAPI contract-first prompt guidance",
             self.manifest["interface"]["capabilities"],
         )
 

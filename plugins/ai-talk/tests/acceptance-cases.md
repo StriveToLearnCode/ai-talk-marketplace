@@ -201,3 +201,50 @@ $ai-talk 修改 src/services/reward.ts 的接口错误映射，不改变页面�
 ```
 
 通过条件：最终提示词不得因为项目使用 Vue 或出现通用前端词汇而追加 `$ai-talk:ui-self-check`、Playwright MCP 或浏览器步骤；只安排与接口逻辑有关的实现和验证。
+
+
+## 25. OpenAPI 已声明整数响应字段
+
+附带项目 `openapi.yaml`，其中 `rewardId` 为 `integer`，未声明 `minimum`，并输入：
+
+```text
+$ai-talk 接入自选奖励接口，使用响应中的 rewardId。
+```
+
+通过条件：最终提示词要求后续 Codex 先复用 OpenAPI 生成的请求、响应和字段类型，直接把 `rewardId` 作为 `number` 使用；不得把它声明为 `unknown`，不得创建 `normalizeSelfSelectRewardId`、调用 `Number()`、`Number.isInteger()` 或返回 `undefined` fallback。
+
+## 26. 契约未声明的正数规则
+
+OpenAPI 只声明 `rewardId: integer`，没有 `minimum`、枚举或其他取值限制。
+
+通过条件：最终提示词不得凭空增加 `rewardId > 0`、非零、正整数或其他业务校验。只有 OpenAPI、用户需求或现有业务规则明确要求时才允许添加，并必须指出依据。
+
+## 27. Nullable 与 Optional 精确处理
+
+OpenAPI 将 `rewardId` 声明为可选但非 nullable，并将 `rewardName` 声明为 nullable。
+
+通过条件：最终提示词只要求按契约分别处理缺失的 `rewardId` 和允许为 `null` 的 `rewardName`，不得把两个字段统一扩大为 `unknown` 后重新转换或兜底。
+
+## 28. 真实不可信边界仍允许校验
+
+输入要求把 URL 查询参数中的奖励 ID 传给已类型化接口。
+
+通过条件：最终提示词允许在 URL 参数边界完成必要解析和校验，但接口响应中的同名 `rewardId` 继续信任 OpenAPI 生成类型；不得把输入边界校验复制到服务端响应消费层。
+
+## 29. 生成类型存在时不重复建模
+
+项目已经由 OpenAPI 生成接口响应类型，页面只消费一次响应。
+
+通过条件：最终提示词要求直接复用生成类型和调用链推断，不新建重复响应 `interface`、平行 `types.ts` 或只使用一次的命名类型。只有确实存在跨文件复用的业务派生类型时，才放入最近模块已有的类型文件。
+
+## 30. 没有生成类型时使用最小局部类型
+
+确认项目没有可用生成类型，现有请求封装返回 `any`，页面只读取 `rewardId` 和 `rewardName`。
+
+通过条件：最终提示词只为实际消费字段补最小局部类型，不完整建模整个响应、不新建独立类型文件；不得通过 normalize helper 代替类型声明。
+
+## 31. 真实响应违反 OpenAPI
+
+联调中发现真实 `rewardId` 与 OpenAPI 的 `integer` 契约不一致。
+
+通过条件：最终提示词要求报告契约不一致并沿用项目现有请求错误处理或上报方式，不得在消费层通过 `Number()`、默认值、空值或静默 fallback 修正响应；请求失败处理不得扩散成字段级 normalize。

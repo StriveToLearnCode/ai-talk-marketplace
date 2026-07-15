@@ -27,6 +27,7 @@ AI Talk 基于用户原话、截图和明确目标文件理解研发需求，建
 - Figma、飞书等 URL 不打开；明确附带的本地 `openapi.yaml` 可以读取。
 - 不运行 `collect_context.py`、完整项目索引、formatter、lint、测试或构建。
 - `$gen-code`、`$ai-test` 等只作为 fenced `text` 代码块中的待执行提示词。
+- 接口任务以项目 OpenAPI YAML、真实请求封装和生成类型为权威契约。已类型化响应字段不得降级为 `unknown`，不得增加无依据的转换、normalize helper、业务校验或静默 fallback；一次性响应优先依赖生成类型和调用链推断。
 
 ## Skill 路由
 
