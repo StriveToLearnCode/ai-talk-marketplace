@@ -148,7 +148,7 @@ class SkillContractTests(unittest.TestCase):
 
     def test_explicit_ui_self_check_is_ordered_after_code_and_tests(self):
         for text in (
-            "功能实现、用户明确要求的目标测试、`$ai-talk:ui-self-check`、PageCenter 配置交接和最终报告",
+            "功能实现、用户明确要求的目标测试、`$ai-talk:ui-self-check`、PageCenter 配置闭环和最终报告",
             "$ai-talk:ui-self-check 只检查不修改",
             "不读取 `ui-self-check/SKILL.md`",
             "不调用该 Skill、Playwright MCP、浏览器或 Chrome",
@@ -246,18 +246,30 @@ class SkillContractTests(unittest.TestCase):
         self.assertIn("不得写成“先确认后给方案”", self.skill_text)
 
     def test_output_contract_stops_after_prompt(self):
-        self.assertIn("需求理解与对应：", self.skill_text)
-        self.assertIn("已读取上下文：", self.skill_text)
-        self.assertIn("AI 语义判断：", self.skill_text)
-        self.assertIn("对应关系：", self.skill_text)
-        self.assertIn("建议（非需求）：", self.skill_text)
-        self.assertIn("待确认信息：", self.skill_text)
-        self.assertIn("只列实际读取的文件路径及直接相关结构", self.skill_text)
+        self.assertIn("需求理解：", self.skill_text)
+        self.assertIn("最多 4 个单行项目", self.skill_text)
+        self.assertIn("默认不超过 20 行、约 900 个中文字符", self.skill_text)
+        self.assertIn("才可放宽到 30 行、约 1400 个中文字符", self.skill_text)
+        self.assertIn("同一事实只写一次", self.skill_text)
+        self.assertIn("不输出“用户明确需求”“已读取上下文”“AI 语义判断”“证据与对应”“工程实现约束”", self.skill_text)
+        self.assertIn("不复述通用工程常识", self.skill_text)
         self.assertIn("随后只输出一个 fenced `text` 代码块", self.skill_text)
         self.assertIn("代码块必须自包含", self.skill_text)
         self.assertIn("任务话术已生成，当前尚未执行代码修改", self.skill_text)
         self.assertIn("不得继续读取、调用或执行", self.skill_text)
         self.assertIn("不得输出确认、取消、开始等伪交互文案", self.skill_text)
+
+        example = self.skill_text.split("局部功能与测试任务可使用以下结构", 1)[1]
+        example = example.split("```text", 1)[1].split("```", 1)[0].strip()
+        self.assertLessEqual(len(example.splitlines()), 20)
+        for heading in (
+            "用户明确需求：",
+            "已读取上下文：",
+            "AI 语义判断：",
+            "证据与对应：",
+            "工程实现约束：",
+        ):
+            self.assertNotIn(heading, example)
 
     def test_capability_reference_matches_pure_prompt_mode(self):
         for text in (
@@ -273,21 +285,24 @@ class SkillContractTests(unittest.TestCase):
     def test_feature_prompt_delegates_real_discovery_downstream(self):
         self.assertIn("$<skill-name>", self.feature_text)
         self.assertIn("local-patch + incremental", self.feature_text)
-        self.assertIn("读取组件注册表和真实组件文档", self.feature_text)
-        self.assertIn("AI 语义判断：", self.feature_text)
-        self.assertIn("证据与对应：", self.feature_text)
-        self.assertIn("明确/推导/待确认", self.feature_text)
+        self.assertIn("读取实现所需的组件注册表和真实组件文档", self.feature_text)
+        self.assertIn("[事实/推导/待确认]", self.feature_text)
+        self.assertIn("最多 4 条", self.feature_text)
+        self.assertIn("同一事实只出现一次", self.feature_text)
 
     def test_code_writing_prompts_include_engineering_constraints(self):
         for text in (
             "## 工程实现约束",
-            "对所有会写代码的 `modify_and_verify` 提示词写入以下默认约束",
+            "对所有会写代码的 `modify_and_verify` 任务应用以下默认约束",
+            "只把与当前任务直接相关的内容压缩成一行",
+            "不要输出通用“工程实现约束”清单",
             "不为假设场景新增抽象、辅助函数、状态、依赖或文件",
             "真实不可信边界",
-            "必要注释保持简短并解释原因",
+            "写简短注释；注释解释原因",
         ):
             self.assertIn(text, self.skill_text)
-        self.assertIn("工程实现约束：", self.feature_text)
+        self.assertIn("约束：", self.feature_text)
+        self.assertNotIn("工程实现约束：", self.feature_text)
         self.assertIn("`analyze`、`plan`、`review` 不得因此变成代码修改任务", self.skill_text)
 
     def test_openapi_contract_is_authoritative(self):
@@ -316,7 +331,7 @@ class SkillContractTests(unittest.TestCase):
             self.assertIn(text, self.skill_text)
             self.assertIn(text, self.api_text)
         self.assertIn(
-            "OpenAPI、用户需求和现有业务规则都未声明的校验",
+            "OpenAPI、用户需求和现有业务规则都未声明的猜测性标准化或校验",
             self.skill_text,
         )
 
@@ -358,27 +373,34 @@ class SkillContractTests(unittest.TestCase):
 
     def test_feature_prompt_requires_page_center_handoff(self):
         for text in (
-            "## PageCenter 配置交接",
+            "## PageCenter 配置闭环",
             "检查本轮新增或修改的代码是否依赖 PageCenter 配置",
-            "不得让用户自行搜索配置项",
+            "外部操作：PageCenter",
+            "`已完成`、`需要用户手动操作` 或 `无需配置`",
+            "具备操作条件时必须实际完成配置并验证结果",
             "`text`、`json`、`assets`、`components` 或 `props`",
-            "填写值或结构示例",
+            "实际写入值或结构",
+            "目标环境",
             "代码消费位置",
-            "`新增` / `修改` / `已存在但未验证` 状态",
-            "具体操作步骤",
+            "不能代操作的具体原因",
+            "未配置影响",
             "无法确认的值标记为 `TODO`",
+            "不得猜测后继续声称任务全部完成",
             "page-center-config.request.json",
             "本次不需要新增或修改 PageCenter 配置",
         ):
             self.assertIn(text, self.skill_text)
 
         for text in (
-            "不得让用户自行搜索配置项",
+            "外部操作：PageCenter",
+            "已完成”“需要用户手动操作”或“无需配置",
+            "能操作则实际配置并报告",
             "text/json/assets/components/props",
+            "目标环境",
             "代码消费位置",
-            "新增/修改/已存在但未验证",
-            "具体操作步骤",
-            "本次不需要新增或修改 PageCenter 配置",
+            "未配置影响",
+            "不得猜测或声称任务全部完成",
+            "page-center-config.request.json",
         ):
             self.assertIn(text, self.feature_text)
 
