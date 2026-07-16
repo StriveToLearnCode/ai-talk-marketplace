@@ -235,7 +235,8 @@ function exclusionsFrom(query) {
 function isBugRequest(text) {
   return hasAny(text, [
     "为什么没有显示", "为什么没显示", "却没有显示", "却没显示", "没有显示", "没显示", "未显示", "不显示",
-    "这里不对", "修一下", "异常", "有问题", "报错", "错误", "不生效", "失效", "定位并修复", "排查", "修复",
+    "这里不对", "不对", "修一下", "异常", "有问题", "报错", "错误", "不生效", "失效", "未切换", "没有更新",
+    "定位并修复", "排查", "修复",
   ]);
 }
 
@@ -305,7 +306,8 @@ function buildProfile(query, suppliedEvidence) {
   const explicitCode = hasAny(text, [
     "生成代码", "生成页面代码", "修改代码", "写代码", "直接实现", "直接做", "做页面", "加逻辑", "开发页面",
     "实现页面", "实现 vue", "写组件", "做组件", "做个组件", "改页面", "定位并修改", "定位并修复",
-    "开发弹窗", "实现弹窗", "做弹窗", "开发一个弹窗", "实现一个弹窗",
+    "开发弹窗", "实现弹窗", "做弹窗", "开发一个弹窗", "实现一个弹窗", "新增功能", "开发功能", "实现功能",
+    "改造页面", "改造组件", "改造已有", "修改已有", "调整页面", "调整组件",
   ]) || (hasAny(text, ["页面", "弹窗", "dialog", "modal", "popup"]) && hasAny(text, ["做一下", "做出来", "实现", "开发"]));
 
   // Explicit browser/UI inspection wins over generic words such as “有问题” or “异常”.
@@ -581,53 +583,235 @@ function confirmedContextFor(query, evidenceItems) {
   return contexts.slice(0, 8);
 }
 
-function topicFrom(query) {
-  let topic = query
-    .replace(/^\s*\$ai-talk(?::ai-talk)?\s*/i, "")
-    .split(/[，。；;\n]/, 1)[0]
-    .replace(/(?:\.{0,2}\/)?(?:[A-Za-z0-9_@.-]+\/)+[A-Za-z0-9_@.*-]+(?:\.[A-Za-z0-9]+)?/g, " ")
-    .replace(/\b[A-Za-z0-9_@.-]+\.(?:vue|tsx?|jsx?|css|scss|less|json|mjs|cjs|md|py|go|java|kt|swift)\b/gi, " ")
-    .replace(/^\s*(?:请|麻烦|请你|帮我|帮忙|需要你)\s*/, "")
-    .replace(/^\s*(?:开发|实现|新增|创建|生成|修改|修复|定位并修复|排查并修复|做|写)\s*(?:一个|一份|这个|当前)?\s*/, "")
-    .replace(/^\s*(?:下|目录下|文件中|中)的?\s*/, "")
-    .replace(/\s*(?:请)?(?:定位并|排查并)?修复(?:这个)?(?:问题|异常)?\s*$/, "")
-    .replace(/\s+/g, " ")
-    .trim();
-  if (topic.length > 48) topic = topic.slice(0, 48).trim();
-  return topic || "当前研发任务";
+const ENTITY_TYPES = [
+  "ui_component", "business_object", "state", "layout_scene", "config_or_symbol", "issue_symptom", "target_scope",
+];
+
+function intentFor(query, profile) {
+  if (profile.desired_output === "midscene_test_file") return "automated_test";
+  if (profile.desired_output === "live_ui_findings") return "ui_inspection";
+  if (profile.desired_output === "frontend_plan_files") return "planning";
+  const text = query.toLowerCase();
+  if (isBugRequest(text)) return "bug_fix";
+  if (hasAny(text, ["新增", "新建", "创建", "开发一个", "实现一个", "做一个", "做个", "从零开发"])) return "feature_create";
+  if (hasAny(text, ["改造", "修改", "调整", "升级", "迁移", "重构", "优化已有", "扩展已有"])) return "feature_modify";
+  if (profile.desired_output === "frontend_code_changes") return "feature_create";
+  return "unknown";
 }
 
-function retrievalQueriesFor(query, profile, contexts, evidenceItems) {
-  const topic = topicFrom(query);
-  const text = query.toLowerCase();
-  const result = [];
-  const add = (value) => {
-    const normalized = clean(value, 100);
-    if (normalized && !result.includes(normalized)) result.push(normalized);
-  };
-  const dialog = hasAny(text, ["弹窗", "dialog", "modal", "popup"]);
-  const bug = isBugRequest(text);
-  const target = contexts.find((item) => ["target_file", "target_directory"].includes(item.type))?.value.replace(/^目标(?:文件|目录)：/, "");
+function emptyEntities() {
+  return Object.fromEntries(ENTITY_TYPES.map((type) => [type, []]));
+}
 
-  add(topic);
-  if (dialog && (topic === "弹窗" || evidenceItems.length === 0)) add(`${topic} dialog modal popup`);
-  if (target && bug) add(`${target} ${topic}`);
-  add(`${topic} 当前项目已有实现`);
+function addEntity(entities, type, value, label, source) {
+  if (!value || !label || !source) return;
+  if (entities[type].some((item) => item.value === value && item.source === source)) return;
+  entities[type].push({ value, label, source });
+}
 
-  for (const evidence of evidenceItems) {
-    if (evidence.type === "visual_design") add(`${topic} 视觉稿与设计规范`);
-    if (evidence.type === "interaction_flow") add(`${topic} 交互流程`);
-    if (evidence.type === "api_document") {
-      const subject = evidence.detail.replace(/(?:接口信息|接口资料|接口文档|api 文档)$/i, "").trim();
-      add(subject && subject !== "接口" ? `${subject} 接口用法` : `${topic} 接口用法`);
+function entityValues(entities, type) {
+  return [...new Set((entities[type] || []).map((item) => item.value))];
+}
+
+function entityLabels(entities, type) {
+  return [...new Set((entities[type] || []).map((item) => item.label))];
+}
+
+function hasEntity(entities, type, value) {
+  return (entities[type] || []).some((item) => item.value === value);
+}
+
+function extractEntities(query, contexts, evidenceItems) {
+  const entities = emptyEntities();
+  const sources = [
+    { text: query.replace(/^\s*\$ai-talk(?::ai-talk)?\s*/i, ""), source: "user_text" },
+    ...evidenceItems.map((item) => ({ text: item.detail, source: item.source })),
+  ];
+
+  for (const { text, source } of sources) {
+    const lower = text.toLowerCase();
+    if (/进度条|(?:^|[^a-z0-9_])progress(?:[-_\s](?:track|bar))?(?=$|[^a-z0-9_])/i.test(text)) {
+      addEntity(entities, "ui_component", "progress-track", "进度条", source);
     }
-    if (evidence.type === "screenshot") add(`${topic} 截图对应已有实现`);
+    if (/弹窗|(?:^|[^a-z0-9_])(?:dialog|modal|popup)(?=$|[^a-z0-9_])/i.test(text)) {
+      addEntity(entities, "ui_component", "dialog", "弹窗", source);
+    }
+    if (/按钮|(?:^|[^a-z0-9_])button(?=$|[^a-z0-9_])/i.test(text)) {
+      addEntity(entities, "ui_component", "button", "按钮", source);
+    }
+    if (/排行榜|榜单|rank[-_\s]?list/i.test(text)) {
+      addEntity(entities, "ui_component", "rank-list", "排行榜", source);
+    }
+
+    const reward = /奖励|(?:^|[^a-z0-9_])reward(?=$|[^a-z0-9_])/i.test(text);
+    const stage = /阶段|(?:^|[^a-z0-9_])stage(?=$|[^a-z0-9_])/i.test(text);
+    if (reward && stage) addEntity(entities, "business_object", "reward-stage", "奖励阶段", source);
+    else {
+      if (reward) addEntity(entities, "business_object", "reward", "奖励", source);
+      if (stage) addEntity(entities, "business_object", "stage", "阶段", source);
+    }
+    if (/抽奖|(?:^|[^a-z0-9_])lottery(?=$|[^a-z0-9_])/i.test(text)) {
+      addEntity(entities, "business_object", "lottery", "抽奖", source);
+    }
+    if (/任务(?:状态|奖励|进度)|task[-_\s]?(?:state|reward|progress)/i.test(text)) {
+      addEntity(entities, "business_object", "task", "任务", source);
+    }
+
+    if (/未领取|(?:^|[^a-z0-9_])unclaimed(?=$|[^a-z0-9_])/i.test(text)) {
+      addEntity(entities, "state", "unclaimed", "未领取", source);
+    } else if (/已领取|(?:^|[^a-z0-9_])claimed(?=$|[^a-z0-9_])/i.test(text)) {
+      addEntity(entities, "state", "claimed", "已领取", source);
+    }
+    if (/未完成|(?:^|[^a-z0-9_])incomplete(?=$|[^a-z0-9_])/i.test(text)) {
+      addEntity(entities, "state", "incomplete", "未完成", source);
+    } else if (/已完成|(?:^|[^a-z0-9_])completed(?=$|[^a-z0-9_])/i.test(text)) {
+      addEntity(entities, "state", "completed", "已完成", source);
+    }
+    if (/锁定|已锁定|(?:^|[^a-z0-9_])locked(?=$|[^a-z0-9_])/i.test(text)) {
+      addEntity(entities, "state", "locked", "锁定", source);
+    }
+
+    if (/(?:^|[^a-z0-9_])rtl(?=$|[^a-z0-9_])|从右到左/i.test(text)) {
+      addEntity(entities, "layout_scene", "RTL", "RTL", source);
+    }
+    if (/横向|水平|(?:^|[^a-z0-9_])horizontal(?=$|[^a-z0-9_])/i.test(text)) {
+      addEntity(entities, "layout_scene", "horizontal", "横向", source);
+    }
+    if (/响应式|(?:^|[^a-z0-9_])responsive(?=$|[^a-z0-9_])/i.test(text)) {
+      addEntity(entities, "layout_scene", "responsive", "响应式", source);
+    }
+
+    for (const match of text.matchAll(/\b[A-Za-z_$][A-Za-z0-9_$]*\b/g)) {
+      const symbol = match[0];
+      if (/[a-z][A-Z]/.test(symbol) || symbol.includes("_") || symbol.startsWith("$")) {
+        addEntity(entities, "config_or_symbol", symbol, symbol, source);
+      }
+    }
+
+    const imageMismatch = /(?:图片|图像|image)[^，。；;\n]{0,12}(?:没有|没|未|不)(?:显示|切换|更新)|(?:没有|没|未|不)(?:显示|切换|更新)[^，。；;\n]{0,12}(?:图片|图像|image)/i.test(text);
+    if (imageMismatch) addEntity(entities, "issue_symptom", "image-not-updated", "图片未切换", source);
+    if (/显示不完整|展示不完整|显示不全|展示不全|display[-_\s]?(?:incomplete|partial)/i.test(text)) {
+      addEntity(entities, "issue_symptom", "incomplete-display", "显示不完整", source);
+    }
+    if (/顺序(?:错误|异常|不对)|顺序反了|order[-_\s]?(?:mismatch|wrong)/i.test(text)) {
+      addEntity(entities, "issue_symptom", "order-mismatch", "顺序错误", source);
+    }
+    if (/状态[^，。；;\n]{0,8}(?:错误|异常|不对)|(?:错误|异常)状态|state[-_\s]?(?:mismatch|wrong)/i.test(text)) {
+      addEntity(entities, "issue_symptom", "state-display-mismatch", "状态显示异常", source);
+    }
+    if (lower.includes("当前活动")) addEntity(entities, "target_scope", "current-activity", "当前活动", source);
+    if (lower.includes("当前项目")) addEntity(entities, "target_scope", "current-project", "当前项目", source);
   }
 
-  if (dialog || profile.target_category === "generic_component") add(`${topic} 组件知识库`);
-  if (result.length < 6) add(`${topic} 公司 Docs`);
-  if (result.length < 6) add(`${topic} 相关 Skill 适用场景`);
-  while (result.length < 3) add(`${topic} 项目约定`);
+  const hasProgress = hasEntity(entities, "ui_component", "progress-track");
+  const hasRewardStage = hasEntity(entities, "business_object", "reward-stage");
+  const mismatch = sources.some(({ text }) => /不对|异常|错误|显示[^，。；;\n]{0,8}(?:不一致|异常)/.test(text));
+  if (hasProgress && mismatch) {
+    entities.issue_symptom = entities.issue_symptom.filter((item) => item.value !== "state-display-mismatch");
+    const source = sources.find((item) => /不对|异常|错误|显示[^，。；;\n]{0,8}(?:不一致|异常)/.test(item.text))?.source || "user_text";
+    addEntity(entities, "issue_symptom", "progress-display-mismatch", "进度展示异常", source);
+  }
+  if (hasProgress && hasRewardStage) {
+    for (const item of entities.ui_component) {
+      if (item.value === "progress-track") item.label = "奖励进度条";
+    }
+  }
+
+  for (const context of contexts) {
+    if (!["target_file", "target_directory"].includes(context.type)) continue;
+    const value = context.value.replace(/^目标(?:文件|目录)：/, "");
+    addEntity(entities, "target_scope", value, value, context.source);
+  }
+  return entities;
+}
+
+function addLimited(group, value) {
+  const normalized = clean(value || "", 100);
+  if (normalized && group.length < 3 && !group.includes(normalized)) group.push(normalized);
+}
+
+function queryGroupsFor(intent, entities) {
+  const groups = { docs: [], skills: [], components: [], code: [] };
+  const components = entityValues(entities, "ui_component");
+  const objects = entityValues(entities, "business_object");
+  const states = entityValues(entities, "state");
+  const layouts = entityValues(entities, "layout_scene");
+  const symptoms = entityValues(entities, "issue_symptom");
+  const symbols = entityValues(entities, "config_or_symbol");
+  const scopes = entityValues(entities, "target_scope");
+  const progress = components.includes("progress-track");
+  const rewardStage = objects.includes("reward-stage");
+  const rtl = layouts.includes("RTL");
+
+  if (rtl && progress) addLimited(groups.docs, `${rewardStage ? "RTL 奖励进度条" : "RTL 进度条"}状态展示规范`);
+  if (states.length && objects.length) addLimited(groups.docs, `${rewardStage ? "奖励阶段" : objects[0]} ${states[0]} 状态定义`);
+  else if (states.length) addLimited(groups.docs, `${states[0]} 状态定义`);
+  if (layouts.length && !progress) addLimited(groups.docs, `${layouts[0]} 页面布局规范`);
+
+  const skillQueries = {
+    bug_fix: "已有前端页面 Bug 定位并修复",
+    feature_create: "前端新功能开发与已有能力复用",
+    feature_modify: "已有前端功能改造与验证",
+    ui_inspection: "浏览器即时视觉与交互检查",
+    planning: "前端实施方案生成",
+    automated_test: "前端自动化测试生成与运行",
+  };
+  addLimited(groups.skills, skillQueries[intent]);
+
+  if (components.includes("dialog")) {
+    for (const synonym of ["dialog", "modal", "popup"]) addLimited(groups.components, synonym);
+  }
+  if (progress) {
+    addLimited(groups.components, "progress-track");
+    if (rewardStage || objects.includes("reward")) addLimited(groups.components, "reward-progress");
+    if (rtl) addLimited(groups.components, "RTL progress");
+  }
+  if (components.includes("button")) addLimited(groups.components, "button");
+  if (components.includes("rank-list")) addLimited(groups.components, "rank-list");
+
+  for (const symbol of symbols) addLimited(groups.code, symbol);
+  const exactScope = scopes.find((scope) => !["current-activity", "current-project"].includes(scope));
+  const codeTerms = [
+    rewardStage ? "奖励进度条" : progress ? "进度条" : components[0],
+    states[0],
+    symptoms[0],
+  ].filter(Boolean).slice(0, 2).join(" ");
+  if (exactScope && codeTerms) addLimited(groups.code, `${exactScope} ${codeTerms} 实现`);
+  if (codeTerms) addLimited(groups.code, `当前项目 ${codeTerms} 实现`);
+  if (codeTerms && (rtl || rewardStage || states.length)) {
+    addLimited(groups.code, `相似活动 ${[
+      rtl ? "RTL" : null, progress ? "progress" : components[0], states[0], symptoms[0],
+    ].filter(Boolean).slice(0, 3).join(" ")} 实现`);
+  }
+  return groups;
+}
+
+function retrievalDirectionsFor(intent, entities) {
+  const result = [];
+  const add = (value) => {
+    if (value && !result.includes(value)) result.push(value);
+  };
+  const components = entityValues(entities, "ui_component");
+  const objects = entityValues(entities, "business_object");
+  const states = entityValues(entities, "state");
+  const stateLabels = entityLabels(entities, "state");
+  const symptoms = entityValues(entities, "issue_symptom");
+  const layouts = entityValues(entities, "layout_scene");
+  const scopes = entityValues(entities, "target_scope");
+  const progress = components.includes("progress-track");
+  const dialog = components.includes("dialog");
+
+  if (objects.includes("reward-stage") && states.length) add("奖励阶段状态规则");
+  else if (states.length) add(`${stateLabels[0]}状态规则`);
+  if (progress) add(`${layouts.includes("RTL") ? "RTL " : ""}奖励进度条组件文档`);
+  if (dialog) add("弹窗组件文档");
+  const exactScope = scopes.find((scope) => !["current-activity", "current-project"].includes(scope));
+  if (exactScope) add(`${exactScope} 已有实现`);
+  else if (progress) add("当前项目已有进度实现");
+  else if (dialog) add("当前项目弹窗已有实现");
+  else if (symptoms.includes("image-not-updated") && stateLabels.length) add(`当前项目${stateLabels[0]}图片状态映射`);
+  if (layouts.includes("RTL") && states.length) add("相似活动状态映射");
+  if (intent === "ui_inspection") add("即时浏览器视觉与交互检查");
   return result.slice(0, 6);
 }
 
@@ -748,6 +932,9 @@ export async function routeCompanySkills(args) {
   const recommendation = top ? candidate(top) : null;
   const alternatives = positive.slice(1, 3).map(candidate);
   const confirmedContext = confirmedContextFor(args.query, evidenceItems);
+  const intent = intentFor(args.query, profile);
+  const entities = extractEntities(args.query, confirmedContext, evidenceItems);
+  const retrievalQueryGroups = queryGroupsFor(intent, entities);
   const unknowns = unknownsFor(profile, args.query, confirmedContext);
   profile.unknowns = unknowns;
   const index = {
@@ -758,10 +945,14 @@ export async function routeCompanySkills(args) {
     warnings,
   };
   return {
-    schema_version: 3,
+    schema_version: 4,
     original_goal: args.query,
     confirmed_context: confirmedContext,
-    retrieval_queries: retrievalQueriesFor(args.query, profile, confirmedContext, evidenceItems),
+    intent,
+    entities,
+    retrieval_query_groups: retrievalQueryGroups,
+    retrieval_queries: Object.values(retrievalQueryGroups).flat(),
+    retrieval_directions: retrievalDirectionsFor(intent, entities),
     boundaries: boundariesFor(profile, args.query, confirmedContext),
     unknowns,
     execution_skill: recommendation?.name || null,

@@ -14,7 +14,8 @@ const REPOSITORY = path.resolve(import.meta.dirname, "../../../../../..");
 const LEAKED_TERMS = [
   "task_action", "target_category", "desired_output", "execution_mode", "evidence_types",
   "query_terms", "matched_fields", "matched_terms", "/Users/", "score", "index_conflicts",
-  "routing details", "AI 将执行", "原因：", "推荐执行", "使用：",
+  "routing details", "AI 将执行", "原因：", "推荐执行", "使用：", "retrieval_query_groups",
+  "ui_component", "business_object", "issue_symptom", "config_or_symbol", "feature_create", "bug_fix",
 ];
 
 const SKILLS = [
@@ -66,6 +67,21 @@ function matrix(results) {
 
 function assertNoLeaks(output) {
   for (const term of LEAKED_TERMS) assert.ok(!output.includes(term), `leaked ${term}:\n${output}`);
+}
+
+function values(payload, type) {
+  return payload.entities[type].map((item) => item.value);
+}
+
+function assertCategorizedQueries(payload) {
+  assert.equal(payload.schema_version, 4);
+  assert.deepEqual(Object.keys(payload.retrieval_query_groups), ["docs", "skills", "components", "code"]);
+  for (const queries of Object.values(payload.retrieval_query_groups)) {
+    assert.ok(queries.length <= 3, JSON.stringify(payload.retrieval_query_groups));
+    assert.equal(new Set(queries).size, queries.length);
+    assert.ok(queries.every((query) => typeof query === "string" && query.trim()), JSON.stringify(queries));
+  }
+  assert.deepEqual(payload.retrieval_queries, Object.values(payload.retrieval_query_groups).flat());
 }
 
 test("real repository index and company fixture index are reported separately", async (t) => {
@@ -192,9 +208,11 @@ test("multiple image attachments keep visual, interaction, and API roles with so
   assert.deepEqual(payload.confirmed_context.slice(0, 3).map((item) => item.source), [
     "attachment:1", "attachment:2", "attachment:3",
   ]);
-  for (const query of ["礼物连爆弹窗 视觉稿与设计规范", "礼物连爆弹窗 交互流程", "连爆次数 接口用法"]) {
-    assert.ok(payload.retrieval_queries.includes(query), JSON.stringify(payload.retrieval_queries));
-  }
+  assert.equal(payload.intent, "feature_create");
+  assert.ok(values(payload, "ui_component").includes("dialog"));
+  assert.ok(values(payload, "target_scope").includes("recharge/components/dialogs"));
+  assert.deepEqual(payload.retrieval_query_groups.components, ["dialog", "modal", "popup"]);
+  assertCategorizedQueries(payload);
   for (const text of ["第一张图：弹窗视觉稿", "第二张图：交互流程", "第三张图：连爆次数接口信息", "执行能力：gen-code"]) {
     assert.ok(output.includes(text), output);
   }
@@ -213,7 +231,8 @@ test("an explicit file bug stays compact and captures only the target and sympto
     value: "目标文件：src/components/reward-card.vue",
     source: "user_text:path",
   }]);
-  assert.ok(payload.retrieval_queries.some((query) => query.includes("图片没有显示")));
+  assert.ok(values(payload, "issue_symptom").includes("image-not-updated"));
+  assert.ok(payload.retrieval_query_groups.code.some((query) => query.includes("src/components/reward-card.vue")));
   assert.deepEqual(payload.unknowns, []);
   assert.ok(output.includes(prompt));
   assert.ok(!output.includes("AGENTS.md"));
@@ -228,8 +247,9 @@ test("a generic dialog request expands retrieval vocabulary without inventing re
   const output = await routeUser(root, "开发一个弹窗");
 
   assert.equal(payload.execution_skill, "gen-code");
-  assert.ok(payload.retrieval_queries.some((query) => query.includes("dialog modal popup")));
-  for (const invented of ["确认按钮", "props", "样式"]) {
+  assert.equal(payload.intent, "feature_create");
+  assert.deepEqual(payload.retrieval_query_groups.components, ["dialog", "modal", "popup"]);
+  for (const invented of ["确认按钮", "奖励列表", "props", "事件"]) {
     assert.ok(!JSON.stringify(payload).includes(invented), JSON.stringify(payload));
     assert.ok(!output.includes(invented), output);
   }
@@ -258,13 +278,99 @@ test("coding tasks keep gen-code internal while output centers context and retri
     assert.equal(payload.execution_skill, "gen-code", prompt);
     assert.match(output, /^用户目标：/);
     assert.ok(output.includes("已确认上下文："), output);
-    assert.ok(output.includes("建议检索："), output);
+    assert.ok(!output.includes("建议检索："), output);
+    assert.ok(!output.includes(JSON.stringify(payload.retrieval_queries)), output);
     assert.ok(output.includes("任务边界与未知项："), output);
     assert.match(output, /\n执行能力：gen-code$/);
     assert.ok(!output.includes("AI 已决定"), output);
     assert.ok(!output.includes("为什么选择"), output);
     assert.ok(!output.includes("未选择"), output);
     assertNoLeaks(output);
+  }
+});
+
+test("RTL reward progress screenshot produces source-backed concepts and categorized queries", async (t) => {
+  const root = await fixture();
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const prompt = "为什么这个进度条不对";
+  const evidence = ["screenshot=RTL 页面奖励阶段进度条，已领取状态显示异常"];
+  const payload = await routeDebug(root, prompt, evidence);
+  const output = await routeUser(root, prompt, evidence);
+
+  assert.equal(payload.intent, "bug_fix");
+  assert.equal(payload.execution_skill, "gen-code");
+  for (const [type, expected] of [
+    ["ui_component", "progress-track"], ["business_object", "reward-stage"], ["state", "claimed"],
+    ["layout_scene", "RTL"], ["issue_symptom", "progress-display-mismatch"],
+  ]) assert.ok(values(payload, type).includes(expected), `${type}: ${JSON.stringify(payload.entities[type])}`);
+  assertCategorizedQueries(payload);
+  for (const suffix of ["公司 Docs", "Skill", "当前项目已有实现"]) {
+    assert.ok(!payload.retrieval_queries.includes(`${prompt} ${suffix}`), JSON.stringify(payload.retrieval_queries));
+  }
+  for (const text of ["研发概念：", "组件：奖励进度条", "场景：RTL", "状态：已领取", "问题：进度展示异常", "检索方向："]) {
+    assert.ok(output.includes(text), output);
+  }
+  assertNoLeaks(output);
+});
+
+test("claimed image symptom without an attachment never invents screenshot evidence", async (t) => {
+  const root = await fixture();
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const payload = await routeDebug(root, "已领取图片没有显示");
+  const output = await routeUser(root, "已领取图片没有显示");
+
+  assert.equal(payload.intent, "bug_fix");
+  assert.ok(values(payload, "state").includes("claimed"));
+  assert.ok(values(payload, "issue_symptom").includes("image-not-updated"));
+  assert.ok(!payload.confirmed_context.some((item) => item.type.includes("screenshot")));
+  assert.ok(!payload.routing.retrieval_profile.evidence_types.includes("screenshot"));
+  assert.ok(!output.includes("截图"), output);
+  assert.ok(output.includes("当前项目已领取图片状态映射"), output);
+  assertCategorizedQueries(payload);
+});
+
+test("live visual and interaction inspection uses inspection intent and skill query", async (t) => {
+  const root = await fixture();
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const payload = await routeDebug(root, "打开页面看看视觉和交互有没有问题");
+
+  assert.equal(payload.intent, "ui_inspection");
+  assert.equal(payload.execution_skill, "ui-self-check");
+  assert.deepEqual(payload.retrieval_query_groups.skills, ["浏览器即时视觉与交互检查"]);
+  assert.ok(payload.retrieval_query_groups.skills.every((query) => !query.includes("Bug") && !query.includes("修复")));
+  assertCategorizedQueries(payload);
+});
+
+test("exact code symbols are queried only when they appear in real input", async (t) => {
+  const root = await fixture();
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const absent = await routeDebug(root, "排查奖励进度配置状态错误");
+  const present = await routeDebug(root, "排查 progressRewardConfig 状态错误");
+
+  assert.ok(!values(absent, "config_or_symbol").includes("progressRewardConfig"));
+  assert.ok(!absent.retrieval_queries.some((query) => query.includes("progressRewardConfig")));
+  assert.ok(values(present, "config_or_symbol").includes("progressRewardConfig"));
+  assert.ok(present.retrieval_query_groups.code.includes("progressRewardConfig"));
+  assertCategorizedQueries(absent);
+  assertCategorizedQueries(present);
+});
+
+test("query builder supports all six declared development intents", async (t) => {
+  const root = await fixture();
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const cases = [
+    ["为什么按钮不对", "bug_fix", "gen-code"],
+    ["开发一个弹窗", "feature_create", "gen-code"],
+    ["改造已有弹窗", "feature_modify", "gen-code"],
+    ["打开页面看看视觉和交互有没有问题", "ui_inspection", "ui-self-check"],
+    ["生成一份前端实施计划", "planning", "gen-frontend-plan"],
+    ["生成自动化测试文件", "automated_test", "ai-test"],
+  ];
+  for (const [prompt, intent, skill] of cases) {
+    const payload = await routeDebug(root, prompt);
+    assert.equal(payload.intent, intent, prompt);
+    assert.equal(payload.execution_skill, skill, prompt);
+    assertCategorizedQueries(payload);
   }
 });
 

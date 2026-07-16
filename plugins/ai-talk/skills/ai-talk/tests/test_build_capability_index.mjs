@@ -17,7 +17,7 @@ test("compatibility command uses the context-enhancer default flow", async (t) =
   await writeFile(path.join(directory, "SKILL.md"), "---\nname: gen-code\ndescription: 生成页面代码和业务逻辑。\n---\n");
   const output = (await run(process.execPath, [script, "--root", root, "--query", "把这个页面做出来并修改代码"], { encoding: "utf8" })).stdout;
   assert.match(output, /^用户目标：/);
-  assert.match(output, /建议检索：/);
+  assert.doesNotMatch(output, /建议检索：/);
   assert.match(output, /执行能力：gen-code/);
   assert.ok(!output.includes("AI 已决定"));
   assert.ok(!output.includes("AI 将执行"));

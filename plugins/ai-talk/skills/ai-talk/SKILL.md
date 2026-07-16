@@ -1,11 +1,11 @@
 ---
 name: ai-talk
-description: 在用户显式调用 $ai-talk 时，将研发需求、附件和真实项目信息整理为带来源的上下文、检索查询、任务边界与阻塞未知项，并在内部路由到真实公司 Skill。只增强任务上下文和检索表达，不扩展业务需求、不代替下游 Skill 执行。
+description: 在用户显式调用 $ai-talk 时，识别研发意图，从用户文本、真实附件和明确项目上下文提取带来源的研发概念，按 Docs、Skill、组件和代码生成分类检索查询，并在内部路由到真实公司 Skill。只增强任务上下文和检索表达，不扩展业务需求、不代替下游 Skill 执行。
 ---
 
 # AI Talk 研发任务上下文增强器
 
-保留用户原始业务意图，提取有来源的真实上下文，将自然语言和附件规范化为适合检索公司 Docs、Skill、组件知识库和项目已有实现的查询，再把结果交给真实执行 Skill。不要扩写成长 Prompt，也不要把 Skill 推荐作为主体。
+保留用户原始业务意图，提取有来源的真实上下文和研发概念，将其规范化为适合检索公司 Docs、Skill、组件知识库和项目已有实现的分类查询，再把结果交给真实执行 Skill。不要扩写成长 Prompt，也不要把 Skill 推荐作为主体。
 
 ## 每轮流程
 
@@ -38,8 +38,20 @@ confirmed_context:
   - type: target_file | target_directory | visual_design | interaction_flow | api_document | screenshot | selected_code
     value: 可展示的真实信息
     source: user_text:path | user_text:explicit_reference | attachment:<序号>
-retrieval_queries:
-  - 面向真实知识源的查询
+intent: bug_fix | feature_create | feature_modify | ui_inspection | planning | automated_test | unknown
+entities:
+  ui_component | business_object | state | layout_scene | config_or_symbol | issue_symptom | target_scope:
+    - value: 规范化检索值
+      label: 前台展示名
+      source: user_text | user_text:path | attachment:<序号>
+retrieval_query_groups:
+  docs: []
+  skills: []
+  components: []
+  code: []
+retrieval_queries: 四类查询按 docs、skills、components、code 顺序展平的兼容数组
+retrieval_directions:
+  - 面向用户的概括性检索方向
 boundaries:
   - 本任务真实适用的范围或禁止事项
 unknowns:
@@ -59,10 +71,14 @@ Skill 评分、候选、重复名称、路径和索引统计仅存在于 `routin
 
 ## 检索查询
 
-- 默认生成 3～6 个高价值方向，覆盖当前任务真正适用的公司 Docs、Skill、组件知识库或项目已有实现。
-- 可以扩展中英文同义词和公司常用表达，例如将“弹窗”扩展为 `dialog modal popup`。
+- 先识别 `intent`，再从用户原话、真实附件摘要和明确上下文分别提取带 `source` 的研发概念；不得直接使用用户原话作为 Query 主体。
+- Docs、Skill、Component、Code 每类最多生成 3 个高价值查询；删除低信息量、重复和仅追加固定后缀的查询。
+- Docs 只查询已提取业务对象、状态含义和布局规范；Skill 只查询当前 intent 与期望产物；Component 只查询真实组件类别；Code 只查询真实路径、符号和实体相关实现。
+- 可以扩展中英文同义词和公司常用表达，例如将“弹窗”扩展为 `dialog`、`modal`、`popup`。
 - 扩展词只是建议检索，不得写成用户已确认需求。
-- 不维护另一套公司组件索引，不预设具体组件名称，不编造 Docs、Skill、路径、接口或业务规则。
+- `progressRewardConfig` 等精确代码符号只有在用户文本、真实附件或选中代码中实际出现时才允许提取和查询。
+- “图片没有显示”是问题表现，不是截图证据；只有 `--evidence-type` 提供的真实附件内容可以贡献附件来源实体。
+- 不维护另一套公司组件索引，不预设用户未提及的组件名称，不编造 Docs、Skill、路径、接口或业务规则。
 - 公司现有 Skill 负责消费自己的知识库并执行；AI Talk 只帮助它提出更准确的查询。
 
 ## 边界与未知项
@@ -88,7 +104,7 @@ Skill 评分、候选、重复名称、路径和索引统计仅存在于 `routin
 
 ## 默认输出
 
-只展示四个区域，并在结尾显示真实 Skill 名称：
+默认输出不展示 `intent`、实体内部字段、分类 Query 或兼容 Query 数组。展示用户目标、真实上下文、可靠研发概念、概括性检索方向和任务边界，并在结尾显示真实 Skill 名称：
 
 ```text
 用户目标：
@@ -97,7 +113,13 @@ Skill 评分、候选、重复名称、路径和索引统计仅存在于 `routin
 已确认上下文：
 - <真实上下文>
 
-建议检索：
+研发概念：
+- 组件：<可靠组件概念>
+- 场景：<可靠布局场景>
+- 状态：<可靠状态>
+- 问题：<可靠问题表现>
+
+检索方向：
 - <检索方向>
 
 任务边界与未知项：
@@ -106,6 +128,8 @@ Skill 评分、候选、重复名称、路径和索引统计仅存在于 `routin
 
 执行能力：<真实 Skill 名称>
 ```
+
+无法可靠提取的概念行直接省略；没有可靠概念或检索方向时不显示对应区域，不得用猜测或低信息量占位补齐。
 
 不得显示大块“AI 已决定”“为什么选择 Skill”“未选择 Skill”、职责介绍、评分、候选或绝对路径。只有输入同时明确要求两个容易混淆的交付物，存在真正 Skill 选型歧义时，才在执行能力前增加一行 `选型说明`。
 

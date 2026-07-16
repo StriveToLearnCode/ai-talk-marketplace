@@ -15,7 +15,21 @@ export function formatUserOutput(result) {
   const contexts = (result?.confirmed_context || [])
     .filter((item) => item && typeof item.value === "string" && item.value.trim())
     .slice(0, 8);
-  const queries = cleanedStrings(result?.retrieval_queries, 6);
+  const conceptLabels = {
+    ui_component: "组件",
+    business_object: "业务",
+    state: "状态",
+    layout_scene: "场景",
+    config_or_symbol: "符号",
+    issue_symptom: "问题",
+    target_scope: "范围",
+  };
+  const concepts = [];
+  for (const [type, heading] of Object.entries(conceptLabels)) {
+    const labels = cleanedStrings((result?.entities?.[type] || []).map((item) => item?.label), 6);
+    if (labels.length) concepts.push(`${heading}：${labels.join("、")}`);
+  }
+  const directions = cleanedStrings(result?.retrieval_directions, 6);
   const boundaries = cleanedStrings(result?.boundaries, 6);
   const unknowns = cleanedStrings(result?.unknowns, 1);
   const lines = [
@@ -28,9 +42,8 @@ export function formatUserOutput(result) {
   if (contexts.length) lines.push(...contexts.map((item) => `- ${item.value}`));
   else lines.push("- 未提供可确认的额外上下文");
 
-  lines.push("", "建议检索：");
-  if (queries.length) lines.push(...queries.map((query) => `- ${query}`));
-  else lines.push("- 待目标明确后生成检索词");
+  if (concepts.length) lines.push("", "研发概念：", ...concepts.map((concept) => `- ${concept}`));
+  if (directions.length) lines.push("", "检索方向：", ...directions.map((direction) => `- ${direction}`));
 
   lines.push("", "任务边界与未知项：");
   if (boundaries.length) lines.push(...boundaries.map((boundary) => `- 边界：${boundary}`));
