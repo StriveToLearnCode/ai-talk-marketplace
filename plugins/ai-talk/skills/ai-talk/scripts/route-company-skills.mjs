@@ -307,8 +307,10 @@ function buildProfile(query, suppliedEvidence) {
     "生成代码", "生成页面代码", "修改代码", "写代码", "直接实现", "直接做", "做页面", "加逻辑", "开发页面",
     "实现页面", "实现 vue", "写组件", "做组件", "做个组件", "改页面", "定位并修改", "定位并修复",
     "开发弹窗", "实现弹窗", "做弹窗", "开发一个弹窗", "实现一个弹窗", "新增功能", "开发功能", "实现功能",
-    "改造页面", "改造组件", "改造已有", "修改已有", "调整页面", "调整组件",
-  ]) || (hasAny(text, ["页面", "弹窗", "dialog", "modal", "popup"]) && hasAny(text, ["做一下", "做出来", "实现", "开发"]));
+    "改造页面", "改造组件", "改造已有", "修改已有", "调整页面", "调整组件", "加蒙层", "添加蒙层", "加遮罩", "添加遮罩", "替换图片", "替换图标", "替换背景",
+  ]) || (hasAny(text, ["页面", "弹窗", "dialog", "modal", "popup"]) && hasAny(text, ["做一下", "做出来", "实现", "开发"]))
+    || (technicalMentions(query).some((item) => ["target_file", "target_directory"].includes(item.type))
+      && hasAny(text, ["修改", "调整", "修复", "改造"]));
 
   // Explicit browser/UI inspection wins over generic words such as “有问题” or “异常”.
   const specialized = test || live || plan || pageCenter || uiMeta || figma || custom || service;
@@ -541,20 +543,89 @@ async function executionContexts(root, profile, query, skillName) {
   return contexts.slice(0, 6);
 }
 
-function localPathMentions(query) {
-  const found = [];
-  const add = (value) => {
-    const cleaned = value.replace(/^[`'"(（]+|[`'"，。；;:：)）]+$/g, "");
-    if (!cleaned || cleaned.includes("://") || found.includes(cleaned)) return;
-    found.push(cleaned);
-  };
-  for (const match of query.matchAll(/(?:\.{0,2}\/)?(?:[A-Za-z0-9_@.-]+\/)+[A-Za-z0-9_@.*-]+(?:\.[A-Za-z0-9]+)?/g)) add(match[0]);
-  for (const match of query.matchAll(/(?:^|[\s`'"(（])([A-Za-z0-9_@.-]+\.(?:vue|tsx?|jsx?|css|scss|less|json|mjs|cjs|md|py|go|java|kt|swift))(?=$|[\s`'"，。；;:：)）])/gi)) add(match[1]);
-  return found.slice(0, 4);
-}
-
 function isFilePath(value) {
   return /\.(?:vue|tsx?|jsx?|css|scss|less|json|mjs|cjs|md|py|go|java|kt|swift)$/i.test(value);
+}
+
+function isAssetResource(query, value, index) {
+  const normalized = value.toLowerCase().replace(/^\.{0,2}\//, "").replace(/\/$/, "");
+  const before = query.slice(Math.max(0, index - 24), index);
+  return /\.(?:png|jpe?g|gif|webp|avif|svg|ico)$/i.test(normalized)
+    || /(?:^|\/)(?:assets?|images?|imgs?|icons?|backgrounds?|bgs?|sprites?|masks?)(?:\/|$)/i.test(normalized)
+    || /(?:^|\/)(?:icon|bg|mask)(?:[-_/]|$)/i.test(normalized)
+    || /(?:图片|图像|背景(?:图|图片)?|图标|蒙层图片|素材|资源)\s*[：:=]?\s*$/i.test(before);
+}
+
+function isApiReference(query, value, index) {
+  const normalized = value.toLowerCase();
+  const before = query.slice(Math.max(0, index - 24), index);
+  return /^(?:\/)?api\//i.test(normalized)
+    || /^\/v\d+\//i.test(normalized)
+    || /(?:接口(?:路径|地址|名|名称)?|api(?:\s+(?:path|name))?|endpoint)\s*[：:=]?\s*$/i.test(before)
+    || /(?:GET|POST|PUT|PATCH|DELETE)\s+$/i.test(before);
+}
+
+function isDirectoryReference(query, value, index) {
+  if (value.endsWith("/")) return true;
+  const normalized = value.toLowerCase().replace(/^\.{0,2}\//, "");
+  const before = query.slice(Math.max(0, index - 24), index);
+  const after = query.slice(index + value.length, Math.min(query.length, index + value.length + 16));
+  return /^(?:apps?|src|packages?|pages?|components?|modules?|views?|features?|lib|server|client|tests?|docs|public)\//i.test(normalized)
+    || /\/(?:apps?|src|packages?|pages?|components?|modules?|views?|features?|tests?|docs|public)(?:\/|$)/i.test(normalized)
+    || /(?:项目目录|文件目录|目标目录|代码目录|文件夹|目录|项目路径|代码路径|放到|位于)[^，。；;\n]{0,12}$/i.test(before)
+    || /^[^，。；;\n]{0,8}(?:目录|文件夹|下(?:的|面)?)/i.test(after);
+}
+
+function technicalMentions(query) {
+  const mentions = [];
+  const add = (value, index) => {
+    const cleaned = value.replace(/^[`'"(（]+|[`'"，。；;:：)）]+$/g, "");
+    if (!cleaned || cleaned.includes("://") || mentions.some((item) => item.value === cleaned)) return;
+    let type = "unknown";
+    if (isAssetResource(query, cleaned, index)) type = "asset_resource";
+    else if (isApiReference(query, cleaned, index)) type = "api";
+    else if (isFilePath(cleaned)) type = "target_file";
+    else if (isDirectoryReference(query, cleaned, index)) type = "target_directory";
+    mentions.push({ value: cleaned, type, index });
+  };
+  for (const match of query.matchAll(/(?<![A-Za-z0-9_@.-])((?:\/|\.{1,2}\/)?(?:[A-Za-z0-9_@.-]+\/)+[A-Za-z0-9_@.*{}-]+(?:\.[A-Za-z0-9]+)?\/?)/g)) {
+    add(match[1], match.index + match[0].indexOf(match[1]));
+  }
+  for (const match of query.matchAll(/(?:^|[\s`'"(（])([A-Za-z0-9_@.-]+\.(?:vue|tsx?|jsx?|css|scss|less|json|mjs|cjs|md|py|go|java|kt|swift|png|jpe?g|gif|webp|avif|svg|ico))(?=$|[\s`'"，。；;:：)）])/gi)) {
+    add(match[1], match.index + match[0].indexOf(match[1]));
+  }
+  return mentions.slice(0, 8);
+}
+
+function apiNameMentions(text, technical) {
+  const found = technical.filter((item) => item.type === "api").map((item) => item.value);
+  const add = (value) => {
+    const cleaned = value.replace(/^[`'"]+|[`'"，。；;)）]+$/g, "");
+    if (cleaned && !found.includes(cleaned)) found.push(cleaned);
+  };
+  for (const match of text.matchAll(/(?:接口(?:名|名称)|api\s+name|endpoint)\s*[：:=]?\s*([A-Za-z_$][A-Za-z0-9_$.-]*)/gi)) add(match[1]);
+  return found.slice(0, 6);
+}
+
+function componentNameMentions(text) {
+  const found = [];
+  for (const match of text.matchAll(/\b[a-z][a-z0-9]*(?:-[a-z0-9]+)+\b/gi)) {
+    const value = match[0];
+    if (/^\.[A-Za-z0-9]+/.test(text.slice(match.index + value.length, match.index + value.length + 8))) continue;
+    const nearby = text.slice(Math.max(0, match.index - 16), Math.min(text.length, match.index + value.length + 12));
+    if (/(?:组件(?:名|名称)?|component)/i.test(nearby)
+      || /^ui-/i.test(value)
+      || /-(?:item|dialog|modal|popup|button|list|card|track|bar)$/i.test(value)) {
+      if (!found.includes(value)) found.push(value);
+    }
+  }
+  return found.slice(0, 6);
+}
+
+function withoutTechnicalIdentifiers(text, technical, namedValues) {
+  const values = [...technical.map((item) => item.value), ...namedValues]
+    .sort((a, b) => b.length - a.length);
+  return values.reduce((result, value) => result.replaceAll(value, " ".repeat(value.length)), text);
 }
 
 function confirmedContextFor(query, evidenceItems) {
@@ -562,9 +633,8 @@ function confirmedContextFor(query, evidenceItems) {
   const add = (type, value, source) => {
     if (!contexts.some((item) => item.type === type && item.value === value)) contexts.push({ type, value, source });
   };
-  for (const target of localPathMentions(query)) {
-    const type = isFilePath(target) ? "target_file" : "target_directory";
-    add(type, `${type === "target_file" ? "目标文件" : "目标目录"}：${target}`, "user_text:path");
+  for (const target of technicalMentions(query).filter((item) => ["target_file", "target_directory"].includes(item.type))) {
+    add(target.type, `${target.type === "target_file" ? "目标文件" : "目标目录"}：${target.value}`, "user_text:path");
   }
 
   const text = query.toLowerCase();
@@ -584,7 +654,8 @@ function confirmedContextFor(query, evidenceItems) {
 }
 
 const ENTITY_TYPES = [
-  "ui_component", "business_object", "state", "layout_scene", "config_or_symbol", "issue_symptom", "target_scope",
+  "task", "ui_component", "component", "business_object", "state", "visual_effect", "asset_resource", "api",
+  "layout_scene", "config_or_symbol", "issue_symptom", "target_scope",
 ];
 
 function intentFor(query, profile) {
@@ -594,7 +665,7 @@ function intentFor(query, profile) {
   const text = query.toLowerCase();
   if (isBugRequest(text)) return "bug_fix";
   if (hasAny(text, ["新增", "新建", "创建", "开发一个", "实现一个", "做一个", "做个", "从零开发"])) return "feature_create";
-  if (hasAny(text, ["改造", "修改", "调整", "升级", "迁移", "重构", "优化已有", "扩展已有"])) return "feature_modify";
+  if (hasAny(text, ["改造", "修改", "调整", "升级", "迁移", "重构", "优化已有", "扩展已有", "添加", "替换", "加蒙层", "加遮罩"])) return "feature_modify";
   if (profile.desired_output === "frontend_code_changes") return "feature_create";
   return "unknown";
 }
@@ -621,7 +692,7 @@ function hasEntity(entities, type, value) {
   return (entities[type] || []).some((item) => item.value === value);
 }
 
-function extractEntities(query, contexts, evidenceItems) {
+function extractEntities(query, contexts, evidenceItems, profile) {
   const entities = emptyEntities();
   const sources = [
     { text: query.replace(/^\s*\$ai-talk(?::ai-talk)?\s*/i, ""), source: "user_text" },
@@ -629,74 +700,93 @@ function extractEntities(query, contexts, evidenceItems) {
   ];
 
   for (const { text, source } of sources) {
-    const lower = text.toLowerCase();
-    if (/进度条|(?:^|[^a-z0-9_])progress(?:[-_\s](?:track|bar))?(?=$|[^a-z0-9_])/i.test(text)) {
+    const technical = technicalMentions(text);
+    const apiNames = apiNameMentions(text, technical);
+    const componentNames = componentNameMentions(text).filter((value) => !apiNames.includes(value));
+    const semanticText = withoutTechnicalIdentifiers(text, technical, [...apiNames, ...componentNames]);
+    const lower = semanticText.toLowerCase();
+    if (profile.desired_output === "frontend_code_changes"
+      && /(?:蒙层|遮罩|样式|颜色|背景|图标|视觉)[^，。；;\n]{0,16}(?:加|添加|修改|替换|调整)|(?:加|添加|修改|替换|调整|需要加)[^，。；;\n]{0,16}(?:蒙层|遮罩|样式|颜色|背景|图标|视觉)/i.test(semanticText)) {
+      addEntity(entities, "task", "ui-modification", "UI 修改", source);
+    }
+    for (const component of componentNames) addEntity(entities, "component", component, component, source);
+    for (const resource of technical.filter((item) => item.type === "asset_resource")) {
+      addEntity(entities, "asset_resource", resource.value, resource.value, source);
+    }
+    for (const api of apiNames) addEntity(entities, "api", api, api, source);
+    if (/蒙层|遮罩|(?:^|[^a-z0-9_])mask(?=$|[^a-z0-9_])/i.test(semanticText)) {
+      addEntity(entities, "visual_effect", "mask", "蒙层", source);
+    }
+    if (/进度条|(?:^|[^a-z0-9_])progress(?:[-_\s](?:track|bar))?(?=$|[^a-z0-9_])/i.test(semanticText)) {
       addEntity(entities, "ui_component", "progress-track", "进度条", source);
     }
-    if (/弹窗|(?:^|[^a-z0-9_])(?:dialog|modal|popup)(?=$|[^a-z0-9_])/i.test(text)) {
+    if (/弹窗|(?:^|[^a-z0-9_])(?:dialog|modal|popup)(?=$|[^a-z0-9_])/i.test(semanticText)) {
       addEntity(entities, "ui_component", "dialog", "弹窗", source);
     }
-    if (/按钮|(?:^|[^a-z0-9_])button(?=$|[^a-z0-9_])/i.test(text)) {
+    if (/按钮|(?:^|[^a-z0-9_])button(?=$|[^a-z0-9_])/i.test(semanticText)) {
       addEntity(entities, "ui_component", "button", "按钮", source);
     }
-    if (/排行榜|榜单|rank[-_\s]?list/i.test(text)) {
+    if (/排行榜|榜单|rank[-_\s]?list/i.test(semanticText)) {
       addEntity(entities, "ui_component", "rank-list", "排行榜", source);
     }
 
-    const reward = /奖励|(?:^|[^a-z0-9_])reward(?=$|[^a-z0-9_])/i.test(text);
-    const stage = /阶段|(?:^|[^a-z0-9_])stage(?=$|[^a-z0-9_])/i.test(text);
-    if (reward && stage) addEntity(entities, "business_object", "reward-stage", "奖励阶段", source);
+    const rewardItem = /奖励(?:获取到|领取|项)|领取(?:到)?奖励/i.test(semanticText);
+    const reward = /奖励|(?:^|[^a-z0-9_])reward(?=$|[^a-z0-9_])/i.test(semanticText);
+    const stage = /阶段|(?:^|[^a-z0-9_])stage(?=$|[^a-z0-9_])/i.test(semanticText);
+    if (rewardItem) addEntity(entities, "business_object", "reward-item", "奖励项", source);
+    else if (reward && stage) addEntity(entities, "business_object", "reward-stage", "奖励阶段", source);
     else {
       if (reward) addEntity(entities, "business_object", "reward", "奖励", source);
       if (stage) addEntity(entities, "business_object", "stage", "阶段", source);
     }
-    if (/抽奖|(?:^|[^a-z0-9_])lottery(?=$|[^a-z0-9_])/i.test(text)) {
+    if (/抽奖|(?:^|[^a-z0-9_])lottery(?=$|[^a-z0-9_])/i.test(semanticText)) {
       addEntity(entities, "business_object", "lottery", "抽奖", source);
     }
-    if (/任务(?:状态|奖励|进度)|task[-_\s]?(?:state|reward|progress)/i.test(text)) {
+    if (/任务(?:状态|奖励|进度)|task[-_\s]?(?:state|reward|progress)/i.test(semanticText)) {
       addEntity(entities, "business_object", "task", "任务", source);
     }
 
-    if (/未领取|(?:^|[^a-z0-9_])unclaimed(?=$|[^a-z0-9_])/i.test(text)) {
+    if (/未领取|(?:^|[^a-z0-9_])unclaimed(?=$|[^a-z0-9_])/i.test(semanticText)) {
       addEntity(entities, "state", "unclaimed", "未领取", source);
-    } else if (/已领取|(?:^|[^a-z0-9_])claimed(?=$|[^a-z0-9_])/i.test(text)) {
+    } else if (/已领取|奖励获取到|获取到奖励|领取到奖励|(?:^|[^a-z0-9_])claimed(?=$|[^a-z0-9_])/i.test(semanticText)) {
       addEntity(entities, "state", "claimed", "已领取", source);
     }
-    if (/未完成|(?:^|[^a-z0-9_])incomplete(?=$|[^a-z0-9_])/i.test(text)) {
+    if (/未完成|(?:^|[^a-z0-9_])incomplete(?=$|[^a-z0-9_])/i.test(semanticText)) {
       addEntity(entities, "state", "incomplete", "未完成", source);
-    } else if (/已完成|(?:^|[^a-z0-9_])completed(?=$|[^a-z0-9_])/i.test(text)) {
+    } else if (/已完成|(?:^|[^a-z0-9_])completed(?=$|[^a-z0-9_])/i.test(semanticText)) {
       addEntity(entities, "state", "completed", "已完成", source);
     }
-    if (/锁定|已锁定|(?:^|[^a-z0-9_])locked(?=$|[^a-z0-9_])/i.test(text)) {
+    if (/锁定|已锁定|(?:^|[^a-z0-9_])locked(?=$|[^a-z0-9_])/i.test(semanticText)) {
       addEntity(entities, "state", "locked", "锁定", source);
     }
 
-    if (/(?:^|[^a-z0-9_])rtl(?=$|[^a-z0-9_])|从右到左/i.test(text)) {
+    if (/(?:^|[^a-z0-9_])rtl(?=$|[^a-z0-9_])|从右到左/i.test(semanticText)) {
       addEntity(entities, "layout_scene", "RTL", "RTL", source);
     }
-    if (/横向|水平|(?:^|[^a-z0-9_])horizontal(?=$|[^a-z0-9_])/i.test(text)) {
+    if (/横向|水平|(?:^|[^a-z0-9_])horizontal(?=$|[^a-z0-9_])/i.test(semanticText)) {
       addEntity(entities, "layout_scene", "horizontal", "横向", source);
     }
-    if (/响应式|(?:^|[^a-z0-9_])responsive(?=$|[^a-z0-9_])/i.test(text)) {
+    if (/响应式|(?:^|[^a-z0-9_])responsive(?=$|[^a-z0-9_])/i.test(semanticText)) {
       addEntity(entities, "layout_scene", "responsive", "响应式", source);
     }
 
+    const nonSymbolNames = new Set([...apiNames, ...componentNames]);
     for (const match of text.matchAll(/\b[A-Za-z_$][A-Za-z0-9_$]*\b/g)) {
       const symbol = match[0];
-      if (/[a-z][A-Z]/.test(symbol) || symbol.includes("_") || symbol.startsWith("$")) {
+      if (!nonSymbolNames.has(symbol) && (/[a-z][A-Z]/.test(symbol) || symbol.includes("_") || symbol.startsWith("$"))) {
         addEntity(entities, "config_or_symbol", symbol, symbol, source);
       }
     }
 
-    const imageMismatch = /(?:图片|图像|image)[^，。；;\n]{0,12}(?:没有|没|未|不)(?:显示|切换|更新)|(?:没有|没|未|不)(?:显示|切换|更新)[^，。；;\n]{0,12}(?:图片|图像|image)/i.test(text);
+    const imageMismatch = /(?:图片|图像|image)[^，。；;\n]{0,12}(?:没有|没|未|不)(?:显示|切换|更新)|(?:没有|没|未|不)(?:显示|切换|更新)[^，。；;\n]{0,12}(?:图片|图像|image)/i.test(semanticText);
     if (imageMismatch) addEntity(entities, "issue_symptom", "image-not-updated", "图片未切换", source);
-    if (/显示不完整|展示不完整|显示不全|展示不全|display[-_\s]?(?:incomplete|partial)/i.test(text)) {
+    if (/显示不完整|展示不完整|显示不全|展示不全|display[-_\s]?(?:incomplete|partial)/i.test(semanticText)) {
       addEntity(entities, "issue_symptom", "incomplete-display", "显示不完整", source);
     }
-    if (/顺序(?:错误|异常|不对)|顺序反了|order[-_\s]?(?:mismatch|wrong)/i.test(text)) {
+    if (/顺序(?:错误|异常|不对)|顺序反了|order[-_\s]?(?:mismatch|wrong)/i.test(semanticText)) {
       addEntity(entities, "issue_symptom", "order-mismatch", "顺序错误", source);
     }
-    if (/状态[^，。；;\n]{0,8}(?:错误|异常|不对)|(?:错误|异常)状态|state[-_\s]?(?:mismatch|wrong)/i.test(text)) {
+    if (/状态[^，。；;\n]{0,8}(?:错误|异常|不对)|(?:错误|异常)状态|state[-_\s]?(?:mismatch|wrong)/i.test(semanticText)) {
       addEntity(entities, "issue_symptom", "state-display-mismatch", "状态显示异常", source);
     }
     if (lower.includes("当前活动")) addEntity(entities, "target_scope", "current-activity", "当前活动", source);
@@ -733,11 +823,14 @@ function addLimited(group, value) {
 function queryGroupsFor(intent, entities) {
   const groups = { docs: [], skills: [], components: [], code: [] };
   const components = entityValues(entities, "ui_component");
+  const componentNames = entityValues(entities, "component");
   const objects = entityValues(entities, "business_object");
   const states = entityValues(entities, "state");
   const layouts = entityValues(entities, "layout_scene");
   const symptoms = entityValues(entities, "issue_symptom");
   const symbols = entityValues(entities, "config_or_symbol");
+  const assets = entityValues(entities, "asset_resource");
+  const apis = entityValues(entities, "api");
   const scopes = entityValues(entities, "target_scope");
   const progress = components.includes("progress-track");
   const rewardStage = objects.includes("reward-stage");
@@ -758,6 +851,7 @@ function queryGroupsFor(intent, entities) {
   };
   addLimited(groups.skills, skillQueries[intent]);
 
+  for (const component of componentNames) addLimited(groups.components, component);
   if (components.includes("dialog")) {
     for (const synonym of ["dialog", "modal", "popup"]) addLimited(groups.components, synonym);
   }
@@ -770,9 +864,11 @@ function queryGroupsFor(intent, entities) {
   if (components.includes("rank-list")) addLimited(groups.components, "rank-list");
 
   for (const symbol of symbols) addLimited(groups.code, symbol);
+  for (const api of apis) addLimited(groups.code, api);
+  for (const asset of assets) addLimited(groups.code, asset);
   const exactScope = scopes.find((scope) => !["current-activity", "current-project"].includes(scope));
   const codeTerms = [
-    rewardStage ? "奖励进度条" : progress ? "进度条" : components[0],
+    rewardStage ? "奖励进度条" : progress ? "进度条" : components[0] || componentNames[0],
     states[0],
     symptoms[0],
   ].filter(Boolean).slice(0, 2).join(" ");
@@ -792,6 +888,9 @@ function retrievalDirectionsFor(intent, entities) {
     if (value && !result.includes(value)) result.push(value);
   };
   const components = entityValues(entities, "ui_component");
+  const componentNames = entityValues(entities, "component");
+  const assets = entityValues(entities, "asset_resource");
+  const apis = entityValues(entities, "api");
   const objects = entityValues(entities, "business_object");
   const states = entityValues(entities, "state");
   const stateLabels = entityLabels(entities, "state");
@@ -805,6 +904,9 @@ function retrievalDirectionsFor(intent, entities) {
   else if (states.length) add(`${stateLabels[0]}状态规则`);
   if (progress) add(`${layouts.includes("RTL") ? "RTL " : ""}奖励进度条组件文档`);
   if (dialog) add("弹窗组件文档");
+  for (const component of componentNames) add(`${component} 组件实现`);
+  for (const asset of assets) add(`${asset} 资源引用`);
+  for (const api of apis) add(`${api} 接口定义与调用`);
   const exactScope = scopes.find((scope) => !["current-activity", "current-project"].includes(scope));
   if (exactScope) add(`${exactScope} 已有实现`);
   else if (progress) add("当前项目已有进度实现");
@@ -933,7 +1035,7 @@ export async function routeCompanySkills(args) {
   const alternatives = positive.slice(1, 3).map(candidate);
   const confirmedContext = confirmedContextFor(args.query, evidenceItems);
   const intent = intentFor(args.query, profile);
-  const entities = extractEntities(args.query, confirmedContext, evidenceItems);
+  const entities = extractEntities(args.query, confirmedContext, evidenceItems, profile);
   const retrievalQueryGroups = queryGroupsFor(intent, entities);
   const unknowns = unknownsFor(profile, args.query, confirmedContext);
   profile.unknowns = unknowns;

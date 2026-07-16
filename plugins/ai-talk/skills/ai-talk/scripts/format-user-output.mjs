@@ -15,20 +15,27 @@ export function formatUserOutput(result) {
   const contexts = (result?.confirmed_context || [])
     .filter((item) => item && typeof item.value === "string" && item.value.trim())
     .slice(0, 8);
-  const conceptLabels = {
-    ui_component: "组件",
-    business_object: "业务",
-    state: "状态",
-    layout_scene: "场景",
-    config_or_symbol: "符号",
-    issue_symptom: "问题",
-    target_scope: "范围",
-  };
-  const concepts = [];
-  for (const [type, heading] of Object.entries(conceptLabels)) {
+  const conceptLabels = [
+    ["task", "任务"],
+    ["ui_component", "组件"],
+    ["component", "组件"],
+    ["business_object", "业务"],
+    ["state", "状态"],
+    ["visual_effect", "视觉效果"],
+    ["asset_resource", "资源"],
+    ["api", "接口"],
+    ["layout_scene", "场景"],
+    ["config_or_symbol", "符号"],
+    ["issue_symptom", "问题"],
+    ["target_scope", "范围"],
+  ];
+  const conceptsByHeading = new Map();
+  for (const [type, heading] of conceptLabels) {
     const labels = cleanedStrings((result?.entities?.[type] || []).map((item) => item?.label), 6);
-    if (labels.length) concepts.push(`${heading}：${labels.join("、")}`);
+    if (!labels.length) continue;
+    conceptsByHeading.set(heading, cleanedStrings([...(conceptsByHeading.get(heading) || []), ...labels], 6));
   }
+  const concepts = [...conceptsByHeading].map(([heading, labels]) => `${heading}：${labels.join("、")}`);
   const directions = cleanedStrings(result?.retrieval_directions, 6);
   const boundaries = cleanedStrings(result?.boundaries, 6);
   const unknowns = cleanedStrings(result?.unknowns, 1);
