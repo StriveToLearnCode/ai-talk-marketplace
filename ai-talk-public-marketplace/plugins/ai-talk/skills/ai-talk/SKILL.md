@@ -40,7 +40,7 @@ confirmed_context:
     source: user_text:path | user_text:explicit_reference | attachment:<序号>
 intent: bug_fix | feature_create | feature_modify | ui_inspection | planning | automated_test | unknown
 entities:
-  ui_component | business_object | state | layout_scene | config_or_symbol | issue_symptom | target_scope:
+  task | ui_component | component | business_object | state | visual_effect | asset_resource | api | layout_scene | config_or_symbol | issue_symptom | target_scope:
     - value: 规范化检索值
       label: 前台展示名
       source: user_text | user_text:path | attachment:<序号>
@@ -78,6 +78,8 @@ Skill 评分、候选、重复名称、路径和索引统计仅存在于 `routin
 - 扩展词只是建议检索，不得写成用户已确认需求。
 - `progressRewardConfig` 等精确代码符号只有在用户文本、真实附件或选中代码中实际出现时才允许提取和查询。
 - “图片没有显示”是问题表现，不是截图证据；只有 `--evidence-type` 提供的真实附件内容可以贡献附件来源实体。
+- 路径形态的文本必须按语义分类，不得仅因包含 `/` 就视为目录：项目或文件目录进入 `target_directory`/`target_scope`，具体文件进入 `target_file`，图片、背景和图标等资源标识进入 `asset_resource`，接口路径或接口名进入 `api`。
+- 组件名进入 `component`，配置变量和代码符号进入 `config_or_symbol`；资源或组件标识内部的 `mask`、`progress`、`reward`、`dialog` 等片段不得额外触发视觉效果、通用组件或业务对象。
 - 不维护另一套公司组件索引，不预设用户未提及的组件名称，不编造 Docs、Skill、路径、接口或业务规则。
 - 公司现有 Skill 负责消费自己的知识库并执行；AI Talk 只帮助它提出更准确的查询。
 

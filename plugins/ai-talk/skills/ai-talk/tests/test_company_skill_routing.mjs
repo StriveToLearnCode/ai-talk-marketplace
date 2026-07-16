@@ -355,6 +355,63 @@ test("exact code symbols are queried only when they appear in real input", async
   assertCategorizedQueries(present);
 });
 
+test("reward mask request extracts UI semantics without treating the asset as a directory", async (t) => {
+  const root = await fixture();
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const prompt = "奖励获取到的时候需要加蒙层，蒙层图片：icon/mask";
+  const payload = await routeDebug(root, prompt);
+  const output = await routeUser(root, prompt);
+
+  assert.equal(payload.intent, "feature_modify");
+  for (const [type, expected] of [
+    ["task", "ui-modification"], ["business_object", "reward-item"], ["state", "claimed"],
+    ["visual_effect", "mask"], ["asset_resource", "icon/mask"],
+  ]) assert.ok(values(payload, type).includes(expected), `${type}: ${JSON.stringify(payload.entities[type])}`);
+  assert.ok(!payload.confirmed_context.some((item) => ["target_file", "target_directory"].includes(item.type)));
+  assert.ok(!values(payload, "target_scope").includes("icon/mask"));
+  assert.ok(!payload.unknowns.includes("期望交付物尚未明确。"));
+  for (const expected of ["任务：UI 修改", "业务：奖励项", "状态：已领取", "视觉效果：蒙层", "资源：icon/mask"]) {
+    assert.ok(output.includes(expected), output);
+  }
+  for (const forbidden of ["目标目录：icon/mask", "范围：icon/mask", "期望交付物尚未明确"]) {
+    assert.ok(!output.includes(forbidden), output);
+  }
+});
+
+test("slash-delimited image identifiers are assets rather than directories", async (t) => {
+  const root = await fixture();
+  t.after(() => rm(root, { recursive: true, force: true }));
+  for (const resource of ["icon/mask", "progress/bg-not-reached-1", "icon/close"]) {
+    const payload = await routeDebug(root, `替换图片资源：${resource}`);
+    assert.deepEqual(values(payload, "asset_resource"), [resource], resource);
+    assert.ok(!payload.confirmed_context.some((item) => ["target_file", "target_directory"].includes(item.type)), resource);
+    assert.deepEqual(values(payload, "target_scope"), [], resource);
+    assert.deepEqual(values(payload, "ui_component"), [], resource);
+    assert.deepEqual(values(payload, "visual_effect"), [], resource);
+  }
+});
+
+test("technical identifiers are categorized by semantics instead of punctuation", async (t) => {
+  const root = await fixture();
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const payload = await routeDebug(root,
+    "修改项目目录 apps/short/demo/ 和文件目录 components/dialogs/ 下的文件 round-reward-track.vue，组件名 ui-dialog、reward-item，配置变量 progressRewardConfig，接口名 getReward，接口路径 /api/reward/claim");
+
+  assert.deepEqual(payload.confirmed_context.map((item) => [item.type, item.value]), [
+    ["target_directory", "目标目录：apps/short/demo/"],
+    ["target_directory", "目标目录：components/dialogs/"],
+    ["target_file", "目标文件：round-reward-track.vue"],
+  ]);
+  assert.deepEqual(values(payload, "component"), ["ui-dialog", "reward-item"]);
+  assert.ok(values(payload, "config_or_symbol").includes("progressRewardConfig"));
+  assert.ok(!values(payload, "config_or_symbol").includes("getReward"));
+  assert.deepEqual(values(payload, "api"), ["/api/reward/claim", "getReward"]);
+  assert.ok(!values(payload, "target_scope").includes("/api/reward/claim"));
+  assert.deepEqual(values(payload, "asset_resource"), []);
+  assert.deepEqual(values(payload, "ui_component"), []);
+  assert.deepEqual(values(payload, "business_object"), []);
+});
+
 test("query builder supports all six declared development intents", async (t) => {
   const root = await fixture();
   t.after(() => rm(root, { recursive: true, force: true }));
