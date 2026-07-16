@@ -1,48 +1,26 @@
 # AI Talk Plugin
 
-AI Talk 将研发任务整理为以下结构，并在内部保留真实公司 Skill 路由：
+AI Talk 将研发任务整理为最小 Task Contract，并使用以下 Gap 结构：
 
 ```json
 {
-  "original_goal": "开发 recharge/components/dialogs 下的礼物连爆弹窗",
-  "confirmed_context": [
-    { "type": "target_directory", "value": "目标目录：recharge/components/dialogs", "source": "user_text:path" }
-  ],
-  "intent": "feature_create",
-  "entities": {
-    "ui_component": [{ "value": "dialog", "label": "弹窗", "source": "user_text" }],
-    "target_scope": [{ "value": "recharge/components/dialogs", "label": "recharge/components/dialogs", "source": "user_text:path" }]
-  },
-  "retrieval_query_groups": {
-    "docs": [],
-    "skills": ["前端新功能开发与已有能力复用"],
-    "components": ["dialog", "modal", "popup"],
-    "code": ["recharge/components/dialogs dialog 实现"]
-  },
-  "retrieval_queries": ["前端新功能开发与已有能力复用", "dialog", "modal", "popup", "recharge/components/dialogs dialog 实现"],
-  "retrieval_directions": ["弹窗组件文档", "recharge/components/dialogs 已有实现"],
-  "boundaries": ["不补充用户未确认的业务逻辑"],
-  "unknowns": ["弹窗触发入口尚未确认；如果当前代码能够确定，则不追问。"],
-  "execution_skill": "gen-code"
+  "type": "state_mapping",
+  "reason": "接口状态值与页面已领取表现之间的映射关系尚未确认。",
+  "blocking": false,
+  "suggested_source": "project"
 }
 ```
 
-默认输出以研发概念和概括性检索方向为主体，不展示内部 Query 数组，只在结尾显示 `执行能力：gen-code`。只有输入同时明确要求两个容易混淆的交付物时才显示一行选型说明。
+默认输出展示用户目标、已确认上下文、研发概念、关系与冲突、按需出现的上下文缺口、任务边界和验收标准。默认输出不展示内部字段、JSON、绝对路径、评分、检索计划或执行 Skill。
 
-## 路由
+## 运行
 
 ```bash
 node skills/ai-talk/scripts/route-company-skills.mjs \
-  --root /path/to/project \
-  --query '开发 recharge/components/dialogs 下的礼物连爆弹窗' \
-  --evidence-type 'visual=弹窗视觉稿' \
-  --evidence-type 'interaction=交互流程' \
-  --evidence-type 'api=连爆次数接口信息'
+  --query '奖励获取后增加蒙层，资源 icon/mask'
 ```
 
-附件证据必须来自真实附件。普通文本中的“图片、图标、背景图”不会被识别为截图。检索表达可以扩展同义词，但不会成为用户已确认需求；代码符号只有真实出现时才会成为精确查询词。
-
-默认索引项目 `.agents/skills/**/SKILL.md`、显式批准的公司 Skill 根和插件自带 `ui-self-check`。只读取 frontmatter、description 与明确标记的触发条件/适用场景短段；不读取下游 Skill 知识库，不维护组件索引。
+需要检查结构化结果时增加 `--debug-json`。`--root` 等历史路由参数仅为兼容而接受，不会触发项目读取或 Skill 路由。
 
 ## 验证
 

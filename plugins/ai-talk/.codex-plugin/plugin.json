@@ -1,35 +1,34 @@
 {
   "name": "ai-talk",
   "version": "0.4.0",
-  "description": "AI Talk 将研发需求整理为带来源的上下文、检索查询、任务边界和真实执行 Skill。",
+  "description": "AI Talk 将研发需求整理为最小 Task Contract，并标注真正影响实现的 Context Gap。",
   "author": {
     "name": "sf"
   },
   "skills": "./skills/",
   "interface": {
     "displayName": "AI Talk",
-    "shortDescription": "整理研发上下文并生成知识库检索查询",
-    "longDescription": "AI Talk 是研发任务上下文增强器。它保留用户原始目标，提取带来源的真实上下文，为公司 Docs、Skill、组件知识库和项目已有实现生成检索查询，补充必要边界与一个阻塞未知项，并标注真实执行 Skill。它不扩展业务需求，也不代替下游 Skill 执行。",
+    "shortDescription": "整理研发上下文并标注真正影响实现的缺口",
+    "longDescription": "AI Talk 保留用户原始目标和真实证据，识别会影响业务结果、修改范围或实现方向的 Context Gap，并生成最小 Task Contract 交给后续 Codex。它不搜索项目、不读取公司文档、不调用 Skill、不规划检索顺序，也不扩展业务需求。",
     "developerName": "sf",
     "category": "Productivity",
     "capabilities": [
       "Original goal preservation",
       "Source-backed context extraction",
       "Attachment role normalization",
-      "Real project Skill routing",
-      "Bounded applicability metadata reads",
-      "Knowledge retrieval queries",
-      "Desired-output-aware Skill routing",
-      "Duplicate Skill name detection",
-      "Deterministic user-output formatting",
-      "Task boundaries and blocking unknowns",
+      "Five development task types",
+      "Structured blocking and non-blocking gaps",
+      "State mapping conflict detection",
+      "Asset resource classification",
+      "Deterministic Task Contract formatting",
+      "Task boundaries and acceptance criteria",
       "Context handoff",
-      "Zero downstream execution"
+      "Zero retrieval and downstream execution"
     ],
     "defaultPrompt": [
-      "$ai-talk:ai-talk 新增奖励确认弹窗，不改领取逻辑",
-      "$ai-talk:ai-talk 参考视觉稿、交互图和接口资料开发弹窗",
-      "$ai-talk:ai-talk 修复指定文件里的奖励状态显示问题"
+      "$ai-talk:ai-talk 奖励获取后增加蒙层，资源 icon/mask",
+      "$ai-talk:ai-talk 这里 state=0，但页面显示已领取",
+      "$ai-talk:ai-talk 打开这个 URL 检查视觉和交互"
     ]
   }
 }

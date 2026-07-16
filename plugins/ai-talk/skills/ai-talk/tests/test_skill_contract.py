@@ -15,85 +15,55 @@ class Contract(unittest.TestCase):
         cls.router = (SKILL / "scripts/route-company-skills.mjs").read_text()
         cls.formatter = (SKILL / "scripts/format-user-output.mjs").read_text()
         cls.manifest = json.loads((PLUGIN / ".codex-plugin/plugin.json").read_text())
-        cls.cases = json.loads((SKILL / "tests/company-skill-routing-cases.json").read_text())
 
-    def test_context_enhancer_schema(self):
-        fields = (
-            "original_goal", "confirmed_context", "intent", "entities",
-            "retrieval_query_groups", "retrieval_queries", "retrieval_directions",
-            "boundaries", "unknowns", "execution_skill",
-        )
-        for field in fields:
+    def test_supported_intents_and_task_specific_context(self):
+        for intent in ("feature_create", "bug_fix", "ui_modify", "ui_inspection", "planning"):
+            self.assertIn(intent, self.skill)
+            self.assertIn(intent, self.router)
+        for field in (
+            "target_scope", "expected_behavior", "visual_reference", "interaction_rule", "data_source",
+            "issue_symptom", "reproduction_condition", "state_mapping", "visual_change", "state_condition",
+            "asset_resource", "page_entry", "inspection_goal", "goal", "scope",
+        ):
+            self.assertIn(field, self.skill)
+
+    def test_gap_schema_and_rules(self):
+        for field in ("type", "reason", "blocking", "suggested_source"):
             self.assertIn(field, self.skill)
             self.assertIn(field, self.router)
-        for field in ("type", "value", "source"):
-            self.assertIn(field, self.skill)
+        for source in ("project", "docs", "skill", "user"):
+            self.assertIn(source, self.skill)
+        for rule in ("最多生成一个阻塞缺口", "没有真实缺口", "不输出固定“期望交付物尚未明确”"):
+            self.assertIn(rule, self.skill)
 
-    def test_source_backed_context_and_attachment_roles(self):
-        for text in (
-            "visual=<附件摘要>", "interaction=<附件摘要>", "api=<附件摘要>",
-            "screenshot=<附件摘要>", "selected_code=<选中内容摘要>",
-            "user_text:path", "user_text:explicit_reference", "attachment:<序号>",
-            "图片没有显示", "图标", "背景图",
-        ):
-            self.assertIn(text, self.skill)
-        for text in ("visual_design", "interaction_flow", "api_document", "selected_code"):
-            self.assertIn(text, self.router)
+    def test_task_contract_headings(self):
+        for heading in ("用户目标：", "已确认上下文：", "研发概念：", "关系与冲突：", "上下文缺口：", "任务边界：", "验收标准："):
+            self.assertIn(heading, self.skill)
+            self.assertIn(heading, self.formatter)
+        self.assertNotIn("检索方向：", self.formatter)
+        self.assertNotIn("执行能力：", self.formatter)
 
-    def test_retrieval_does_not_expand_business_requirements(self):
-        for text in (
-            "每类最多生成 3 个", "Docs", "Skill", "Component", "Code",
-            "`dialog`、`modal`、`popup`", "不得写成用户已确认需求", "不预设用户未提及的组件名称",
-            "progressRewardConfig", "不得直接使用用户原话作为 Query 主体", "仅追加固定后缀",
-            "不编造 Docs、Skill、路径、接口或业务规则",
-        ):
-            self.assertIn(text, self.skill)
+    def test_no_retrieval_or_skill_routing(self):
+        for rule in ("不搜索项目", "不读取公司 Docs", "调用 Skill", "不得生成检索计划"):
+            self.assertIn(rule, self.skill)
+        for implementation in ("readdir", "readFile", "open(", "scoreSkill", "execution_skill", "retrieval_queries"):
+            self.assertNotIn(implementation, self.router)
 
-    def test_runtime_skill_index_scope(self):
-        for text in (
-            ".agents/skills/**/SKILL.md", "显式批准的公司 Skill 根", "ui-self-check",
-            "不索引 `plugins/ai-talk/docs/skills/`", "不读取 references、脚本、知识库或普通正文",
-        ):
-            self.assertIn(text, self.skill)
+    def test_asset_and_screenshot_safety(self):
+        for resource in ("icon/mask", "icon/close", "progress/bg-1"):
+            self.assertIn(resource, self.skill)
+        self.assertIn("截图只能证明页面表现", self.skill)
+        self.assertIn("不直接推断状态值的业务含义", self.skill)
 
-    def test_default_output_contract(self):
-        headings = ("用户目标：", "已确认上下文：", "研发概念：", "检索方向：", "任务边界与未知项：", "执行能力：")
-        for text in headings:
-            self.assertIn(text, self.skill)
-            self.assertIn(text, self.formatter)
-        self.assertNotIn("建议检索：", self.formatter)
-        self.assertNotIn("retrieval_queries", self.formatter)
-        for old in ("AI 已决定", "为什么选择 Skill", "未选择 Skill"):
-            self.assertIn(old, self.skill)
-            self.assertNotIn(old, self.formatter)
-        self.assertIn("选型说明", self.formatter)
-        self.assertNotIn("SKILL_RESPONSIBILITIES", self.formatter)
-
-    def test_no_fixed_engineering_boilerplate(self):
-        for text in ("AGENTS.md", "PageCenter", "ESLint", "Prettier"):
-            self.assertIn(text, self.skill)
-            self.assertNotIn(text, self.formatter)
-
-    def test_routing_boundaries(self):
-        required = (
-            "midscene-test.ts", "ai-test", "ui-self-check", "docs/plan/", "gen-frontend-plan", "gen-code",
-            "Figma 仅作为开发证据", "PageCenter 配置或推送产物", "活动积木或 uiMeta", "“测一下”",
-        )
-        for text in required:
-            self.assertIn(text, self.skill)
+    def test_metadata_matches_context_gap_scope(self):
+        self.assertIn("Context Gap", self.agent)
+        self.assertIn("Context Gap", self.manifest["description"])
+        self.assertNotIn("Skill routing", self.manifest["interface"]["capabilities"])
+        self.assertIn("Zero retrieval and downstream execution", self.manifest["interface"]["capabilities"])
 
     def test_legacy_protocol_disabled(self):
         self.assertIn("旧 `--profile-json` 协议保持禁用", self.skill)
         self.assertNotIn('flag === "--profile-json"', self.router)
-
-    def test_metadata(self):
-        self.assertIn("上下文", self.agent)
-        self.assertEqual(self.manifest["version"].split("+")[0], "0.4.0")
-        self.assertIn("Source-backed context extraction", self.manifest["interface"]["capabilities"])
-        self.assertIn("Context handoff", self.manifest["interface"]["capabilities"])
-
-    def test_cases(self):
-        self.assertGreaterEqual(len(self.cases), 20)
 
 
 if __name__ == "__main__":

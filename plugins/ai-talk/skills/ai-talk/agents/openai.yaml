@@ -1,7 +1,7 @@
 interface:
   display_name: "AI Talk"
-  short_description: "整理研发上下文并生成知识库检索查询"
-  default_prompt: "使用 $ai-talk:ai-talk 保留原始目标，提取带来源的真实上下文，生成检索查询、任务边界和阻塞未知项，并标注真实执行 Skill；不要扩展业务需求。"
+  short_description: "整理研发任务上下文并标注真正影响实现方向的 Context Gap"
+  default_prompt: "使用 $ai-talk 将我的研发需求整理为最小 Task Contract，只标注真正影响实现方向的 Context Gap。"
 
 policy:
   allow_implicit_invocation: false
