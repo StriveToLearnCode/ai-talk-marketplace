@@ -13,7 +13,8 @@ const COMPARE = path.resolve(import.meta.dirname, "../../../docs/skills");
 const REPOSITORY = path.resolve(import.meta.dirname, "../../../../../..");
 const LEAKED_TERMS = [
   "task_action", "target_category", "desired_output", "execution_mode", "evidence_types",
-  "matched_fields", "matched_terms", "/Users/", "score", "index_conflicts",
+  "query_terms", "matched_fields", "matched_terms", "/Users/", "score", "index_conflicts",
+  "routing details", "AI 将执行", "原因：", "推荐执行", "使用：",
 ];
 
 const SKILLS = [
@@ -36,6 +37,8 @@ async function fixture() {
     await mkdir(target, { recursive: true });
     await writeFile(path.join(target, "SKILL.md"), `---\nname: ${name}\ndescription: '${description}'\n---\nBODY_MUST_NOT_BE_READ\n`);
   }
+  await mkdir(path.join(root, "src", "components"), { recursive: true });
+  await writeFile(path.join(root, "src", "index.ts"), "export {};\n");
   return root;
 }
 
@@ -181,37 +184,80 @@ test("four reviewed cases pass route-to-formatter end to end", async (t) => {
     {
       prompt: "为什么第三个奖励已经领取，却没有显示已领取图片",
       expected: "gen-code",
-      present: ["Bug 修复"],
+      present: ["Bug 修复", "负责代码开发", "📁 当前页面代码"],
       absent: ["用户明确提供了截图", "只分析还是修改", "执行前需确认："],
     },
     {
       prompt: "帮我生成一份前端实施计划",
       expected: "gen-frontend-plan",
-      present: ["为什么不用 gen-code？"],
+      present: ["负责实施方案设计", "为什么不用代码开发？"],
     },
     {
       prompt: "打开页面看看视觉和交互有没有问题",
       expected: "ui-self-check",
-      present: ["为什么不用 ai-test？"],
-      absent: ["使用：gen-code"],
+      present: ["负责浏览器检查", "🌐 当前页面"],
+      absent: ["gen-code"],
     },
     {
       prompt: "生成并运行 Midscene 测试",
       expected: "ai-test",
-      present: ["为什么不用 ui-self-check？"],
+      present: ["负责自动化测试", "为什么不用浏览器检查？"],
     },
   ];
   for (const item of cases) {
     const debug = await routeDebug(root, item.prompt);
     const output = await routeUser(root, item.prompt);
     assert.equal(debug.recommendation.name, item.expected, item.prompt);
-    assert.ok(output.includes(`使用：${item.expected}`), output);
+    assert.ok(output.includes(`🛠 AI 已决定\n${item.expected}\n`), output);
     for (const text of item.present || []) assert.ok(output.includes(text), output);
     for (const text of item.absent || []) assert.ok(!output.includes(text), output);
     assertNoLeaks(output);
-    assert.ok((output.match(/^✓ /gm) || []).length <= 8, output);
-    assert.ok((output.match(/^为什么不用 /gm) || []).length <= 1, output);
+    assert.ok((output.match(/^✓ /gm) || []).length <= 4, output);
+    assert.ok((output.match(/^为什么不用/gm) || []).length <= 1, output);
   }
+});
+
+test("execution brief exposes only real contexts selected for this turn", async (t) => {
+  const root = await fixture();
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const prompt = "参考设计稿和接口文档，根据截图直接实现页面，复用已有组件";
+  const output = await routeUser(root, prompt, ["screenshot"]);
+  for (const context of [
+    "📁 当前页面代码", "📐 当前设计稿", "🔌 当前接口", "🖼 用户截图", "🧩 当前项目已有组件",
+  ]) assert.ok(output.includes(context), output);
+  assert.ok(!output.includes("AGENTS.md"), output);
+
+  await writeFile(path.join(root, "AGENTS.md"), "# Project instructions\n");
+  const withInstructions = await routeUser(root, prompt, ["screenshot"]);
+  assert.ok(withInstructions.includes("📖 AGENTS.md"), withInstructions);
+
+  const withoutEvidence = await routeUser(root, "直接实现这个页面");
+  for (const absent of ["当前设计稿", "当前接口", "用户截图", "当前项目已有组件"]) {
+    assert.ok(!withoutEvidence.includes(absent), withoutEvidence);
+  }
+
+  const explicitAbsence = await routeUser(root, "没有设计稿，也没有接口文档，直接实现这个页面");
+  assert.ok(!explicitAbsence.includes("当前设计稿"), explicitAbsence);
+  assert.ok(!explicitAbsence.includes("当前接口"), explicitAbsence);
+  assert.ok(!explicitAbsence.includes("已提供设计稿"), explicitAbsence);
+  assert.ok(!explicitAbsence.includes("已提供接口信息"), explicitAbsence);
+});
+
+test("execution brief keeps the four product questions scannable and hides routing internals", async (t) => {
+  const root = await fixture();
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const output = await routeUser(root, "见截图，这个页面显示异常，定位并修复", ["screenshot"]);
+  const headings = ["💡 AI 理解", "🤔 为什么这样决定？", "🚀 AI 将利用", "🛠 AI 已决定"];
+  let previous = -1;
+  for (const heading of headings) {
+    const current = output.indexOf(heading);
+    assert.ok(current > previous, output);
+    previous = current;
+  }
+  assertNoLeaks(output);
+  assert.ok(!output.includes("读取规范"), output);
+  assert.ok(!output.includes("格式化代码"), output);
+  assert.ok(!output.includes("验证代码"), output);
 });
 
 test("profile-json legacy protocol is disabled and default output is formatted text", async (t) => {
