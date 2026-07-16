@@ -1,11 +1,11 @@
 ---
 name: ai-talk
-description: 在用户显式调用 $ai-talk:ai-talk 并希望为研发任务选择公司 Skill 时，基于真实运行时 SKILL.md 决定一个 Skill，并通过确定性 formatter 以“AI 理解 / AI 已决定 / AI 将执行”三层结构解释决策与执行准备。只做路由和工作流准备说明，不执行任务、不调用下游 Skill。
+description: 在用户显式调用 $ai-talk:ai-talk 并希望为研发任务选择公司 Skill 时，基于真实运行时 SKILL.md 决定一个 Skill，并以 Execution Brief 解释任务理解、具体决策依据、将利用的真实上下文和 Skill 职责。只做决策解释，不执行任务、不调用下游 Skill。
 ---
 
-# AI Talk Workflow Preparation
+# AI Talk Decision Layer
 
-完成公司 Skill 路由，并解释 AI 的决策和下一步执行准备。不要扩展 Prompt Builder，不读取或执行候选 Skill 正文。
+完成公司 Skill 路由，并用执行前摘要解释 AI 的决策。不要扩展 Prompt Builder，不读取或执行候选 Skill 正文。
 
 ## 边界
 
@@ -56,28 +56,32 @@ node scripts/route-company-skills.mjs \
 - 只有活动积木或 uiMeta 可配置玩法块才选积木 Skill。
 - “测一下”是泛化词；没有 Midscene 或测试文件产物时不得选择 `ai-test`。
 
-## 用户输出
+## Execution Brief
 
-独立 `format-user-output.mjs` 将内部路由结果转换为最终文本。默认输出固定为“AI 理解 / AI 已决定 / AI 将执行”三层，使用确定语气，不得用“推荐”“可能”“建议”表达已完成的决策。
+独立 `format-user-output.mjs` 将内部路由结果转换为最终文本。输出按“AI 理解 / 为什么这样决定 / AI 将利用 / AI 已决定”组织，使用确定语气，不得用“推荐”“可能”“建议”表达已完成的决策。
 
 ```text
 💡 AI 理解
-<一句话说明任务类型和用户目标。>
+<任务类型>
+<一句话说明用户目标。>
 
-✅ AI 已决定
-使用：<Skill 名称>
+🤔 为什么这样决定？
+✓ <最多 4 条当前任务中的具体事实>
 
-原因：
-✓ <最多 4 条与当前任务直接相关的短理由>
+🚀 AI 将利用
+<仅列出已确认且本轮确实会读取的上下文；没有则明确没有额外上下文>
 
-🚀 AI 将执行
-✓ <最多 4 条进入已决定 Skill 后的关键执行准备或动作>
+🛠 AI 已决定
+<Skill 名称>
+负责<职责>
 ```
 
 检索画像、候选路径、索引统计、重复 `name` 冲突、评分、匹配词和 warnings 都是内部调试数据，不得出现在默认回复中。只使用真实 Skill 名称，不显示绝对路径、备选列表或内部字段名。
 
-只有在一个相近 Skill 确实容易引起疑问时，才在“AI 已决定”中补充“为什么不用 <Skill>？”和一句自然语言原因；不得输出“未选择”字段。最多 1 个阻塞性问题以“执行前需确认”并入“AI 已决定”，没有则省略。
+“为什么这样决定？”最多 4 条，只能写当前任务中已明确的目标对象、输入证据和期望产物；不得写“适用范围相关”等泛化理由。
 
-“AI 将执行”只能使用将来时描述已决定 Skill 的关键动作。未实际读取当前活动、`AGENTS.md`、组件知识或其他上下文时，不得写成“已准备”“已读取”。
+“AI 将利用”是动态上下文清单，不是执行步骤。截图、设计稿和接口文档只在本轮真实提供或明确引用时显示；项目代码、`AGENTS.md` 和已有组件只在对应路径真实存在且已决定工作流会读取时显示。不得固定输出“读取规范”“格式化代码”“验证代码”等默认工程动作。
 
-不得输出 `task_action`、`target_category`、`desired_output`、`execution_mode`、`evidence_types`、`intent_terms`、`exclusion_terms`、`unknowns` 原始字段名、绝对路径、评分、`matched_fields`、`matched_terms`、候选数组、索引详情或冲突详情。不得输出 `<details>`、长执行 Prompt、短 Prompt、伪执行按钮、详细实施方案、自定义 UI 或自动调用下游 Skill。完成工作流准备说明后立即停止。
+Skill 名称下必须显示一句职责，例如 `gen-code / 负责代码开发`、`ui-self-check / 负责浏览器检查`、`gen-frontend-plan / 负责实施方案设计`。只有在一个相近 Skill 确实容易引起疑问时，才在“AI 已决定”中补充“为什么不用<职责名称>？”和一句自然语言原因；不得输出“未选择”字段。最多 1 个阻塞性问题以“执行前需确认”并入“AI 已决定”，没有则省略。
+
+不得输出 `task_action`、`target_category`、`desired_output`、`execution_mode`、`evidence_types`、`intent_terms`、`exclusion_terms`、`unknowns`、`query_terms` 原始字段名、绝对路径、评分、`matched_fields`、`matched_terms`、候选数组、索引详情、冲突详情或路由细节。不得输出 `<details>`、长执行 Prompt、短 Prompt、伪执行按钮、详细实施方案、自定义 UI 或自动调用下游 Skill。完成决策解释后立即停止。

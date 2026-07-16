@@ -308,8 +308,18 @@ function buildProfile(query, suppliedEvidence) {
 
   const evidence = new Set(suppliedEvidence.map((item) => item.toLowerCase()));
   if (hasScreenshotEvidence(text, suppliedEvidence)) evidence.add("screenshot");
-  if (text.includes("figma")) evidence.add("figma");
-  if (text.includes("openapi")) evidence.add("openapi");
+  const noDesignEvidence = hasAny(text, [
+    "没有 figma", "无 figma", "未提供 figma", "不用 figma", "不参考 figma",
+    "没有设计稿", "无设计稿", "未提供设计稿", "不要设计稿", "不使用设计稿", "没有视觉稿",
+  ]);
+  const noApiEvidence = hasAny(text, [
+    "没有 openapi", "无 openapi", "未提供 openapi", "不用 openapi",
+    "没有接口文档", "无接口文档", "未提供接口", "没有接口信息", "不参考接口文档",
+  ]);
+  if (!noDesignEvidence && text.includes("figma")) evidence.add("figma");
+  if (!noApiEvidence && text.includes("openapi")) evidence.add("openapi");
+  if (!noDesignEvidence && hasAny(text, ["设计稿", "视觉稿", "原型链接"])) evidence.add("design");
+  if (!noApiEvidence && hasAny(text, ["接口文档", "接口信息", "api 文档"])) evidence.add("api");
   return {
     task_action: action,
     target_category: target,
@@ -395,33 +405,102 @@ function scoreSkill(skill, profile, query) {
 
 function reasonsFor(item, profile, query) {
   const text = query.toLowerCase();
-  if (!ROUTES[item.skill.name.toLowerCase()]) return ["该 Skill 的适用描述与当前任务直接相关。"];
-  const reasons = [];
-  if (profile.evidence_types.includes("screenshot")) reasons.push("用户明确提供了截图作为当前任务证据。");
-  if (hasAny(text, ["页面", "活动页", "充值页"])) reasons.push("任务对象是现有前端页面。");
-  if (profile.execution_mode === "review_only") reasons.push("用户明确要求只分析或检查，不修改代码。");
-  if (profile.desired_output === "live_ui_findings") reasons.push("需要即时检查页面的视觉、交互或运行状态。");
-  if (profile.desired_output === "midscene_test_file") reasons.push("目标是生成、维护或运行 Midscene 自动化测试。");
-  if (profile.desired_output === "frontend_plan_files") reasons.push("目标是输出前端实施计划，而不是修改源码。");
-  if (profile.desired_output === "frontend_code_changes") reasons.push(isBugRequest(text) ? "目标是定位现有行为原因、修复并验证结果。" : "目标是实际修改前端代码并验证结果。");
-  if (profile.desired_output === "figma_analysis_docs") reasons.push("目标是产出独立的 Figma 原型分析文档。");
-  if (profile.desired_output === "figma_ui_meta") reasons.push("目标是生成 figma-ui-meta.json 转换产物。");
-  if (profile.desired_output === "page_center_config") reasons.push("目标是生成或推送 PageCenter 配置。");
-  if (profile.desired_output === "activity_block_component") reasons.push("目标是实现 uiMeta 可配置的活动积木组件。");
-  if (profile.desired_output === "service_files") reasons.push("目标是从 OpenAPI 生成接口服务文件。");
-  return reasons.length ? [...new Set(reasons)].slice(0, 3) : ["该 Skill 的适用范围与当前任务直接相关。"];
+  const target = [];
+  const evidence = [];
+  const decision = [];
+  if (hasAny(text, ["活动页", "充值页"])) target.push("已明确目标活动页面");
+  else if (hasAny(text, ["页面", "布局", "交互", "显示", "渲染"])) target.push("已明确目标页面");
+  else if (hasAny(text, ["组件", "玩法块"])) target.push("已明确目标组件");
+  if (profile.evidence_types.some((type) => ["figma", "design"].includes(type))) evidence.push("已提供设计稿");
+  if (profile.evidence_types.some((type) => ["openapi", "api"].includes(type))) evidence.push("已提供接口信息");
+  if (profile.evidence_types.includes("screenshot")) evidence.push("已提供用户截图");
+  if (profile.execution_mode === "review_only") decision.push("已明确只检查，不修改代码");
+  if (profile.desired_output === "live_ui_findings") decision.push("当前目标是浏览器检查");
+  if (profile.desired_output === "midscene_test_file") decision.push("当前产物是 Midscene 自动化测试");
+  if (profile.desired_output === "frontend_plan_files") decision.push("当前产物是前端实施方案");
+  if (profile.desired_output === "frontend_code_changes") decision.push(isBugRequest(text) ? "当前目标是修复已有代码" : "当前目标是完成代码开发");
+  if (profile.desired_output === "figma_analysis_docs") decision.push("当前产物是原型分析文档");
+  if (profile.desired_output === "figma_ui_meta") decision.push("当前产物是 figma-ui-meta.json");
+  if (profile.desired_output === "page_center_config") decision.push("当前产物是 PageCenter 配置");
+  if (profile.desired_output === "activity_block_component") decision.push("当前目标是开发可配置活动积木");
+  if (profile.desired_output === "service_files") decision.push("当前产物是接口服务文件");
+  const reasons = [...target, ...evidence.slice(0, 2), ...decision];
+  if (!reasons.length && query.toLowerCase().includes(item.skill.name.toLowerCase())) reasons.push(`已明确指定 ${item.skill.name}`);
+  if (!reasons.length && !ROUTES[item.skill.name.toLowerCase()]) {
+    const purpose = item.skill.description.replace(/\s+/g, " ").split(/[。；;]/, 1)[0].slice(0, 40);
+    if (purpose) reasons.push(`任务明确指向：${purpose}`);
+  }
+  return [...new Set(reasons)].slice(0, 4);
 }
 
-function exclusionReason(name, profile) {
-  if (name === "ai-test") return "未要求生成或运行 Midscene 自动化测试；页面即时检查不属于测试文件产出。";
-  if (name === "ui-self-check") return "任务要求生成或运行 Midscene 测试，不是即时页面检查。";
-  if (name === "gen-code") return profile.desired_output === "frontend_plan_files" ? "本轮只要求前端实施计划，不修改代码。" : "当前明确要求即时检查页面，而不是定位并修改现有代码。";
-  if (name === "gen-frontend-plan") return "未要求输出前端实施计划。";
-  if (name === "figma-analyze") return "Figma 是开发证据，或目标不是独立分析文档。";
-  if (name === "figma-to-ui-meta") return "未要求生成 figma-ui-meta.json。";
-  if (name === "gen-page-center-config") return "未要求 PageCenter 配置或推送结果。";
-  if (name === "custom-components-skill") return "没有活动积木或 uiMeta 可配置玩法块证据。";
-  return "该 Skill 与当前任务的直接相关性低于推荐项。";
+function shouldExplainAlternative(selected, alternative, profile, query) {
+  const text = query.toLowerCase();
+  const pair = new Set([selected, alternative]);
+  if (pair.has("ui-self-check") && pair.has("ai-test")) {
+    return hasAny(text, ["测", "测试", "检查", "浏览器", "playwright", "midscene"]);
+  }
+  if (pair.has("gen-code") && pair.has("gen-frontend-plan")) {
+    return hasAny(text, ["方案", "计划", "实现", "开发", "修改", "修复", "做出来"]);
+  }
+  if (pair.has("figma-analyze") && pair.has("gen-code")) {
+    return profile.evidence_types.includes("figma") && hasAny(text, ["实现", "开发", "修改", "分析", "文档"]);
+  }
+  if (pair.has("figma-to-ui-meta") && pair.has("gen-code")) return hasAny(text, ["figma", "ui-meta", "mercury"]);
+  if (pair.has("gen-page-center-config") && pair.has("gen-code")) return hasAny(text, ["pagecenter", "page-center", "配置"]);
+  if (pair.has("custom-components-skill") && pair.has("gen-code")) return hasAny(text, ["活动积木", "uimeta", "ui meta"]);
+  return false;
+}
+
+async function hasAnyProjectPath(root, candidates) {
+  for (const candidate of candidates) {
+    if (await readable(path.join(root, candidate))) return true;
+  }
+  return false;
+}
+
+async function executionContexts(root, profile, query, skillName) {
+  if (!skillName) return [];
+  const text = query.toLowerCase();
+  const contexts = [];
+  const add = (value) => {
+    if (!contexts.includes(value)) contexts.push(value);
+  };
+  const projectSkills = new Set([
+    "ai-test", "gen-frontend-plan", "gen-code", "gen-page-center-config",
+    "custom-components-skill", "ui2-upgrade-guide", "gen-service",
+  ]);
+  const hasCode = projectSkills.has(skillName) && await hasAnyProjectPath(root, [
+    "src", "apps", "app", "pages", "packages",
+  ]);
+  if (hasCode) {
+    if (hasAny(text, ["活动", "活动页", "充值页"])) add("📁 当前活动代码");
+    else if (hasAny(text, ["页面", "布局", "显示", "渲染"])) add("📁 当前页面代码");
+    else add("📁 当前项目代码");
+  }
+  if (profile.evidence_types.some((type) => ["figma", "design"].includes(type))) add("📐 当前设计稿");
+  if (profile.evidence_types.some((type) => ["openapi", "api"].includes(type))) add("🔌 当前接口");
+  if (profile.evidence_types.includes("screenshot")) add("🖼 用户截图");
+  if (skillName === "ui-self-check" && hasAny(text, ["页面", "浏览器", "视觉", "交互", "响应式"])) add("🌐 当前页面");
+  if (projectSkills.has(skillName) && await readable(path.join(root, "AGENTS.md"))) add("📖 AGENTS.md");
+  const mentionsReuse = hasAny(text, ["已有组件", "现有组件", "项目组件", "组件库", "复用组件"]);
+  if (mentionsReuse && await hasAnyProjectPath(root, ["components", "src/components", "app/components"])) {
+    add("🧩 当前项目已有组件");
+  }
+  return contexts.slice(0, 6);
+}
+
+function exclusionReason(name, profile, query) {
+  if (name === "ai-test") return "因为本轮是页面即时检查，不需要生成或运行 Midscene 测试。";
+  if (name === "ui-self-check") return "因为当前产物是 Midscene 测试，不是即时页面检查。";
+  if (name === "gen-code") return profile.desired_output === "frontend_plan_files" ? "因为本轮只输出前端实施计划，不修改代码。" : "因为当前是即时页面检查，不是代码修改。";
+  if (name === "gen-frontend-plan") return isBugRequest(query.toLowerCase())
+    ? "因为当前属于已有代码修复。"
+    : "因为当前目标是直接开发代码，不是输出实施方案。";
+  if (name === "figma-analyze") return "因为设计稿是开发上下文，目标不是独立分析文档。";
+  if (name === "figma-to-ui-meta") return "因为当前产物不是 figma-ui-meta.json。";
+  if (name === "gen-page-center-config") return "因为当前产物不是 PageCenter 配置或推送结果。";
+  if (name === "custom-components-skill") return "因为当前目标不是 uiMeta 可配置的活动积木。";
+  return "因为当前任务与已决定 Skill 的职责更直接对应。";
 }
 
 export async function routeCompanySkills(args) {
@@ -453,6 +532,7 @@ export async function routeCompanySkills(args) {
   const byName = new Map(ranked.map((item) => [item.skill.name, item]));
   const candidate = (item) => ({
     name: item.skill.name,
+    description: item.skill.description,
     path: item.skill.path,
     source: item.skill.source,
     score: item.score,
@@ -465,6 +545,11 @@ export async function routeCompanySkills(args) {
     byScope[skill.scope].files += 1;
   }
   for (const skill of skills) byScope[skill.scope].unique_names += 1;
+  const excludedSimilarSkills = (group || [])
+    .filter((name) => name !== top?.skill.name && byName.has(name))
+    .filter((name) => shouldExplainAlternative(top?.skill.name, name, profile, args.query))
+    .slice(0, 1)
+    .map((name) => ({ name, path: byName.get(name).skill.path, reason: exclusionReason(name, profile, args.query) }));
   return {
     schema_version: 2,
     original_goal: args.query,
@@ -473,10 +558,8 @@ export async function routeCompanySkills(args) {
     recommendation: top ? candidate(top) : null,
     alternatives: positive.slice(1, 3).map(candidate),
     recommendation_basis: top ? reasonsFor(top, profile, args.query) : [],
-    excluded_similar_skills: (group || [])
-      .filter((name) => name !== top?.skill.name && byName.has(name))
-      .slice(0, 1)
-      .map((name) => ({ name, path: byName.get(name).skill.path, reason: exclusionReason(name, profile) })),
+    execution_contexts: await executionContexts(root, profile, args.query, top?.skill.name),
+    excluded_similar_skills: excludedSimilarSkills,
     blocking_unknown: profile.unknowns[0] || null,
     index: {
       roots,

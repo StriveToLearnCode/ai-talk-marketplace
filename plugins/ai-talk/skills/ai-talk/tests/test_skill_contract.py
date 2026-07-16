@@ -37,11 +37,21 @@ class Contract(unittest.TestCase):
             self.assertIn(text, self.skill)
 
     def test_user_output_whitelist(self):
-        for text in ("💡 AI 理解", "✅ AI 已决定", "🚀 AI 将执行", "使用：<Skill 名称>", "为什么不用 <Skill>？", "执行前需确认", "最多 4 条"):
+        for text in ("💡 AI 理解", "🤔 为什么这样决定？", "🚀 AI 将利用", "🛠 AI 已决定", "负责<职责>", "为什么不用<职责名称>？", "执行前需确认", "最多 4 条"):
             self.assertIn(text, self.skill)
-        for text in ("💡 AI 理解", "✅ AI 已决定", "🚀 AI 将执行", "使用：", "原因：", "为什么不用 ", "执行前需确认："):
+        for text in ("💡 AI 理解", "🤔 为什么这样决定？", "🚀 AI 将利用", "🛠 AI 已决定", "为什么不用", "执行前需确认："):
             self.assertIn(text, self.formatter)
+        for text in ("AI 将执行", "原因：", "推荐执行", "使用："):
+            self.assertNotIn(text, self.formatter)
         for text in ("绝对路径", "评分", "`matched_fields`", "`matched_terms`", "候选数组", "索引详情", "冲突详情"):
+            self.assertIn(text, self.skill)
+
+    def test_execution_brief_product_contract(self):
+        for text in (
+            "不得写“适用范围相关”等泛化理由", "是动态上下文清单，不是执行步骤",
+            "只在本轮真实提供或明确引用时显示", "路径真实存在且已决定工作流会读取时显示",
+            "读取规范", "格式化代码", "验证代码", "负责代码开发", "负责浏览器检查", "负责实施方案设计",
+        ):
             self.assertIn(text, self.skill)
 
     def test_routing_boundaries(self):
@@ -66,7 +76,7 @@ class Contract(unittest.TestCase):
             self.assertIn(text, self.skill)
 
     def test_metadata(self):
-        self.assertIn("AI 已决定", self.agent)
+        self.assertIn("Execution Brief", self.agent)
         self.assertEqual(self.manifest["version"].split("+")[0], "0.4.0")
         self.assertIn("Zero downstream execution", self.manifest["interface"]["capabilities"])
 

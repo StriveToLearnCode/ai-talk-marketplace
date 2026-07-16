@@ -1,7 +1,7 @@
 interface:
   display_name: "AI Talk"
-  short_description: "理解研发任务，决定公司 Skill 并解释执行准备"
-  default_prompt: "使用 $ai-talk 以“AI 理解 / AI 已决定 / AI 将执行”说明这个研发任务；不要执行任务。"
+  short_description: "用 Execution Brief 解释 AI 的研发决策"
+  default_prompt: "使用 $ai-talk 说明任务理解、具体决策依据、将利用的真实上下文和已决定 Skill 的职责；不要执行任务。"
 
 policy:
   allow_implicit_invocation: false

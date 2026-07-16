@@ -1,6 +1,6 @@
 # AI Talk Marketplace
 
-AI Talk 是 `Workflow Preparation`：内部保留结构化检索画像用于匹配，再向开发者说明 AI 理解了什么、已决定使用什么、下一步将怎么做。
+AI Talk 是 `AI Decision Layer`：内部保留结构化检索画像用于匹配，再以 Execution Brief 向开发者说明 AI 理解了什么、为什么这样决定、会利用哪些真实上下文，以及已决定 Skill 的职责。
 
 ## 安装
 
@@ -17,7 +17,7 @@ codex plugin add ai-talk@ai-talk-marketplace
 $ai-talk:ai-talk 新增奖励确认弹窗，不改领取逻辑
 ```
 
-AI Talk 默认入口经独立 formatter 输出，固定为“AI 理解 / AI 已决定 / AI 将执行”三层，原因和执行准备各不超过 4 条。正常回复只显示 Skill 名称，不显示画像字段、绝对路径、评分、候选或索引详情。
+AI Talk 默认入口经独立 formatter 输出 Execution Brief：任务理解、最多 4 条具体决策依据、动态真实上下文、Skill 名称与职责。正常回复不显示画像字段、绝对路径、评分、候选、索引详情或执行步骤。
 
 同义扩展词只提高召回，不会成为用户已确认需求。图片、图标或背景图等对象词不会被当作用户提供了截图。AI Talk 不维护组件知识库或映射，不指定具体组件，不读取下游 references，不生成执行 Prompt、代码或配置，也不调用下游 Skill。
 

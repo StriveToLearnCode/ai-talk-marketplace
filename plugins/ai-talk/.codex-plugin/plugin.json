@@ -1,15 +1,15 @@
 {
   "name": "ai-talk",
-  "version": "0.4.0+codex.20260716100025",
-  "description": "AI Talk 理解研发任务，决定公司 Skill，并解释决策与执行准备。",
+  "version": "0.4.0+codex.20260716031107",
+  "description": "AI Talk 以 Execution Brief 解释研发任务理解、决策依据、真实上下文和 Skill 职责。",
   "author": {
     "name": "sf"
   },
   "skills": "./skills/",
   "interface": {
     "displayName": "AI Talk",
-    "shortDescription": "理解研发任务，决定公司 Skill 并解释执行准备",
-    "longDescription": "AI Talk 是只读的工作流准备器。内部保留结构化检索画像、真实路径、索引统计和冲突信息用于匹配与调试；独立 formatter 固定以“AI 理解 / AI 已决定 / AI 将执行”三层结构说明任务、已选 Skill、最多四条原因和最多四条执行准备。它不读取候选 Skill 知识库，不调用下游 Skill，也不修改代码。",
+    "shortDescription": "用 Execution Brief 解释 AI 的研发决策",
+    "longDescription": "AI Talk 是只读的 AI Decision Layer。它用 Execution Brief 向开发者展示任务理解、最多四条具体决策依据、动态真实上下文，以及已选 Skill 的职责。它不展示路由内部状态和执行步骤，不读取候选 Skill 知识库，不调用下游 Skill，也不修改代码。",
     "developerName": "sf",
     "category": "Productivity",
     "capabilities": [
@@ -22,13 +22,13 @@
       "Duplicate Skill name detection",
       "Deterministic user-output formatting",
       "Decision explanation",
-      "Workflow preparation summary",
+      "Execution Brief",
       "Zero downstream execution"
     ],
     "defaultPrompt": [
-      "$ai-talk 新增奖励确认弹窗，不改领取逻辑；说明 AI 的理解、决定和执行准备",
-      "$ai-talk 打开页面检查视觉和交互问题，说明 AI 的决策与下一步",
-      "$ai-talk 奖励状态为什么没有显示，决定修复工作流并说明下一步"
+      "$ai-talk 新增奖励确认弹窗，不改领取逻辑；解释任务理解、决策依据、将利用的上下文和 Skill 职责",
+      "$ai-talk 打开页面检查视觉和交互问题；解释任务理解、决策依据、将利用的上下文和 Skill 职责",
+      "$ai-talk 奖励状态为什么没有显示；解释任务理解、决策依据、将利用的上下文和 Skill 职责"
     ]
   }
 }
