@@ -1,60 +1,48 @@
-# AI Talk 验收场景
+# AI Talk Context Gap 验收场景
 
-## A. 多附件分类
+## A. 状态型蒙层
 
-任务：开发 `recharge/components/dialogs` 下的礼物连爆弹窗，并提供视觉、交互、接口三张图。
+`$ai-talk 奖励获取后增加蒙层，资源 icon/mask`
 
-- `confirmed_context` 分别记录 `visual_design`、`interaction_flow`、`api_document`，且 `source` 对应附件 1、2、3。
-- 实体分别保留附件来源，分类查询覆盖真实视觉、交互和接口概念。
-- 不把三个附件合并成泛化“截图”。
+- `icon/mask` 是 `asset_resource`，不是目录或目标范围。
+- 状态字段未说明时，只产生非阻塞 `state_condition` 缺口。
+- Task Contract 提示后续 Codex 从当前项目代码验证，不立即追问。
 
-## B. 明确文件 Bug
+## B. 状态映射冲突
 
-`$ai-talk 修复 src/components/reward-card.vue 中图片没有显示的问题`
+`$ai-talk 这里 state=0，但页面显示已领取`
 
-- 只确认目标文件并提取 `image-not-updated` 问题表现。
-- 不追加 PageCenter、ESLint、Prettier、`AGENTS.md` 等套话。
-- 真实索引中存在 `gen-code` 时，结尾为 `执行能力：gen-code`。
+- 记录接口数据和页面表现冲突。
+- `state_mapping` 是待验证关系和非阻塞缺口。
+- 不直接判断 `state=0` 的业务含义，不产生“交付物不明确”。
 
-## C. 泛化弹窗需求
+## C. 泛化弹窗
 
 `$ai-talk 开发一个弹窗`
 
-- Component Query 可以分别包含 `dialog`、`modal`、`popup`。
-- 不得补充确认按钮、props、样式或具体组件名。
-- 可将缺少所属页面或目标目录记录为唯一阻塞未知项。
+- 不补充按钮、props、事件或样式。
+- 缺少所属页面或模块确实导致无法定位时，`target_scope` 是唯一阻塞缺口。
 
-## D. 图片对象词不是附件
+## D. 页面检查
 
-`$ai-talk 图片没有显示，修一下`
+`$ai-talk 打开这个 URL 检查视觉和交互`
 
-- 不得生成 `screenshot` 上下文。
-- 不得声称用户提供或引用了截图。
+- `page_entry` 和 `inspection_goal` 已具备。
+- 不要求目标文件、接口、设计稿或测试。
+- 没有缺口时省略“上下文缺口”区域。
 
-## E. 输出重心
+## E. 明确文件文案修改
 
-所有编码任务仍可由内部路由选择 `gen-code`，但默认回复主体为：
+`$ai-talk 修改 src/components/title.vue 的文案为“立即领取”`
 
-1. 用户目标
-2. 已确认上下文
-3. 可靠的研发概念
-4. 概括性检索方向
-5. 任务边界与未知项
+- 确认目标文件与文案修改。
+- 不产生接口、设计稿、测试或状态条件缺口。
+- 直接生成简短 Task Contract。
 
-不得展示内部 intent、entity key、分类 Query 或兼容 Query 数组。结尾只显示一行执行能力；只有真正的交付物歧义才增加一行选型说明。
+## F. 证据与输出边界
 
-## F. 分类 Query Builder
-
-- “为什么这个进度条不对”加 RTL 奖励阶段截图时，提取 `bug_fix`、`progress-track`、`reward-stage`、`claimed`、`RTL` 和进度展示异常。
-- “已领取图片没有显示”且无附件时提取 `claimed` 与 `image-not-updated`，不得生成截图上下文。
-- 页面视觉交互检查使用 `ui_inspection` 和即时浏览器检查 Skill Query。
-- `progressRewardConfig` 只有真实出现时才允许进入精确 Code Query。
-- Docs、Skills、Components、Code 每类最多 3 个 Query，兼容数组只按分类展平。
-
-## G. 路由回归
-
-- 即时 UI 检查与 Midscene 测试继续区分。
-- 前端计划与实际代码开发继续区分。
-- Figma 作为开发证据时不覆盖 `gen-code`。
-- PageCenter 配置、活动积木、服务生成等专用 Skill 只在对应产物明确时选择。
-- 基准至少 20 条，并报告 Top 1、Top 3、混淆矩阵和错误案例。
+- `icon/close`、`progress/bg-1` 等资源标识不得识别为目录。
+- 截图只证明页面表现，不作为接口数据或代码实现事实。
+- 每个 Gap 只包含 `type`、`reason`、`blocking` 和可选 `suggested_source`。
+- 最多一个阻塞 Gap；非阻塞 Gap 不打断工作流。
+- 默认输出不展示内部字段名、JSON、评分、绝对路径、检索计划或执行 Skill。

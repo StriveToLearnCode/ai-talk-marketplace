@@ -1,4 +1,4 @@
-function cleanedStrings(values, limit) {
+function cleanedStrings(values, limit = 8) {
   return [...new Set((values || [])
     .filter((value) => typeof value === "string" && value.trim())
     .map((value) => value.replace(/\s+/g, " ").trim()))]
@@ -6,60 +6,73 @@ function cleanedStrings(values, limit) {
 }
 
 function cleanGoal(value) {
-  return String(value || "")
-    .replace(/^\s*\$ai-talk(?::ai-talk)?\s*/i, "")
-    .trim();
+  return String(value || "").replace(/^\s*\$ai-talk(?::ai-talk)?\s*/i, "").trim();
 }
 
+function safeDisplay(value) {
+  return String(value || "").replace(/(^|\s)(\/(?:Users|home|private|var|tmp)\/\S+)/g, (_, prefix, absolute) => {
+    const parts = absolute.replace(/\/$/, "").split("/");
+    return `${prefix}${parts.at(-1) || "目标位置"}`;
+  });
+}
+
+const SOURCE_LABELS = {
+  project: "当前项目代码",
+  docs: "公司文档",
+  skill: "相关 Skill",
+  user: "用户确认",
+};
+
 export function formatUserOutput(result) {
-  const contexts = (result?.confirmed_context || [])
-    .filter((item) => item && typeof item.value === "string" && item.value.trim())
-    .slice(0, 8);
+  const contexts = cleanedStrings((result?.confirmed_context || []).map((item) => safeDisplay(item?.value)), 10);
   const conceptLabels = [
     ["task", "任务"],
     ["ui_component", "组件"],
-    ["component", "组件"],
-    ["business_object", "业务"],
+    ["business_object", "业务对象"],
     ["state", "状态"],
-    ["visual_effect", "视觉效果"],
+    ["visual_change", "视觉修改"],
     ["asset_resource", "资源"],
-    ["api", "接口"],
-    ["layout_scene", "场景"],
-    ["config_or_symbol", "符号"],
-    ["issue_symptom", "问题"],
-    ["target_scope", "范围"],
+    ["issue_symptom", "问题表现"],
+    ["target_scope", "目标范围"],
+    ["page_entry", "页面入口"],
+    ["inspection_goal", "检查目标"],
+    ["goal", "目标"],
+    ["scope", "范围"],
   ];
-  const conceptsByHeading = new Map();
+  const concepts = [];
   for (const [type, heading] of conceptLabels) {
-    const labels = cleanedStrings((result?.entities?.[type] || []).map((item) => item?.label), 6);
-    if (!labels.length) continue;
-    conceptsByHeading.set(heading, cleanedStrings([...(conceptsByHeading.get(heading) || []), ...labels], 6));
+    const labels = cleanedStrings((result?.entities?.[type] || []).map((item) => safeDisplay(item?.label)), 6);
+    if (labels.length) concepts.push(`${heading}：${labels.join("、")}`);
   }
-  const concepts = [...conceptsByHeading].map(([heading, labels]) => `${heading}：${labels.join("、")}`);
-  const directions = cleanedStrings(result?.retrieval_directions, 6);
+  const relationships = cleanedStrings(result?.relationships_and_conflicts, 6);
   const boundaries = cleanedStrings(result?.boundaries, 6);
-  const unknowns = cleanedStrings(result?.unknowns, 1);
+  const acceptance = cleanedStrings(result?.acceptance_criteria, 6);
+  const gaps = (result?.unknowns || []).filter((item) => item && item.type && item.reason && typeof item.blocking === "boolean");
+
   const lines = [
     "用户目标：",
-    cleanGoal(result?.original_goal) || "尚未提供明确目标。",
+    safeDisplay(cleanGoal(result?.original_goal)),
     "",
     "已确认上下文：",
+    ...contexts.map((context) => `- ${context}`),
   ];
 
-  if (contexts.length) lines.push(...contexts.map((item) => `- ${item.value}`));
-  else lines.push("- 未提供可确认的额外上下文");
-
   if (concepts.length) lines.push("", "研发概念：", ...concepts.map((concept) => `- ${concept}`));
-  if (directions.length) lines.push("", "检索方向：", ...directions.map((direction) => `- ${direction}`));
 
-  lines.push("", "任务边界与未知项：");
-  if (boundaries.length) lines.push(...boundaries.map((boundary) => `- 边界：${boundary}`));
-  if (unknowns.length) lines.push(...unknowns.map((unknown) => `- 尚未确认：${unknown}`));
-  if (!boundaries.length && !unknowns.length) lines.push("- 当前没有需要额外补充的边界或阻塞项");
+  lines.push("", "关系与冲突：");
+  if (relationships.length) lines.push(...relationships.map((item) => `- ${item}`));
+  else lines.push("- 已确认信息之间没有显式冲突。");
 
-  if (result?.selection_explanation) {
-    lines.push("", `选型说明：${String(result.selection_explanation).replace(/\s+/g, " ").trim()}`);
+  if (gaps.length) {
+    lines.push("", "上下文缺口：");
+    for (const item of gaps) {
+      lines.push(`- ${safeDisplay(item.reason)}`);
+      if (item.suggested_source) lines.push(`  建议来源：${SOURCE_LABELS[item.suggested_source] || item.suggested_source}。`);
+      lines.push(item.blocking ? "  阻塞，需要先确认。" : "  非阻塞，执行阶段先验证。");
+    }
   }
-  lines.push("", `执行能力：${result?.execution_skill || "待确定"}`);
+
+  lines.push("", "任务边界：", ...boundaries.map((item) => `- ${safeDisplay(item)}`));
+  lines.push("", "验收标准：", ...acceptance.map((item) => `- ${safeDisplay(item)}`));
   return lines.join("\n");
 }
