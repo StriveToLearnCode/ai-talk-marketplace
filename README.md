@@ -1,6 +1,6 @@
 # AI Talk
 
-AI Talk 是显式调用的 `Intent Normalizer + Skill Query Router`。它在内部保留八字段检索画像用于匹配，再用简短自然语言向开发者说明任务理解和推荐结果。
+AI Talk 是显式调用的 `Workflow Preparation`。它在内部保留八字段检索画像用于匹配，再向开发者说明 AI 理解了什么、已决定使用什么、下一步将怎么做。
 
 ```text
 用户原话与明确证据
@@ -8,10 +8,10 @@ AI Talk 是显式调用的 `Intent Normalizer + Skill Query Router`。它在内�
 → evidence_types / intent_terms / exclusion_terms / unknowns
 → 读取运行时 SKILL.md 的 frontmatter、description 与明确触发条件/适用场景
 → 内部保留完整路由与调试数据
-→ 默认只显示 AI 理解、推荐执行、最多 3 条依据和 1 个必要排除项
+→ 默认只显示 AI 理解、AI 已决定、AI 将执行
 ```
 
-默认回复约 150 字，只显示 Skill 名称，不显示画像字段、绝对路径、索引冲突或重复 name。AI Talk 不维护组件知识库或组件映射，不读取下游 Skill references，不生成执行 Prompt、代码或配置，也不自动调用 Skill。
+默认入口通过独立 formatter 固定输出三层：一句话理解、一个已决定 Skill、最多 4 条原因和最多 4 条执行准备。只显示 Skill 名称，不显示画像字段、绝对路径、评分、候选或索引详情。AI Talk 不维护组件知识库或组件映射，不读取下游 Skill references，不生成详细实施方案、代码或配置，也不自动调用 Skill。
 
 ## 安装
 
@@ -38,11 +38,12 @@ $ai-talk 新增奖励确认弹窗，不改领取逻辑
 ## 文件职责
 
 - `plugins/ai-talk/skills/ai-talk/`：主 Skill、通用路由器与测试。
+- `plugins/ai-talk/skills/ai-talk/scripts/format-user-output.mjs`：确定性的用户输出隔离层。
 - `plugins/ai-talk/skills/ui-self-check/`：参与只读索引的即时 UI 检查 Skill；主流程不会调用它。
 - `plugins/ai-talk/docs/skills/`：公司 Skill 设计样本，不作为运行时索引或兜底结果。
 - `ai-talk-public-marketplace/`：公开发布副本。
 
-旧 Prompt references、默认偏好和 `collect_context.py` 已删除。
+旧 Prompt references、默认偏好、`collect_context.py` 和 `--profile-json` 路由协议已删除或禁用。
 
 ## 验证
 

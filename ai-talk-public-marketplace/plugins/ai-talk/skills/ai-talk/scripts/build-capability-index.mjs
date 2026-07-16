@@ -1,4 +1,4 @@
 #!/usr/bin/env node
 
-// Backward-compatible entrypoint for the single generic Skill router.
+// Compatibility command name; it uses the same formatter-isolated router entrypoint.
 await import("./route-company-skills.mjs");

@@ -1,6 +1,6 @@
 # AI Talk Plugin
 
-AI Talk 将用户口语、截图角色和任务动词规范化为公司 Skill 检索画像，并只从真实运行时索引推荐 Skill。它不执行任务、不生成执行 Prompt，也不调用候选 Skill。
+AI Talk 将用户口语、截图角色和任务动词规范化为公司 Skill 检索画像，并只从真实运行时索引决定 Skill。它解释决策和下一步执行准备，但不执行任务，也不调用候选 Skill。
 
 ## 内部调试画像
 
@@ -17,7 +17,7 @@ AI Talk 将用户口语、截图角色和任务动词规范化为公司 Skill �
 }
 ```
 
-这些字段及 `expanded_terms` 只用于匹配与调试，不出现在默认用户回复中；扩展词不表示用户已确认这些需求。
+这些字段及 `expanded_terms` 只用于匹配与显式 `--debug-json` 调试，不出现在默认用户回复中；扩展词不表示用户已确认这些需求。
 
 ## 路由
 
@@ -30,7 +30,11 @@ node skills/ai-talk/scripts/route-company-skills.mjs \
 
 默认索引项目 `.agents/skills/**/SKILL.md`、显式批准的公司 Skill 根和插件自带 `ui-self-check`。只读取 frontmatter 的 `name`、`description` 与标题明确标记的触发条件/适用场景短段；排除 `docs/skills` 对照副本，并报告重复 `name` 的全部真实路径。
 
-默认回复约 150 字，只展示 AI 理解、推荐执行、最多 3 条判断依据和 1 个必要的未选择原因。只显示 Skill 名称；画像、绝对路径、候选、索引统计和冲突保留在脚本 JSON 中供调试。
+默认入口经独立 formatter 输出用户文本，固定为“AI 理解 / AI 已决定 / AI 将执行”三层，原因和执行准备各不超过 4 条。只显示 Skill 名称；画像、绝对路径、评分、候选、索引统计和冲突仅在显式 `--debug-json` 调试结果中存在。
+
+截图证据只来自真实图片附件、显式 `--evidence-type screenshot`，或“见截图、参考截图、截图如下、根据这张图”等明确表述。普通的图片、图标和背景图对象词不构成截图证据。
+
+旧 `--profile-json` 路由协议已禁用。
 
 ## 边界
 

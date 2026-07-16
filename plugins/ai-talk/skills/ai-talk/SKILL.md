@@ -1,25 +1,25 @@
 ---
 name: ai-talk
-description: 在用户显式调用 $ai-talk 并希望为研发任务选择公司 Skill 时，保留内部结构化检索画像，基于真实运行时 SKILL.md 推荐一个 Skill，并用约 150 字自然语言说明任务理解、执行建议、判断依据和一个必要的排除项。只做路由，不执行任务、不调用下游 Skill、不生成执行 Prompt。
+description: 在用户显式调用 $ai-talk 并希望为研发任务选择公司 Skill 时，基于真实运行时 SKILL.md 决定一个 Skill，并通过确定性 formatter 以“AI 理解 / AI 已决定 / AI 将执行”三层结构解释决策与执行准备。只做路由和工作流准备说明，不执行任务、不调用下游 Skill。
 ---
 
-# AI Talk Skill Router
+# AI Talk Workflow Preparation
 
-只完成公司 Skill 路由。不要扩展 Prompt Builder，不读取或执行候选 Skill 正文。
+完成公司 Skill 路由，并解释 AI 的决策和下一步执行准备。不要扩展 Prompt Builder，不读取或执行候选 Skill 正文。
 
 ## 边界
 
 1. 原样保留用户目标，不增加功能、交互、组件、数据结构或验收要求。
-2. 每轮只运行一次 `scripts/route-company-skills.mjs`。
+2. 每轮只运行一次 `scripts/route-company-skills.mjs`，使用其默认用户文本输出。
 3. 只索引当前项目 `.agents/skills/**/SKILL.md`、显式批准的公司 Skill 根和插件自带 `ui-self-check`。
 4. 只解析 `SKILL.md` frontmatter 的真实 `name`、`description`，以及标题明确标记为“触发条件/适用场景”的短段；不读取其他正文、references、脚本或知识库。
 5. 不索引 `plugins/ai-talk/docs/skills/` 对照副本，不扫描组件源码、普通文档或 `.claude/skills` 补候选。
 6. 不修改代码，不访问外部工具，不运行测试、构建、服务或部署。
-7. 不调用推荐或备选 Skill，不生成执行顺序、Context Builder、组件库或自定义 UI。
+7. 不调用已决定或备选 Skill，不生成详细实施方案、Context Builder、组件库或自定义 UI。
 
-## 检索画像
+## 内部检索画像
 
-保留 `original_goal`，并生成：
+内部保留 `original_goal`，并生成：
 
 - `task_action`
 - `target_category`
@@ -30,7 +30,7 @@ description: 在用户显式调用 $ai-talk 并希望为研发任务选择公司
 - `exclusion_terms`
 - `unknowns`
 
-截图只作为 `screenshot` 证据。脚本返回的 `expanded_terms` 只用于检索召回，必须标注为检索扩展词，不得写成用户已确认需求。
+仅在当前请求真实包含图片附件、显式传入 `evidence_type=screenshot`，或用户明确说“见截图、参考截图、截图如下、根据这张图”时，才把截图作为 `screenshot` 证据。“图片、图标、背景图、已领取图片”等对象词不代表用户提供了截图。脚本返回的 `expanded_terms` 只用于检索召回，不得写成用户已确认需求。
 
 ## 索引与匹配
 
@@ -42,34 +42,42 @@ node scripts/route-company-skills.mjs \
   [--evidence-type screenshot]
 ```
 
-重复 `name` 必须报告全部真实路径。匹配综合期望产物、执行方式、适用场景、目标类别和排除项，单个关键词不能独立决定 Top 1。
+默认入口只输出用户文本。仅内部调试和测试可显式增加 `--debug-json` 查看路由数据；旧 `--profile-json` 协议已禁用，不得进入默认流程。
+
+重复 `name` 必须在内部调试结果中报告全部真实路径。匹配综合期望产物、执行方式、适用场景、目标类别和排除项，单个关键词不能独立决定 Top 1。
 
 - 生成或维护 `midscene-test.ts`、Midscene 用例或报告：`ai-test`。
-- 即时页面视觉、交互、响应式、控制台或网络检查：`ui-self-check`。
+- “打开页面 / 看看页面 / 浏览器检查”与“视觉 / 交互 / 响应式 / 控制台 / 网络”同时出现时，优先视为即时 UI 检查并选择 `ui-self-check`；“有问题、异常、不对”等泛化词不能覆盖此意图。
 - 输出 `docs/plan/`：`gen-frontend-plan`。
 - 实际修改前端代码：`gen-code`。
-- “为什么没有显示”“这里不对”“修一下”等已有实现异常默认按定位并修复处理，选择 `gen-code`；只有明确要求只分析、只检查不修改或只报告时，页面问题才选择 `ui-self-check`。
+- “为什么没有显示”“这里不对”“修一下”等明确指向已有实现的异常默认按定位并修复处理，选择 `gen-code`；即时 UI 检查场景只有明确要求定位并修改现有代码时才选择 `gen-code`。
 - Figma 只作为开发证据时不选 `figma-analyze`。
 - 只有 PageCenter 配置/推送产物才选配置 Skill。
 - 只有活动积木或 uiMeta 可配置玩法块才选积木 Skill。
 - “测一下”是泛化词；没有 Midscene 或测试文件产物时不得选择 `ai-test`。
 
-## 输出
+## 用户输出
 
-脚本返回的检索画像、候选路径、索引统计、重复 `name` 冲突和 warnings 都是内部调试数据，不得出现在默认回复中。只使用真实 Skill 名称，不显示绝对路径、备选列表或内部字段名；“未选择”最多展示 1 个最容易混淆的 Skill。
+独立 `format-user-output.mjs` 将内部路由结果转换为最终文本。默认输出固定为“AI 理解 / AI 已决定 / AI 将执行”三层，使用确定语气，不得用“推荐”“可能”“建议”表达已完成的决策。
 
 ```text
-AI 理解：
-<一句话说明任务类型和用户目标。明显问题排查写成“Bug 排查”或“定位并修复”，不得写 unknown。>
+💡 AI 理解
+<一句话说明任务类型和用户目标。>
 
-推荐执行：
-使用 <推荐 Skill 名称> <用自然语言说明建议的执行方式>。
+✅ AI 已决定
+使用：<Skill 名称>
 
-判断依据：
-- <最多 3 条与当前任务直接相关的理由>
+原因：
+✓ <最多 4 条与当前任务直接相关的短理由>
 
-未选择 <最容易混淆的 Skill 名称>：
-<未选择原因；没有必要时整段省略。>
+🚀 AI 将执行
+✓ <最多 4 条进入已决定 Skill 后的关键执行准备或动作>
 ```
 
-默认回复控制在约 150 个中文字符。不得输出 `<details>`、长执行 Prompt、短 Prompt、伪执行按钮、自动调用步骤、自定义 UI 或新的执行流程。完成路由报告后立即停止。
+检索画像、候选路径、索引统计、重复 `name` 冲突、评分、匹配词和 warnings 都是内部调试数据，不得出现在默认回复中。只使用真实 Skill 名称，不显示绝对路径、备选列表或内部字段名。
+
+只有在一个相近 Skill 确实容易引起疑问时，才在“AI 已决定”中补充“为什么不用 <Skill>？”和一句自然语言原因；不得输出“未选择”字段。最多 1 个阻塞性问题以“执行前需确认”并入“AI 已决定”，没有则省略。
+
+“AI 将执行”只能使用将来时描述已决定 Skill 的关键动作。未实际读取当前活动、`AGENTS.md`、组件知识或其他上下文时，不得写成“已准备”“已读取”。
+
+不得输出 `task_action`、`target_category`、`desired_output`、`execution_mode`、`evidence_types`、`intent_terms`、`exclusion_terms`、`unknowns` 原始字段名、绝对路径、评分、`matched_fields`、`matched_terms`、候选数组、索引详情或冲突详情。不得输出 `<details>`、长执行 Prompt、短 Prompt、伪执行按钮、详细实施方案、自定义 UI 或自动调用下游 Skill。完成工作流准备说明后立即停止。

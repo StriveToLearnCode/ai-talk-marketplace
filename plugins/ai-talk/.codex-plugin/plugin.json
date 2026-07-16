@@ -1,15 +1,15 @@
 {
   "name": "ai-talk",
-  "version": "0.3.0+codex.20260715163941",
-  "description": "AI Talk \u4fdd\u7559\u5185\u90e8\u7ed3\u6784\u5316\u753b\u50cf\u7528\u4e8e Skill \u5339\u914d\uff0c\u5e76\u4ee5\u7b80\u77ed\u81ea\u7136\u8bed\u8a00\u7ed9\u51fa\u63a8\u8350\u3002",
+  "version": "0.4.0+codex.20260716100025",
+  "description": "AI Talk 理解研发任务，决定公司 Skill，并解释决策与执行准备。",
   "author": {
     "name": "sf"
   },
   "skills": "./skills/",
   "interface": {
     "displayName": "AI Talk",
-    "shortDescription": "\u7528\u7b80\u77ed\u81ea\u7136\u8bed\u8a00\u7406\u89e3\u7814\u53d1\u4efb\u52a1\u5e76\u63a8\u8350\u771f\u5b9e\u516c\u53f8 Skill",
-    "longDescription": "AI Talk \u662f\u53ea\u8bfb\u516c\u53f8 Skill \u8def\u7531\u5668\u3002\u5185\u90e8\u4fdd\u7559\u7ed3\u6784\u5316\u68c0\u7d22\u753b\u50cf\u3001\u771f\u5b9e\u8def\u5f84\u3001\u7d22\u5f15\u7edf\u8ba1\u548c\u51b2\u7a81\u4fe1\u606f\u7528\u4e8e\u5339\u914d\u4e0e\u8c03\u8bd5\uff1b\u9ed8\u8ba4\u56de\u590d\u7ea6 150 \u5b57\uff0c\u53ea\u663e\u793a\u4efb\u52a1\u7406\u89e3\u3001\u63a8\u8350 Skill\u3001\u6267\u884c\u5efa\u8bae\u3001\u6700\u591a\u4e09\u6761\u5224\u65ad\u4f9d\u636e\u548c\u4e00\u4e2a\u5fc5\u8981\u7684\u6392\u9664\u9879\u3002\u5b83\u4e0d\u8bfb\u53d6\u5019\u9009 Skill \u77e5\u8bc6\u5e93\uff0c\u4e0d\u751f\u6210\u6267\u884c Prompt\uff0c\u4e0d\u8c03\u7528\u4e0b\u6e38 Skill\uff0c\u4e5f\u4e0d\u4fee\u6539\u4ee3\u7801\u3002",
+    "shortDescription": "理解研发任务，决定公司 Skill 并解释执行准备",
+    "longDescription": "AI Talk 是只读的工作流准备器。内部保留结构化检索画像、真实路径、索引统计和冲突信息用于匹配与调试；独立 formatter 固定以“AI 理解 / AI 已决定 / AI 将执行”三层结构说明任务、已选 Skill、最多四条原因和最多四条执行准备。它不读取候选 Skill 知识库，不调用下游 Skill，也不修改代码。",
     "developerName": "sf",
     "category": "Productivity",
     "capabilities": [
@@ -20,13 +20,15 @@
       "Synonym-expanded retrieval queries",
       "Desired-output-aware Skill routing",
       "Duplicate Skill name detection",
-      "Concise natural-language recommendations",
+      "Deterministic user-output formatting",
+      "Decision explanation",
+      "Workflow preparation summary",
       "Zero downstream execution"
     ],
     "defaultPrompt": [
-      "$ai-talk \u65b0\u589e\u5956\u52b1\u786e\u8ba4\u5f39\u7a97\uff0c\u4e0d\u6539\u9886\u53d6\u903b\u8f91\uff1b\u8bf4\u660e\u4efb\u52a1\u7406\u89e3\u5e76\u63a8\u8350 Skill",
-      "$ai-talk \u7ed3\u5408\u73b0\u72b6\u56fe\u548c\u76ee\u6807\u56fe\u8bf4\u660e UI \u6539\u9020\u4efb\u52a1\u5e76\u63a8\u8350 Skill",
-      "$ai-talk \u5956\u52b1\u72b6\u6001\u4e3a\u4ec0\u4e48\u6ca1\u6709\u663e\u793a\uff0c\u6309\u5b9a\u4f4d\u5e76\u4fee\u590d\u63a8\u8350 Skill"
+      "$ai-talk 新增奖励确认弹窗，不改领取逻辑；说明 AI 的理解、决定和执行准备",
+      "$ai-talk 打开页面检查视觉和交互问题，说明 AI 的决策与下一步",
+      "$ai-talk 奖励状态为什么没有显示，决定修复工作流并说明下一步"
     ]
   }
 }
