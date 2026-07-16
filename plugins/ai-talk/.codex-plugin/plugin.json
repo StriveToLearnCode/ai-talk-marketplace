@@ -1,21 +1,33 @@
 {
   "name": "ai-talk",
+<<<<<<< HEAD
   "version": "0.4.0+codex.20260716084314",
   "description": "AI Talk \u5c06\u7814\u53d1\u9700\u6c42\u6574\u7406\u4e3a\u6700\u5c0f Task Contract\uff0c\u5e76\u6807\u6ce8\u771f\u6b63\u5f71\u54cd\u5b9e\u73b0\u7684 Context Gap\u3002",
+=======
+  "version": "0.4.0+codex.20260716171744",
+  "description": "AI Talk builds execution protocols from user language, evidence, and code context for company Skills.",
+>>>>>>> 6ab4b54 (Refactor AI Talk tests and acceptance cases to enhance clarity and align with updated skill routing and output structures)
   "author": {
     "name": "sf"
   },
   "skills": "./skills/",
   "interface": {
     "displayName": "AI Talk",
+<<<<<<< HEAD
     "shortDescription": "\u6574\u7406\u7814\u53d1\u4e0a\u4e0b\u6587\u5e76\u6807\u6ce8\u771f\u6b63\u5f71\u54cd\u5b9e\u73b0\u7684\u7f3a\u53e3",
     "longDescription": "AI Talk \u4fdd\u7559\u7528\u6237\u539f\u59cb\u76ee\u6807\u548c\u771f\u5b9e\u8bc1\u636e\uff0c\u8bc6\u522b\u4f1a\u5f71\u54cd\u4e1a\u52a1\u7ed3\u679c\u3001\u4fee\u6539\u8303\u56f4\u6216\u5b9e\u73b0\u65b9\u5411\u7684 Context Gap\uff0c\u5e76\u751f\u6210\u6700\u5c0f Task Contract \u4ea4\u7ed9\u540e\u7eed Codex\u3002\u5b83\u4e0d\u641c\u7d22\u9879\u76ee\u3001\u4e0d\u8bfb\u53d6\u516c\u53f8\u6587\u6863\u3001\u4e0d\u8c03\u7528 Skill\u3001\u4e0d\u89c4\u5212\u68c0\u7d22\u987a\u5e8f\uff0c\u4e5f\u4e0d\u6269\u5c55\u4e1a\u52a1\u9700\u6c42\u3002",
+=======
+    "shortDescription": "Build execution protocols for company Skills",
+    "longDescription": "AI Talk converts user language, screenshots, files, and code context into an execution protocol containing a normalized goal, confirmed context, required knowledge gaps, real constraints, optional assumptions, and a high-confidence next Skill. It stops after formatting and requires explicit follow-up authorization before execution.",
+>>>>>>> 6ab4b54 (Refactor AI Talk tests and acceptance cases to enhance clarity and align with updated skill routing and output structures)
     "developerName": "sf",
     "category": "Productivity",
     "capabilities": [
-      "Original goal preservation",
+      "Goal compression without information loss",
       "Source-backed context extraction",
+      "Company Skill execution protocol generation",
       "Attachment role normalization",
+<<<<<<< HEAD
       "Five development task types",
       "Structured blocking and non-blocking gaps",
       "State mapping conflict detection",
@@ -29,6 +41,24 @@
       "$ai-talk \u5956\u52b1\u83b7\u53d6\u540e\u589e\u52a0\u8499\u5c42\uff0c\u8d44\u6e90 icon/mask",
       "$ai-talk \u8fd9\u91cc state=0\uff0c\u4f46\u9875\u9762\u663e\u793a\u5df2\u9886\u53d6",
       "$ai-talk \u6253\u5f00\u8fd9\u4e2a URL \u68c0\u67e5\u89c6\u89c9\u548c\u4ea4\u4e92"
+=======
+      "Real project Skill recommendation",
+      "Bounded applicability metadata reads",
+      "Knowledge-gap extraction",
+      "Desired-output-aware Skill recommendation",
+      "Duplicate Skill name detection",
+      "Deterministic user-output formatting",
+      "Typed context and implementation constraints",
+      "Uncertain state mapping protection",
+      "One-screen task protocol generation",
+      "Explicit execution permission gate",
+      "Zero downstream execution"
+    ],
+    "defaultPrompt": [
+      "$ai-talk \u4e3a\u4ec0\u4e48\u6ca1\u6709\u5c55\u793a\u8f6e\u6b21\u5956\u52b1",
+      "$ai-talk state=0 \u9875\u9762\u5374\u5df2\u9886\u53d6",
+      "$ai-talk \u5f00\u53d1\u4e00\u4e2a\u5f39\u7a97"
+>>>>>>> 6ab4b54 (Refactor AI Talk tests and acceptance cases to enhance clarity and align with updated skill routing and output structures)
     ]
   }
 }
