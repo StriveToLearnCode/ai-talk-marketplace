@@ -1,6 +1,6 @@
 ---
 name: ai-talk
-description: 在用户显式调用 $ai-talk 并希望为研发任务选择公司 Skill 时，原样保留用户目标，将口语、截图角色和任务动词规范化为检索画像，基于真实运行时 SKILL.md frontmatter 推荐 Top 1 与最多 2 个备选 Skill，并解释相近 Skill 的排除原因。只做路由，不执行任务、不调用下游 Skill、不生成执行 Prompt。
+description: 在用户显式调用 $ai-talk 并希望为研发任务选择公司 Skill 时，保留内部结构化检索画像，基于真实运行时 SKILL.md 推荐一个 Skill，并用约 150 字自然语言说明任务理解、执行建议、判断依据和一个必要的排除项。只做路由，不执行任务、不调用下游 Skill、不生成执行 Prompt。
 ---
 
 # AI Talk Skill Router
@@ -48,6 +48,7 @@ node scripts/route-company-skills.mjs \
 - 即时页面视觉、交互、响应式、控制台或网络检查：`ui-self-check`。
 - 输出 `docs/plan/`：`gen-frontend-plan`。
 - 实际修改前端代码：`gen-code`。
+- “为什么没有显示”“这里不对”“修一下”等已有实现异常默认按定位并修复处理，选择 `gen-code`；只有明确要求只分析、只检查不修改或只报告时，页面问题才选择 `ui-self-check`。
 - Figma 只作为开发证据时不选 `figma-analyze`。
 - 只有 PageCenter 配置/推送产物才选配置 Skill。
 - 只有活动积木或 uiMeta 可配置玩法块才选积木 Skill。
@@ -55,15 +56,20 @@ node scripts/route-company-skills.mjs \
 
 ## 输出
 
+脚本返回的检索画像、候选路径、索引统计、重复 `name` 冲突和 warnings 都是内部调试数据，不得出现在默认回复中。只使用真实 Skill 名称，不显示绝对路径、备选列表或内部字段名；“未选择”最多展示 1 个最容易混淆的 Skill。
+
 ```text
-用户原始目标：<原文>
-检索画像：<八字段摘要；扩展词单独标注>
-推荐 Skill：<真实 name> — <真实路径>
-备选 Skill：<最多 2 个；没有则省略>
-推荐依据：<多维依据>
-排除相近 Skill：<真实名称、路径和原因>
-待确认：<最多一个真正阻塞项；没有则省略>
-索引冲突：<重复 name 和路径；没有则省略>
+AI 理解：
+<一句话说明任务类型和用户目标。明显问题排查写成“Bug 排查”或“定位并修复”，不得写 unknown。>
+
+推荐执行：
+使用 <推荐 Skill 名称> <用自然语言说明建议的执行方式>。
+
+判断依据：
+- <最多 3 条与当前任务直接相关的理由>
+
+未选择 <最容易混淆的 Skill 名称>：
+<未选择原因；没有必要时整段省略。>
 ```
 
-不得输出 `<details>`、长执行 Prompt、短 Prompt、伪执行按钮或自动调用步骤。完成路由报告后立即停止。
+默认回复控制在约 150 个中文字符。不得输出 `<details>`、长执行 Prompt、短 Prompt、伪执行按钮、自动调用步骤、自定义 UI 或新的执行流程。完成路由报告后立即停止。

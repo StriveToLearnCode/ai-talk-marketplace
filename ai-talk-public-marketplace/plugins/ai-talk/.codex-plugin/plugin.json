@@ -1,13 +1,13 @@
 {
   "name": "ai-talk",
   "version": "0.3.0",
-  "description": "AI Talk 将用户原话和明确证据归一化为检索画像，并路由真实项目 Skill。",
+  "description": "AI Talk 保留内部结构化画像用于 Skill 匹配，并以简短自然语言给出推荐。",
   "author": { "name": "sf" },
   "skills": "./skills/",
   "interface": {
     "displayName": "AI Talk",
-    "shortDescription": "将口语和截图归一化为检索画像并路由真实项目 Skill",
-    "longDescription": "AI Talk 是只读公司 Skill 路由器。它原样保留用户目标，生成 task_action、target_category、desired_output、execution_mode、evidence_types、intent_terms、exclusion_terms 和 unknowns 八字段检索画像；同义扩展词只用于召回，不作为用户已确认需求。索引仅来自真实运行时 SKILL.md 的 frontmatter、description 和明确标记的触发条件/适用场景，检测重复 name 并报告冲突。默认返回 Top 1、最多 2 个备选、推荐依据与相近 Skill 排除原因；没有真正阻塞项时不追问。它不读取或复制 Skill 知识库，不生成执行 Prompt，不调用下游 Skill，也不修改代码。",
+    "shortDescription": "用简短自然语言理解研发任务并推荐真实公司 Skill",
+    "longDescription": "AI Talk 是只读公司 Skill 路由器。内部保留结构化检索画像、真实路径、索引统计和冲突信息用于匹配与调试；默认回复约 150 字，只显示任务理解、推荐 Skill、执行建议、最多三条判断依据和一个必要的排除项。它不读取候选 Skill 知识库，不生成执行 Prompt，不调用下游 Skill，也不修改代码。",
     "developerName": "sf",
     "category": "Productivity",
     "capabilities": [
@@ -18,13 +18,13 @@
       "Synonym-expanded retrieval queries",
       "Desired-output-aware Skill routing",
       "Duplicate Skill name detection",
-      "Top 1 and Top 3 recommendations",
+      "Concise natural-language recommendations",
       "Zero downstream execution"
     ],
     "defaultPrompt": [
-      "$ai-talk:ai-talk 新增奖励确认弹窗，不改领取逻辑；生成检索画像并路由真实 Skill",
-      "$ai-talk:ai-talk 结合现状图和目标图整理 UI 改造检索词，不补充交互",
-      "$ai-talk:ai-talk 排查 reward.ts 的偶发错误，匹配真实调试 Skill，不执行修改"
+      "$ai-talk:ai-talk 新增奖励确认弹窗，不改领取逻辑；说明任务理解并推荐 Skill",
+      "$ai-talk:ai-talk 结合现状图和目标图说明 UI 改造任务并推荐 Skill",
+      "$ai-talk:ai-talk 奖励状态为什么没有显示，按定位并修复推荐 Skill"
     ]
   }
 }

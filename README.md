@@ -1,16 +1,17 @@
 # AI Talk
 
-AI Talk 是显式调用的 `Intent Normalizer + Skill Query Router`。它原样保留用户目标，将口语、截图角色和任务动词整理为八字段检索画像，再只根据真实运行时 Skill 元数据匹配公司 Skill。
+AI Talk 是显式调用的 `Intent Normalizer + Skill Query Router`。它在内部保留八字段检索画像用于匹配，再用简短自然语言向开发者说明任务理解和推荐结果。
 
 ```text
 用户原话与明确证据
 → task_action / target_category / desired_output / execution_mode
 → evidence_types / intent_terms / exclusion_terms / unknowns
 → 读取运行时 SKILL.md 的 frontmatter、description 与明确触发条件/适用场景
-→ 返回 Top 1、最多 2 个备选、真实路径、依据和排除原因
+→ 内部保留完整路由与调试数据
+→ 默认只显示 AI 理解、推荐执行、最多 3 条依据和 1 个必要排除项
 ```
 
-AI Talk 不维护组件知识库或组件映射，不读取下游 Skill references，不指定具体组件，不生成执行 Prompt、代码或配置，也不编排 PageCenter、OpenAPI、测试或 UI 自测。它只推荐，不自动调用 Skill。
+默认回复约 150 字，只显示 Skill 名称，不显示画像字段、绝对路径、索引冲突或重复 name。AI Talk 不维护组件知识库或组件映射，不读取下游 Skill references，不生成执行 Prompt、代码或配置，也不自动调用 Skill。
 
 ## 安装
 

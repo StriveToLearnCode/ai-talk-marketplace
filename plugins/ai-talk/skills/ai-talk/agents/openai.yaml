@@ -1,7 +1,7 @@
 interface:
   display_name: "AI Talk"
-  short_description: "根据期望产物和执行方式推荐真实公司 Skill"
-  default_prompt: "使用 $ai-talk 保留我的原始目标，生成检索画像，推荐 Top 1 公司 Skill 和最多 2 个备选，并解释相近 Skill 的排除原因；不要执行任务。"
+  short_description: "用简短自然语言理解研发任务并推荐合适的真实公司 Skill"
+  default_prompt: "使用 $ai-talk 用约 150 字说明任务理解、推荐 Skill、执行方式和判断依据；不要执行任务。"
 
 policy:
   allow_implicit_invocation: false

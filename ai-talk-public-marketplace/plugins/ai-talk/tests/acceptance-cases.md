@@ -32,6 +32,6 @@ Skill 名称和路径必须来自实际索引文件。重复 `name` 时报告全
 
 画像固定包含 `task_action`、`target_category`、`desired_output`、`execution_mode`、`evidence_types`、`intent_terms`、`exclusion_terms`、`unknowns`。扩展词单独标注，不作为用户确认需求。
 
-默认输出原始目标、画像摘要、Top 1、最多 2 个备选、推荐依据和相近 Skill 排除原因。只有真正影响路由时输出一个待确认项；不得生成执行 Prompt、`<details>`、执行步骤或自动调用下游 Skill。
+默认回复约 150 字，只输出“AI 理解、推荐执行、判断依据、未选择”；依据最多 3 条，“未选择”最多 1 个且无必要时省略。只显示 Skill 名称，不显示画像字段、绝对路径、索引冲突或重复 `name`；不得生成执行 Prompt、`<details>`、执行步骤或自动调用下游 Skill。
 
 自动化基准至少包含 20 条相近用例，并输出明确任务 Top 1 命中率、模糊任务 Top 3 召回率、混淆矩阵和错误案例。

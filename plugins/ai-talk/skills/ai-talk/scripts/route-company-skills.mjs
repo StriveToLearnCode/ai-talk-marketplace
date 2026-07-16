@@ -300,22 +300,42 @@ function mvpExclusions(query) {
   return [...new Set(result)].slice(0, 8);
 }
 
+function mvpIsBugRequest(text) {
+  return mvpHas(text, [
+    "为什么没有显示", "为什么没显示", "没有显示", "没显示", "未显示", "不显示",
+    "这里不对", "修一下", "异常", "有问题", "报错", "错误", "不生效", "失效",
+    "定位并修复", "排查", "修复",
+  ]);
+}
+
+function mvpIsAnalysisOnly(text) {
+  return mvpHas(text, [
+    "只分析", "只要分析", "仅分析", "只定位", "只排查",
+    "只检查", "只报告", "不修改", "不要改代码", "无需修复", "不要修复", "不修复",
+  ]);
+}
+
 function mvpProfile(query, suppliedEvidence) {
   const text = query.toLowerCase();
+  const bug = mvpIsBugRequest(text);
+  const analysisOnly = mvpIsAnalysisOnly(text);
   const noTest = mvpHas(text, ["不要生成测试", "不生成测试", "无需测试文件"]);
   const noCode = mvpHas(text, ["不生成代码", "不要生成代码", "不修改代码", "不要改代码", "只出方案"]);
   const noCustom = mvpHas(text, ["不接 uimeta", "不用 uimeta", "普通组件", "通用组件"]);
   const test = !noTest && mvpHas(text, ["midscene", "midscene-test.ts", "生成测试", "写测试", "测试用例", "自动化测试文件", "维护测试"]);
+  const page = mvpHas(text, ["页面", "活动页", "充值页", "tab", "布局", "交互", "显示", "渲染"]);
   const live = mvpHas(text, ["ui 自测", "浏览器检查", "playwright 验证", "截图对比", "控制台", "网络请求", "边测边修", "响应式检查"]) ||
-    (text.includes("测一下") && mvpHas(text, ["页面", "充值页", "活动页", "tab", "布局", "交互"]));
+    (text.includes("测一下") && page) || (bug && analysisOnly && page);
   const plan = mvpHas(text, ["docs/plan", "前端方案", "前端计划", "实施计划", "只出方案", "方案文档"]);
   const pageCenter = mvpHas(text, ["page-center-config", "推送配置", "同步文案", "同步 assets", "配置入"]);
   const uiMeta = mvpHas(text, ["ui-meta", "ui meta", "figma-ui-meta", "调 mercury"]) && mvpHas(text, ["转成", "转换", "生成", "输出配置", "调 mercury"]);
   const figma = text.includes("figma") && mvpHas(text, ["分析", "梳理", "输出文档", "出方案", "看一下"]);
   const custom = !noCustom && (mvpHas(text, ["活动积木", "积木组件", "可配置玩法块"]) || (mvpHas(text, ["uimeta", "ui meta"]) && mvpHas(text, ["组件", "玩法块", "礼盒"])));
-  const code = !noCode && (mvpHas(text, ["生成代码", "生成页面代码", "修改代码", "写代码", "直接实现", "直接做", "做页面", "加逻辑", "开发页面", "实现页面", "实现 vue", "写组件", "做组件", "做个组件", "改页面"]) || (text.includes("页面") && mvpHas(text, ["做一下", "做出来", "实现"])));
   const service = mvpHas(text, ["生成 service", "openapi 转 service", "api 转 ts", "生成接口文件"]) || (text.includes("openapi") && text.includes("service"));
-  const review = mvpHas(text, ["只检查", "只报告", "不修改", "不要改代码"]);
+  const explicitCode = mvpHas(text, ["生成代码", "生成页面代码", "修改代码", "写代码", "直接实现", "直接做", "做页面", "加逻辑", "开发页面", "实现页面", "实现 vue", "写组件", "做组件", "做个组件", "改页面"]) || (text.includes("页面") && mvpHas(text, ["做一下", "做出来", "实现"]));
+  const specialized = test || live || plan || pageCenter || uiMeta || figma || custom || service;
+  const code = !noCode && !analysisOnly && (explicitCode || (bug && !specialized));
+  const review = analysisOnly;
   let output = "unknown";
   if (test) output = "midscene_test_file";
   if (live && !test) output = "live_ui_findings";
@@ -405,10 +425,23 @@ function mvpScore(skill, profile, query) {
   return {skill, score};
 }
 
-function mvpReason(item, profile) {
-  const route = MVP_ROUTES[item.skill.name.toLowerCase()];
-  if (!route) return ["Skill description 与检索画像相关。"];
-  return [`期望产物匹配：${profile.desired_output}`, `执行方式匹配：${profile.execution_mode}`];
+function mvpReason(item, profile, query) {
+  const text = query.toLowerCase();
+  if (!MVP_ROUTES[item.skill.name.toLowerCase()]) return ["该 Skill 的适用描述与当前任务直接相关。"];
+  const reasons = [];
+  if (profile.evidence_types.includes("screenshot")) reasons.push("用户提供了截图作为当前问题的直接证据。");
+  if (mvpHas(text, ["页面", "活动页", "充值页"])) reasons.push("问题位于已有前端页面。");
+  if (profile.execution_mode === "review_only") reasons.push("用户明确要求只分析或检查，不修改代码。");
+  if (profile.desired_output === "live_ui_findings") reasons.push("需要检查现有页面的显示或交互表现。");
+  if (profile.desired_output === "midscene_test_file") reasons.push("目标是生成或维护 Midscene 自动化测试产物。");
+  if (profile.desired_output === "frontend_plan_files") reasons.push("目标是输出 docs/plan 前端实施计划。");
+  if (profile.desired_output === "frontend_code_changes") reasons.push(mvpIsBugRequest(text) ? "目标是定位原因、修复现有行为并验证结果。" : "目标是实际修改前端代码并验证结果。");
+  if (profile.desired_output === "figma_analysis_docs") reasons.push("目标是产出独立的 Figma 原型分析文档。");
+  if (profile.desired_output === "figma_ui_meta") reasons.push("目标是生成 figma-ui-meta.json 转换产物。");
+  if (profile.desired_output === "page_center_config") reasons.push("目标是生成或推送 PageCenter 配置。");
+  if (profile.desired_output === "activity_block_component") reasons.push("目标是实现 uiMeta 可配置的活动积木组件。");
+  if (profile.desired_output === "service_files") reasons.push("目标是从 OpenAPI 生成接口服务文件。");
+  return reasons.length ? [...new Set(reasons)].slice(0, 3) : ["该 Skill 的适用范围与当前任务直接相关。"];
 }
 
 function mvpExclusionReason(name, profile) {
@@ -420,7 +453,7 @@ function mvpExclusionReason(name, profile) {
   if (name === "figma-to-ui-meta") return "未要求生成 figma-ui-meta.json。";
   if (name === "gen-page-center-config") return "未要求 PageCenter 配置或推送结果。";
   if (name === "custom-components-skill") return "没有活动积木或 uiMeta 可配置玩法块证据。";
-  return "期望产物和执行方式弱于推荐 Skill。";
+  return "该 Skill 与当前任务的直接相关性低于推荐项。";
 }
 
 async function mvpRoute(args) {
@@ -438,11 +471,11 @@ async function mvpRoute(args) {
   const ranked = skills.map((skill) => mvpScore(skill, profile, args.query)).sort((a,b) => b.score-a.score || a.skill.name.localeCompare(b.skill.name));
   const positive = ranked.filter((item) => item.score > 0).slice(0, args.limit), top = positive[0] || null;
   const group = top ? MVP_GROUPS.find((items) => items.includes(top.skill.name)) : null, byName = new Map(ranked.map((item) => [item.skill.name, item]));
-  const candidate = (item) => ({name:item.skill.name,path:item.skill.path,source:item.skill.source,score:item.score,reasons:mvpReason(item,profile),name_conflict:conflicts.some((conflict) => conflict.name === item.skill.name.toLowerCase())});
+  const candidate = (item) => ({name:item.skill.name,path:item.skill.path,source:item.skill.source,score:item.score,reasons:mvpReason(item,profile,args.query),name_conflict:conflicts.some((conflict) => conflict.name === item.skill.name.toLowerCase())});
   const stats = {};
   for (const skill of all) { stats[skill.scope] ||= {files:0,unique_names:0}; stats[skill.scope].files += 1; }
   for (const skill of skills) stats[skill.scope].unique_names += 1;
-  return {schema_version:1,original_goal:args.query,retrieval_profile:profile,expanded_terms:MVP_EXPANDED[profile.desired_output]||[],recommendation:top?candidate(top):null,alternatives:positive.slice(1,3).map(candidate),recommendation_basis:top?mvpReason(top,profile):[],excluded_similar_skills:(group||[]).filter((name) => name !== top?.skill.name && byName.has(name)).slice(0,3).map((name) => ({name,path:byName.get(name).skill.path,reason:mvpExclusionReason(name,profile)})),blocking_unknown:profile.unknowns[0]||null,index:{roots,excluded_roots:exclusions,stats:{files:all.length,unique_names:skills.length,by_scope:stats},duplicate_name_conflicts:conflicts,warnings}};
+  return {schema_version:1,original_goal:args.query,retrieval_profile:profile,expanded_terms:MVP_EXPANDED[profile.desired_output]||[],recommendation:top?candidate(top):null,alternatives:positive.slice(1,3).map(candidate),recommendation_basis:top?mvpReason(top,profile,args.query):[],excluded_similar_skills:(group||[]).filter((name) => name !== top?.skill.name && byName.has(name)).slice(0,3).map((name) => ({name,path:byName.get(name).skill.path,reason:mvpExclusionReason(name,profile)})),blocking_unknown:profile.unknowns[0]||null,index:{roots,excluded_roots:exclusions,stats:{files:all.length,unique_names:skills.length,by_scope:stats},duplicate_name_conflicts:conflicts,warnings}};
 }
 
 async function main() {
