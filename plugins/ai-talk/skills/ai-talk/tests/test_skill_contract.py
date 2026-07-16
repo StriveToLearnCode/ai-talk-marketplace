@@ -10,13 +10,13 @@ class Contract(unittest.TestCase):
  def test_scope(c):
   for x in (".agents/skills/**/SKILL.md","显式批准的公司 Skill 根","ui-self-check","只解析 `SKILL.md` frontmatter","触发条件/适用场景","不读取其他正文、references、脚本或知识库","不索引 `plugins/ai-talk/docs/skills/`","重复 `name`"): c.assertIn(x,c.skill)
  def test_output(c):
-  for x in ("推荐 Skill：","备选 Skill：","推荐依据：","排除相近 Skill：","待确认：","索引冲突："): c.assertIn(x,c.skill)
-  c.assertIn("不得输出 `<details>`",c.skill); c.assertIn("短 Prompt",c.skill)
+  for x in ("AI 理解：","推荐执行：","判断依据：","未选择 <最容易混淆的 Skill 名称>：","约 150 个中文字符","最多展示 1 个"): c.assertIn(x,c.skill)
+  for x in ("不显示绝对路径","内部字段名","内部调试数据","不得输出 `<details>`","短 Prompt"): c.assertIn(x,c.skill)
  def test_boundaries(c):
   for x in ("midscene-test.ts","ai-test","ui-self-check","docs/plan/","gen-frontend-plan","gen-code","Figma 只作为开发证据","PageCenter 配置/推送产物","活动积木或 uiMeta","“测一下”是泛化词"): c.assertIn(x,c.skill)
  def test_no_execution(c):
   for x in ("不要扩展 Prompt Builder","不调用推荐或备选 Skill","Context Builder","组件库","自定义 UI"): c.assertIn(x,c.skill)
  def test_metadata(c):
-  c.assertIn("Top 1",c.agent); c.assertEqual(c.manifest["version"].split("+")[0],"0.3.0"); c.assertIn("Zero downstream execution",c.manifest["interface"]["capabilities"])
+  c.assertIn("约 150 字",c.agent); c.assertEqual(c.manifest["version"].split("+")[0],"0.3.0"); c.assertIn("Zero downstream execution",c.manifest["interface"]["capabilities"])
  def test_cases(c): c.assertGreaterEqual(len(c.cases),20)
 if __name__=="__main__": unittest.main()

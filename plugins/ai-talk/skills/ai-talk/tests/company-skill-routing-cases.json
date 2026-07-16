@@ -169,6 +169,38 @@
     "clarity": "ambiguous",
     "prompt": "帮我做个组件",
     "expected_skill": "gen-code"
+  },
+  {
+    "id": "bug-missing-display",
+    "clarity": "clear",
+    "prompt": "为什么奖励状态没有显示",
+    "expected_skill": "gen-code"
+  },
+  {
+    "id": "bug-fix-here",
+    "clarity": "clear",
+    "prompt": "这里不对，修一下",
+    "expected_skill": "gen-code"
+  },
+  {
+    "id": "bug-page-screenshot",
+    "clarity": "clear",
+    "prompt": "已有页面奖励状态显示异常，见截图",
+    "expected_skill": "gen-code",
+    "evidence_types": [
+      "screenshot"
+    ]
+  },
+  {
+    "id": "bug-locate-fix",
+    "clarity": "clear",
+    "prompt": "这个页面有问题，定位并修复",
+    "expected_skill": "gen-code"
+  },
+  {
+    "id": "bug-analysis-only",
+    "clarity": "clear",
+    "prompt": "这个已有页面显示异常，只分析原因，不修改代码",
+    "expected_skill": "ui-self-check"
   }
 ]
-

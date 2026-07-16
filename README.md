@@ -1,6 +1,6 @@
 # AI Talk Marketplace
 
-AI Talk 是 `Intent Normalizer + Skill Query Router`：原样保留用户目标，把口语、截图角色和任务动词归一化为八字段检索画像，再匹配真实运行时公司 Skill。
+AI Talk 是 `Intent Normalizer + Skill Query Router`：内部保留结构化检索画像用于匹配，再用简短自然语言向开发者说明任务理解和推荐结果。
 
 ## 安装
 
@@ -17,7 +17,7 @@ codex plugin add ai-talk@ai-talk-marketplace
 $ai-talk:ai-talk 新增奖励确认弹窗，不改领取逻辑
 ```
 
-AI Talk 输出原始目标、检索画像摘要、Top 1、最多 2 个备选、真实路径、推荐依据、相近 Skill 排除原因，以及至多一个真正阻塞项。
+AI Talk 默认输出约 150 字，只包含 AI 理解、推荐执行、最多 3 条判断依据和 1 个必要的未选择原因。正常回复只显示 Skill 名称，不显示画像字段、绝对路径、索引冲突或重复 name。
 
 同义扩展词只提高召回，不会成为用户已确认需求。AI Talk 不维护组件知识库或映射，不指定具体组件，不读取下游 references，不生成执行 Prompt、代码或配置，也不调用下游 Skill。
 
