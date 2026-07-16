@@ -1,32 +1,35 @@
 {
   "name": "ai-talk",
   "version": "0.4.0",
-  "description": "AI Talk 以 Execution Brief 解释研发任务理解、决策依据、真实上下文和 Skill 职责。",
-  "author": { "name": "sf" },
+  "description": "AI Talk 将研发需求整理为带来源的上下文、检索查询、任务边界和真实执行 Skill。",
+  "author": {
+    "name": "sf"
+  },
   "skills": "./skills/",
   "interface": {
     "displayName": "AI Talk",
-    "shortDescription": "用 Execution Brief 解释 AI 的研发决策",
-    "longDescription": "AI Talk 是只读的 AI Decision Layer。它用 Execution Brief 向开发者展示任务理解、最多四条具体决策依据、动态真实上下文，以及已选 Skill 的职责。它不展示路由内部状态和执行步骤，不读取候选 Skill 知识库，不调用下游 Skill，也不修改代码。",
+    "shortDescription": "整理研发上下文并生成知识库检索查询",
+    "longDescription": "AI Talk 是研发任务上下文增强器。它保留用户原始目标，提取带来源的真实上下文，为公司 Docs、Skill、组件知识库和项目已有实现生成检索查询，补充必要边界与一个阻塞未知项，并标注真实执行 Skill。它不扩展业务需求，也不代替下游 Skill 执行。",
     "developerName": "sf",
     "category": "Productivity",
     "capabilities": [
-      "Intent normalization",
-      "Structured Skill query profiles",
+      "Original goal preservation",
+      "Source-backed context extraction",
+      "Attachment role normalization",
       "Real project Skill routing",
       "Bounded applicability metadata reads",
-      "Synonym-expanded retrieval queries",
+      "Knowledge retrieval queries",
       "Desired-output-aware Skill routing",
       "Duplicate Skill name detection",
       "Deterministic user-output formatting",
-      "Decision explanation",
-      "Execution Brief",
+      "Task boundaries and blocking unknowns",
+      "Context handoff",
       "Zero downstream execution"
     ],
     "defaultPrompt": [
-      "$ai-talk:ai-talk 新增奖励确认弹窗，不改领取逻辑；解释任务理解、决策依据、将利用的上下文和 Skill 职责",
-      "$ai-talk:ai-talk 打开页面检查视觉和交互问题；解释任务理解、决策依据、将利用的上下文和 Skill 职责",
-      "$ai-talk:ai-talk 奖励状态为什么没有显示；解释任务理解、决策依据、将利用的上下文和 Skill 职责"
+      "$ai-talk:ai-talk 新增奖励确认弹窗，不改领取逻辑",
+      "$ai-talk:ai-talk 参考视觉稿、交互图和接口资料开发弹窗",
+      "$ai-talk:ai-talk 修复指定文件里的奖励状态显示问题"
     ]
   }
 }
