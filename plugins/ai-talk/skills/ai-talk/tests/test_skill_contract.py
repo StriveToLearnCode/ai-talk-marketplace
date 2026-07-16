@@ -19,7 +19,8 @@ class Contract(unittest.TestCase):
 
     def test_context_enhancer_schema(self):
         fields = (
-            "original_goal", "confirmed_context", "retrieval_queries",
+            "original_goal", "confirmed_context", "intent", "entities",
+            "retrieval_query_groups", "retrieval_queries", "retrieval_directions",
             "boundaries", "unknowns", "execution_skill",
         )
         for field in fields:
@@ -41,8 +42,9 @@ class Contract(unittest.TestCase):
 
     def test_retrieval_does_not_expand_business_requirements(self):
         for text in (
-            "3～6", "公司 Docs", "组件知识库", "项目已有实现",
-            "dialog modal popup", "不得写成用户已确认需求", "不预设具体组件名称",
+            "每类最多生成 3 个", "Docs", "Skill", "Component", "Code",
+            "`dialog`、`modal`、`popup`", "不得写成用户已确认需求", "不预设用户未提及的组件名称",
+            "progressRewardConfig", "不得直接使用用户原话作为 Query 主体", "仅追加固定后缀",
             "不编造 Docs、Skill、路径、接口或业务规则",
         ):
             self.assertIn(text, self.skill)
@@ -55,10 +57,12 @@ class Contract(unittest.TestCase):
             self.assertIn(text, self.skill)
 
     def test_default_output_contract(self):
-        headings = ("用户目标：", "已确认上下文：", "建议检索：", "任务边界与未知项：", "执行能力：")
+        headings = ("用户目标：", "已确认上下文：", "研发概念：", "检索方向：", "任务边界与未知项：", "执行能力：")
         for text in headings:
             self.assertIn(text, self.skill)
             self.assertIn(text, self.formatter)
+        self.assertNotIn("建议检索：", self.formatter)
+        self.assertNotIn("retrieval_queries", self.formatter)
         for old in ("AI 已决定", "为什么选择 Skill", "未选择 Skill"):
             self.assertIn(old, self.skill)
             self.assertNotIn(old, self.formatter)
