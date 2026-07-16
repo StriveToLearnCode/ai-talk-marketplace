@@ -17,68 +17,76 @@ class Contract(unittest.TestCase):
         cls.manifest = json.loads((PLUGIN / ".codex-plugin/plugin.json").read_text())
         cls.cases = json.loads((SKILL / "tests/company-skill-routing-cases.json").read_text())
 
-    def test_internal_profile(self):
+    def test_context_enhancer_schema(self):
         fields = (
-            "task_action", "target_category", "desired_output", "execution_mode",
-            "evidence_types", "intent_terms", "exclusion_terms", "unknowns",
+            "original_goal", "confirmed_context", "retrieval_queries",
+            "boundaries", "unknowns", "execution_skill",
         )
         for field in fields:
-            self.assertIn(f"`{field}`", self.skill)
-            self.assertIn(f"{field}:", self.router)
+            self.assertIn(field, self.skill)
+            self.assertIn(field, self.router)
+        for field in ("type", "value", "source"):
+            self.assertIn(field, self.skill)
 
-    def test_scope(self):
-        required = (
-            ".agents/skills/**/SKILL.md", "显式批准的公司 Skill 根", "ui-self-check",
-            "只解析 `SKILL.md` frontmatter", "触发条件/适用场景",
-            "不读取其他正文、references、脚本或知识库",
-            "不索引 `plugins/ai-talk/docs/skills/`", "重复 `name`",
-        )
-        for text in required:
-            self.assertIn(text, self.skill)
-
-    def test_user_output_whitelist(self):
-        for text in ("💡 AI 理解", "🤔 为什么这样决定？", "🚀 AI 将利用", "🛠 AI 已决定", "负责<职责>", "为什么不用<职责名称>？", "执行前需确认", "最多 4 条"):
-            self.assertIn(text, self.skill)
-        for text in ("💡 AI 理解", "🤔 为什么这样决定？", "🚀 AI 将利用", "🛠 AI 已决定", "为什么不用", "执行前需确认："):
-            self.assertIn(text, self.formatter)
-        for text in ("AI 将执行", "原因：", "推荐执行", "使用："):
-            self.assertNotIn(text, self.formatter)
-        for text in ("绝对路径", "评分", "`matched_fields`", "`matched_terms`", "候选数组", "索引详情", "冲突详情"):
-            self.assertIn(text, self.skill)
-
-    def test_execution_brief_product_contract(self):
+    def test_source_backed_context_and_attachment_roles(self):
         for text in (
-            "不得写“适用范围相关”等泛化理由", "是动态上下文清单，不是执行步骤",
-            "只在本轮真实提供或明确引用时显示", "路径真实存在且已决定工作流会读取时显示",
-            "读取规范", "格式化代码", "验证代码", "负责代码开发", "负责浏览器检查", "负责实施方案设计",
+            "visual=<附件摘要>", "interaction=<附件摘要>", "api=<附件摘要>",
+            "screenshot=<附件摘要>", "selected_code=<选中内容摘要>",
+            "user_text:path", "user_text:explicit_reference", "attachment:<序号>",
+            "图片没有显示", "图标", "背景图",
         ):
             self.assertIn(text, self.skill)
+        for text in ("visual_design", "interaction_flow", "api_document", "selected_code"):
+            self.assertIn(text, self.router)
+
+    def test_retrieval_does_not_expand_business_requirements(self):
+        for text in (
+            "3～6", "公司 Docs", "组件知识库", "项目已有实现",
+            "dialog modal popup", "不得写成用户已确认需求", "不预设具体组件名称",
+            "不编造 Docs、Skill、路径、接口或业务规则",
+        ):
+            self.assertIn(text, self.skill)
+
+    def test_runtime_skill_index_scope(self):
+        for text in (
+            ".agents/skills/**/SKILL.md", "显式批准的公司 Skill 根", "ui-self-check",
+            "不索引 `plugins/ai-talk/docs/skills/`", "不读取 references、脚本、知识库或普通正文",
+        ):
+            self.assertIn(text, self.skill)
+
+    def test_default_output_contract(self):
+        headings = ("用户目标：", "已确认上下文：", "建议检索：", "任务边界与未知项：", "执行能力：")
+        for text in headings:
+            self.assertIn(text, self.skill)
+            self.assertIn(text, self.formatter)
+        for old in ("AI 已决定", "为什么选择 Skill", "未选择 Skill"):
+            self.assertIn(old, self.skill)
+            self.assertNotIn(old, self.formatter)
+        self.assertIn("选型说明", self.formatter)
+        self.assertNotIn("SKILL_RESPONSIBILITIES", self.formatter)
+
+    def test_no_fixed_engineering_boilerplate(self):
+        for text in ("AGENTS.md", "PageCenter", "ESLint", "Prettier"):
+            self.assertIn(text, self.skill)
+            self.assertNotIn(text, self.formatter)
 
     def test_routing_boundaries(self):
         required = (
             "midscene-test.ts", "ai-test", "ui-self-check", "docs/plan/", "gen-frontend-plan", "gen-code",
-            "Figma 只作为开发证据", "PageCenter 配置/推送产物", "活动积木或 uiMeta", "“测一下”是泛化词",
-            "打开页面 / 看看页面 / 浏览器检查", "有问题、异常、不对",
+            "Figma 仅作为开发证据", "PageCenter 配置或推送产物", "活动积木或 uiMeta", "“测一下”",
         )
         for text in required:
             self.assertIn(text, self.skill)
 
-    def test_screenshot_contract(self):
-        for text in ("见截图", "参考截图", "截图如下", "根据这张图", "图片、图标、背景图、已领取图片"):
-            self.assertIn(text, self.skill)
-
     def test_legacy_protocol_disabled(self):
-        self.assertIn("旧 `--profile-json` 协议已禁用", self.skill)
+        self.assertIn("旧 `--profile-json` 协议保持禁用", self.skill)
         self.assertNotIn('flag === "--profile-json"', self.router)
 
-    def test_no_execution(self):
-        for text in ("不要扩展 Prompt Builder", "不调用已决定或备选 Skill", "Context Builder", "组件库", "自定义 UI", "不执行任务"):
-            self.assertIn(text, self.skill)
-
     def test_metadata(self):
-        self.assertIn("Execution Brief", self.agent)
+        self.assertIn("上下文", self.agent)
         self.assertEqual(self.manifest["version"].split("+")[0], "0.4.0")
-        self.assertIn("Zero downstream execution", self.manifest["interface"]["capabilities"])
+        self.assertIn("Source-backed context extraction", self.manifest["interface"]["capabilities"])
+        self.assertIn("Context handoff", self.manifest["interface"]["capabilities"])
 
     def test_cases(self):
         self.assertGreaterEqual(len(self.cases), 20)

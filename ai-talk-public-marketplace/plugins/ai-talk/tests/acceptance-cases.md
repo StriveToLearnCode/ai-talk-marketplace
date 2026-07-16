@@ -1,39 +1,51 @@
-# AI Talk 公司 Skill 路由验收
+# AI Talk 验收场景
 
-## A. 即时 UI 检查 vs 自动化测试
+## A. 多附件分类
 
-`$ai-talk:ai-talk 这个活动页面测一下，看看布局和按钮。`
+任务：开发 `recharge/components/dialogs` 下的礼物连爆弹窗，并提供视觉、交互、接口三张图。
 
-Top 1 必须是 `ui-self-check`，不得因“测一下”选择 `ai-test`。只有明确要求生成/维护 Midscene 测试文件、用例或报告时，Top 1 才是 `ai-test`。
+- `confirmed_context` 分别记录 `visual_design`、`interaction_flow`、`api_document`，且 `source` 对应附件 1、2、3。
+- 检索查询覆盖视觉规范、交互流程和接口用法。
+- 不把三个附件合并成泛化“截图”。
 
-## B. 前端计划 vs 代码开发
+## B. 明确文件 Bug
 
-`$ai-talk:ai-talk 读取原型并输出 docs/plan 前端实施计划，不修改代码。`
+`$ai-talk 修复 src/components/reward-card.vue 中图片没有显示的问题`
 
-Top 1 必须是 `gen-frontend-plan`。明确要求实际实现页面、组件或业务逻辑时，Top 1 必须是 `gen-code`。
+- 只确认目标文件与问题表现。
+- 不追加 PageCenter、ESLint、Prettier、`AGENTS.md` 等套话。
+- 真实索引中存在 `gen-code` 时，结尾为 `执行能力：gen-code`。
 
-## C. Figma 证据 vs 独立分析
+## C. 泛化弹窗需求
 
-`$ai-talk:ai-talk 参考 Figma 直接做页面，不要单独输出分析文档。`
+`$ai-talk 开发一个弹窗`
 
-Top 1 必须是 `gen-code`。只有期望产物是原型分析或交互 Markdown 文档时，才选择 `figma-analyze`。
+- 检索词可以包含 `dialog modal popup`。
+- 不得补充确认按钮、props、样式或具体组件名。
+- 可将缺少所属页面或目标目录记录为唯一阻塞未知项。
 
-## D. 专用配置与积木边界
+## D. 图片对象词不是附件
 
-- 只有期望产物是 `page-center-config.json` 或配置推送结果时选择 `gen-page-center-config`。
-- 只有目标是活动积木、uiMeta 可配置玩法块时选择 `custom-components-skill`。
-- 普通页面开发和普通 Vue 组件都选择真实索引中的 `gen-code`。
+`$ai-talk 图片没有显示，修一下`
 
-## E. 真实索引
+- 不得生成 `screenshot` 上下文。
+- 不得声称用户提供或引用了截图。
 
-Skill 名称和路径必须来自实际索引文件。重复 `name` 时报告全部冲突路径；`plugins/ai-talk/docs/skills/` 对照副本不得成为候选或兜底结果。
+## E. 输出重心
 
-## F. 检索画像与输出
+所有编码任务仍可由内部路由选择 `gen-code`，但默认回复主体固定为：
 
-画像固定包含 `task_action`、`target_category`、`desired_output`、`execution_mode`、`evidence_types`、`intent_terms`、`exclusion_terms`、`unknowns`。扩展词单独标注，不作为用户确认需求。
+1. 用户目标
+2. 已确认上下文
+3. 建议检索
+4. 任务边界与未知项
 
-默认回复按“AI 理解、为什么这样决定、AI 将利用、AI 已决定”四段展示。理解包含任务类型和一句话目标；决策依据最多 4 条且不得泛化；上下文必须动态，只显示本轮真实会读取的代码、设计稿、接口、截图、`AGENTS.md` 或已有组件。Skill 名称下必须显示职责。必要的排除理由写成“为什么不用<职责名称>？”，不得输出“未选择”字段。
+结尾只显示一行执行能力。不得显示大块“AI 已决定”“为什么选择 Skill”或“未选择 Skill”；只有真正的交付物歧义才增加一行选型说明。
 
-默认回复不得显示画像字段、绝对路径、评分、候选、匹配词、索引、冲突或路由详情；不得出现“原因”“推荐执行”“AI 将执行”，也不得输出“读取规范”“格式化代码”“验证代码”等默认工程动作。不得生成长执行 Prompt、`<details>`、详细实施方案或自动调用下游 Skill。
+## F. 路由回归
 
-自动化基准至少包含 20 条相近用例，并输出明确任务 Top 1 命中率、模糊任务 Top 3 召回率、混淆矩阵和错误案例。
+- 即时 UI 检查与 Midscene 测试继续区分。
+- 前端计划与实际代码开发继续区分。
+- Figma 作为开发证据时不覆盖 `gen-code`。
+- PageCenter 配置、活动积木、服务生成等专用 Skill 只在对应产物明确时选择。
+- 基准至少 20 条，并报告 Top 1、Top 3、混淆矩阵和错误案例。

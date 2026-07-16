@@ -73,21 +73,21 @@ test("real repository index and company fixture index are reported separately", 
   t.after(() => rm(companyRoot, { recursive: true, force: true }));
   const real = await routeDebug(REPOSITORY, "打开页面看看视觉和交互有没有问题");
   const company = await routeDebug(companyRoot, "帮我生成一份前端实施计划");
-  assert.deepEqual(real.index.stats.by_scope, { companion: { files: 1, unique_names: 1 } });
-  assert.equal(real.recommendation.name, "ui-self-check");
-  assert.equal(company.index.stats.by_scope.project.unique_names, 9);
-  assert.equal(company.index.stats.by_scope.companion.unique_names, 1);
-  assert.equal(company.recommendation.name, "gen-frontend-plan");
+  assert.deepEqual(real.routing.index.stats.by_scope, { companion: { files: 1, unique_names: 1 } });
+  assert.equal(real.execution_skill, "ui-self-check");
+  assert.equal(company.routing.index.stats.by_scope.project.unique_names, 9);
+  assert.equal(company.routing.index.stats.by_scope.companion.unique_names, 1);
+  assert.equal(company.execution_skill, "gen-frontend-plan");
 });
 
 test("real index reports duplicate names and excludes comparison copies", async (t) => {
   const root = await fixture();
   t.after(() => rm(root, { recursive: true, force: true }));
   const payload = await routeDebug(root, "分析 Figma 原型并输出 Markdown 文档", [], "--source-root", `comparison=${COMPARE}`);
-  assert.equal(payload.index.stats.by_scope.project.unique_names, 9);
-  assert.deepEqual(payload.index.duplicate_name_conflicts.map((item) => item.name), ["figma-analyze"]);
-  assert.ok(payload.index.warnings.some((warning) => warning.includes("Excluded non-runtime")));
-  for (const item of [payload.recommendation, ...payload.alternatives].filter(Boolean)) {
+  assert.equal(payload.routing.index.stats.by_scope.project.unique_names, 9);
+  assert.deepEqual(payload.routing.index.duplicate_name_conflicts.map((item) => item.name), ["figma-analyze"]);
+  assert.ok(payload.routing.index.warnings.some((warning) => warning.includes("Excluded non-runtime")));
+  for (const item of [payload.routing.recommendation, ...payload.routing.alternatives].filter(Boolean)) {
     await access(item.path);
     assert.ok(!item.path.startsWith(COMPARE));
   }
@@ -103,8 +103,8 @@ test("indexes explicit applicability sections but ignores ordinary body", async 
   await writeFile(path.join(allowed, "SKILL.md"), "---\nname: allowed-router\ndescription: 公司发布辅助。\n---\n## 适用场景\n星河\n");
   await writeFile(path.join(ignored, "SKILL.md"), "---\nname: ignored-router\ndescription: 通用辅助。\n---\n普通正文包含星河，但不得索引。\n");
   const payload = await routeDebug(root, "星河");
-  assert.equal(payload.recommendation.name, "allowed-router");
-  assert.ok(![payload.recommendation, ...payload.alternatives].filter(Boolean).some((item) => item.name === "ignored-router"));
+  assert.equal(payload.execution_skill, "allowed-router");
+  assert.ok(![payload.routing.recommendation, ...payload.routing.alternatives].filter(Boolean).some((item) => item.name === "ignored-router"));
 });
 
 test("benchmark prints confusion matrix and meets thresholds", async (t) => {
@@ -113,7 +113,7 @@ test("benchmark prints confusion matrix and meets thresholds", async (t) => {
   const cases = JSON.parse(await readFile(CASES, "utf8"));
   const results = await Promise.all(cases.map(async (item) => {
     const payload = await routeDebug(root, item.prompt, item.evidence_types || []);
-    const top3 = [payload.recommendation, ...payload.alternatives].filter(Boolean).map((candidate) => candidate.name);
+    const top3 = [payload.routing.recommendation, ...payload.routing.alternatives].filter(Boolean).map((candidate) => candidate.name);
     return { id: item.id, clarity: item.clarity, expected: item.expected_skill, predicted: top3[0] || null, top3 };
   }));
   const clear = results.filter((item) => item.clarity === "clear");
@@ -142,8 +142,8 @@ test("explicit live UI inspection wins over generic problem words", async (t) =>
   ];
   for (const prompt of prompts) {
     const payload = await routeDebug(root, prompt);
-    assert.equal(payload.recommendation.name, "ui-self-check", prompt);
-    assert.equal(payload.retrieval_profile.desired_output, "live_ui_findings", prompt);
+    assert.equal(payload.execution_skill, "ui-self-check", prompt);
+    assert.equal(payload.routing.retrieval_profile.desired_output, "live_ui_findings", prompt);
   }
 });
 
@@ -152,15 +152,15 @@ test("screenshot evidence requires an attachment flag or an explicit reference p
   t.after(() => rm(root, { recursive: true, force: true }));
   for (const prompt of ["为什么没有显示已领取图片", "检查图标和背景图", "替换奖励图片"]) {
     const payload = await routeDebug(root, prompt);
-    assert.ok(!payload.retrieval_profile.evidence_types.includes("screenshot"), prompt);
-    assert.ok(!payload.recommendation_basis.some((reason) => reason.includes("提供了截图")), prompt);
+    assert.ok(!payload.routing.retrieval_profile.evidence_types.includes("screenshot"), prompt);
+    assert.ok(!payload.confirmed_context.some((item) => item.type.includes("screenshot")), prompt);
   }
   for (const prompt of ["见截图，奖励状态异常", "参考截图修改页面", "截图如下，请检查页面", "根据这张图实现页面"]) {
     const payload = await routeDebug(root, prompt);
-    assert.ok(payload.retrieval_profile.evidence_types.includes("screenshot"), prompt);
+    assert.ok(payload.routing.retrieval_profile.evidence_types.includes("screenshot"), prompt);
   }
   const attachment = await routeDebug(root, "检查奖励状态", ["screenshot"]);
-  assert.ok(attachment.retrieval_profile.evidence_types.includes("screenshot"));
+  assert.ok(attachment.routing.retrieval_profile.evidence_types.includes("screenshot"));
 });
 
 test("existing UI bugs default to code fixes unless explicitly analysis-only", async (t) => {
@@ -168,96 +168,114 @@ test("existing UI bugs default to code fixes unless explicitly analysis-only", a
   t.after(() => rm(root, { recursive: true, force: true }));
   for (const prompt of ["为什么奖励状态没有显示", "这里不对，修一下", "已有页面奖励状态显示异常，见截图", "这个页面有问题，定位并修复", "分析原因并修复这个页面异常"]) {
     const payload = await routeDebug(root, prompt);
-    assert.equal(payload.recommendation.name, "gen-code", prompt);
-    assert.equal(payload.retrieval_profile.desired_output, "frontend_code_changes", prompt);
-    assert.equal(payload.blocking_unknown, null, prompt);
+    assert.equal(payload.execution_skill, "gen-code", prompt);
+    assert.equal(payload.routing.retrieval_profile.desired_output, "frontend_code_changes", prompt);
+    assert.deepEqual(payload.unknowns, [], prompt);
   }
   const analysis = await routeDebug(root, "这个已有页面显示异常，只分析原因，不修改代码");
-  assert.equal(analysis.recommendation.name, "ui-self-check");
-  assert.equal(analysis.retrieval_profile.desired_output, "live_ui_findings");
+  assert.equal(analysis.execution_skill, "ui-self-check");
+  assert.equal(analysis.routing.retrieval_profile.desired_output, "live_ui_findings");
 });
 
-test("four reviewed cases pass route-to-formatter end to end", async (t) => {
+test("multiple image attachments keep visual, interaction, and API roles with sources", async (t) => {
   const root = await fixture();
   t.after(() => rm(root, { recursive: true, force: true }));
-  const cases = [
-    {
-      prompt: "为什么第三个奖励已经领取，却没有显示已领取图片",
-      expected: "gen-code",
-      present: ["Bug 修复", "负责代码开发", "📁 当前页面代码"],
-      absent: ["用户明确提供了截图", "只分析还是修改", "执行前需确认："],
-    },
-    {
-      prompt: "帮我生成一份前端实施计划",
-      expected: "gen-frontend-plan",
-      present: ["负责实施方案设计", "为什么不用代码开发？"],
-    },
-    {
-      prompt: "打开页面看看视觉和交互有没有问题",
-      expected: "ui-self-check",
-      present: ["负责浏览器检查", "🌐 当前页面"],
-      absent: ["gen-code"],
-    },
-    {
-      prompt: "生成并运行 Midscene 测试",
-      expected: "ai-test",
-      present: ["负责自动化测试", "为什么不用浏览器检查？"],
-    },
-  ];
-  for (const item of cases) {
-    const debug = await routeDebug(root, item.prompt);
-    const output = await routeUser(root, item.prompt);
-    assert.equal(debug.recommendation.name, item.expected, item.prompt);
-    assert.ok(output.includes(`🛠 AI 已决定\n${item.expected}\n`), output);
-    for (const text of item.present || []) assert.ok(output.includes(text), output);
-    for (const text of item.absent || []) assert.ok(!output.includes(text), output);
+  const prompt = "开发 recharge/components/dialogs 下的礼物连爆弹窗";
+  const evidence = ["visual=弹窗视觉稿", "interaction=交互流程", "api=连爆次数接口信息"];
+  const payload = await routeDebug(root, prompt, evidence);
+  const output = await routeUser(root, prompt, evidence);
+
+  assert.equal(payload.execution_skill, "gen-code");
+  assert.deepEqual(payload.confirmed_context.slice(0, 3).map((item) => item.type), [
+    "visual_design", "interaction_flow", "api_document",
+  ]);
+  assert.deepEqual(payload.confirmed_context.slice(0, 3).map((item) => item.source), [
+    "attachment:1", "attachment:2", "attachment:3",
+  ]);
+  for (const query of ["礼物连爆弹窗 视觉稿与设计规范", "礼物连爆弹窗 交互流程", "连爆次数 接口用法"]) {
+    assert.ok(payload.retrieval_queries.includes(query), JSON.stringify(payload.retrieval_queries));
+  }
+  for (const text of ["第一张图：弹窗视觉稿", "第二张图：交互流程", "第三张图：连爆次数接口信息", "执行能力：gen-code"]) {
+    assert.ok(output.includes(text), output);
+  }
+});
+
+test("an explicit file bug stays compact and captures only the target and symptom", async (t) => {
+  const root = await fixture();
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const prompt = "修复 src/components/reward-card.vue 中图片没有显示的问题";
+  const payload = await routeDebug(root, prompt);
+  const output = await routeUser(root, prompt);
+
+  assert.equal(payload.execution_skill, "gen-code");
+  assert.deepEqual(payload.confirmed_context, [{
+    type: "target_file",
+    value: "目标文件：src/components/reward-card.vue",
+    source: "user_text:path",
+  }]);
+  assert.ok(payload.retrieval_queries.some((query) => query.includes("图片没有显示")));
+  assert.deepEqual(payload.unknowns, []);
+  assert.ok(output.includes(prompt));
+  assert.ok(!output.includes("AGENTS.md"));
+  assert.ok(!output.includes("ESLint"));
+  assert.ok(!output.includes("Prettier"));
+});
+
+test("a generic dialog request expands retrieval vocabulary without inventing requirements", async (t) => {
+  const root = await fixture();
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const payload = await routeDebug(root, "开发一个弹窗");
+  const output = await routeUser(root, "开发一个弹窗");
+
+  assert.equal(payload.execution_skill, "gen-code");
+  assert.ok(payload.retrieval_queries.some((query) => query.includes("dialog modal popup")));
+  for (const invented of ["确认按钮", "props", "样式"]) {
+    assert.ok(!JSON.stringify(payload).includes(invented), JSON.stringify(payload));
+    assert.ok(!output.includes(invented), output);
+  }
+  assert.deepEqual(payload.confirmed_context, []);
+  assert.deepEqual(payload.unknowns, ["弹窗所属页面或目标目录尚未明确。"]);
+});
+
+test("image words without attachments never become screenshot context", async (t) => {
+  const root = await fixture();
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const payload = await routeDebug(root, "图片没有显示，修一下");
+  const output = await routeUser(root, "图片没有显示，修一下");
+
+  assert.equal(payload.execution_skill, "gen-code");
+  assert.ok(!payload.routing.retrieval_profile.evidence_types.includes("screenshot"));
+  assert.ok(!payload.confirmed_context.some((item) => item.type.includes("screenshot")));
+  assert.ok(!output.includes("截图"), output);
+});
+
+test("coding tasks keep gen-code internal while output centers context and retrieval", async (t) => {
+  const root = await fixture();
+  t.after(() => rm(root, { recursive: true, force: true }));
+  for (const prompt of ["开发一个弹窗", "新增活动页礼物列表", "这里不对，修一下"]) {
+    const payload = await routeDebug(root, prompt);
+    const output = await routeUser(root, prompt);
+    assert.equal(payload.execution_skill, "gen-code", prompt);
+    assert.match(output, /^用户目标：/);
+    assert.ok(output.includes("已确认上下文："), output);
+    assert.ok(output.includes("建议检索："), output);
+    assert.ok(output.includes("任务边界与未知项："), output);
+    assert.match(output, /\n执行能力：gen-code$/);
+    assert.ok(!output.includes("AI 已决定"), output);
+    assert.ok(!output.includes("为什么选择"), output);
+    assert.ok(!output.includes("未选择"), output);
     assertNoLeaks(output);
-    assert.ok((output.match(/^✓ /gm) || []).length <= 4, output);
-    assert.ok((output.match(/^为什么不用/gm) || []).length <= 1, output);
   }
 });
 
-test("execution brief exposes only real contexts selected for this turn", async (t) => {
+test("skill choice is explained only for a real overlapping deliverable", async (t) => {
   const root = await fixture();
   t.after(() => rm(root, { recursive: true, force: true }));
-  const prompt = "参考设计稿和接口文档，根据截图直接实现页面，复用已有组件";
-  const output = await routeUser(root, prompt, ["screenshot"]);
-  for (const context of [
-    "📁 当前页面代码", "📐 当前设计稿", "🔌 当前接口", "🖼 用户截图", "🧩 当前项目已有组件",
-  ]) assert.ok(output.includes(context), output);
-  assert.ok(!output.includes("AGENTS.md"), output);
-
-  await writeFile(path.join(root, "AGENTS.md"), "# Project instructions\n");
-  const withInstructions = await routeUser(root, prompt, ["screenshot"]);
-  assert.ok(withInstructions.includes("📖 AGENTS.md"), withInstructions);
-
-  const withoutEvidence = await routeUser(root, "直接实现这个页面");
-  for (const absent of ["当前设计稿", "当前接口", "用户截图", "当前项目已有组件"]) {
-    assert.ok(!withoutEvidence.includes(absent), withoutEvidence);
-  }
-
-  const explicitAbsence = await routeUser(root, "没有设计稿，也没有接口文档，直接实现这个页面");
-  assert.ok(!explicitAbsence.includes("当前设计稿"), explicitAbsence);
-  assert.ok(!explicitAbsence.includes("当前接口"), explicitAbsence);
-  assert.ok(!explicitAbsence.includes("已提供设计稿"), explicitAbsence);
-  assert.ok(!explicitAbsence.includes("已提供接口信息"), explicitAbsence);
-});
-
-test("execution brief keeps the four product questions scannable and hides routing internals", async (t) => {
-  const root = await fixture();
-  t.after(() => rm(root, { recursive: true, force: true }));
-  const output = await routeUser(root, "见截图，这个页面显示异常，定位并修复", ["screenshot"]);
-  const headings = ["💡 AI 理解", "🤔 为什么这样决定？", "🚀 AI 将利用", "🛠 AI 已决定"];
-  let previous = -1;
-  for (const heading of headings) {
-    const current = output.indexOf(heading);
-    assert.ok(current > previous, output);
-    previous = current;
-  }
-  assertNoLeaks(output);
-  assert.ok(!output.includes("读取规范"), output);
-  assert.ok(!output.includes("格式化代码"), output);
-  assert.ok(!output.includes("验证代码"), output);
+  const plain = await routeUser(root, "开发一个弹窗");
+  const ambiguous = await routeUser(root, "先输出前端方案并开发页面");
+  assert.ok(!plain.includes("选型说明："), plain);
+  assert.ok(ambiguous.includes("选型说明：任务同时提到方案与代码实施"), ambiguous);
+  assert.match(ambiguous, /\n执行能力：gen-code$/);
 });
 
 test("profile-json legacy protocol is disabled and default output is formatted text", async (t) => {
@@ -268,6 +286,6 @@ test("profile-json legacy protocol is disabled and default output is formatted t
     (error) => error.code === 2 && error.stderr.includes("Unknown argument: --profile-json"),
   );
   const output = await routeUser(root, "帮我生成一份前端实施计划");
-  assert.match(output, /^💡 AI 理解/);
+  assert.match(output, /^用户目标：/);
   assertNoLeaks(output);
 });

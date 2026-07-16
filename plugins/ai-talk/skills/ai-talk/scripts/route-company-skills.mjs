@@ -50,6 +50,35 @@ const EXPANDED_TERMS = {
   activity_block_component: ["活动积木组件", "uiMeta 可配置玩法块"],
 };
 
+const EVIDENCE_TYPE_ALIASES = {
+  screenshot: "screenshot",
+  image: "screenshot",
+  visual: "visual_design",
+  design: "visual_design",
+  visual_design: "visual_design",
+  mockup: "visual_design",
+  figma: "visual_design",
+  interaction: "interaction_flow",
+  flow: "interaction_flow",
+  interaction_flow: "interaction_flow",
+  api: "api_document",
+  interface: "api_document",
+  openapi: "api_document",
+  api_document: "api_document",
+  selected_code: "selected_code",
+  code_selection: "selected_code",
+};
+
+const EVIDENCE_DEFAULT_LABELS = {
+  screenshot: "截图",
+  visual_design: "视觉稿",
+  interaction_flow: "交互流程",
+  api_document: "接口资料",
+  selected_code: "选中代码",
+};
+
+const ORDINALS = ["第一", "第二", "第三", "第四", "第五", "第六"];
+
 const COMPARISON_ROOT = path.resolve(import.meta.dirname, "..", "..", "..", "docs", "skills");
 const PLUGIN_SKILLS_ROOT = path.resolve(import.meta.dirname, "..", "..");
 
@@ -228,8 +257,28 @@ function isExplicitLiveInspection(text) {
 }
 
 function hasScreenshotEvidence(text, suppliedEvidence) {
-  if (suppliedEvidence.some((item) => item.toLowerCase() === "screenshot")) return true;
+  if (suppliedEvidence.includes("screenshot")) return true;
   return hasAny(text, ["见截图", "参考截图", "截图如下", "根据这张图"]);
+}
+
+function parseEvidenceItems(values) {
+  return values.map((raw, index) => {
+    const match = String(raw).match(/^([^:=]+)[:=](.+)$/);
+    const rawType = (match ? match[1] : raw).trim().toLowerCase();
+    const type = EVIDENCE_TYPE_ALIASES[rawType] || rawType;
+    const detail = clean(match?.[2] || "", 120);
+    const ordinal = ORDINALS[index] || `第 ${index + 1}`;
+    const label = detail || EVIDENCE_DEFAULT_LABELS[type] || rawType;
+    return {
+      type,
+      profileType: type === "visual_design" ? "design"
+        : type === "interaction_flow" ? "interaction"
+          : type === "api_document" ? "api" : type,
+      value: type === "selected_code" ? label : `${ordinal}张图：${label}`,
+      detail: label,
+      source: `attachment:${index + 1}`,
+    };
+  });
 }
 
 function buildProfile(query, suppliedEvidence) {
@@ -243,7 +292,7 @@ function buildProfile(query, suppliedEvidence) {
   const test = !noTest && hasAny(text, [
     "midscene", "midscene-test.ts", "生成测试", "写测试", "测试用例", "自动化测试文件", "维护测试", "运行测试",
   ]);
-  const page = hasAny(text, ["页面", "活动页", "充值页", "tab", "布局", "交互", "显示", "渲染"]);
+  const page = hasAny(text, ["页面", "活动页", "充值页", "tab", "布局", "交互", "显示", "渲染", "弹窗", "dialog", "modal", "popup"]);
   const live = explicitLive || hasAny(text, [
     "ui 自测", "playwright 验证", "截图对比", "边测边修", "响应式检查",
   ]) || (text.includes("测一下") && page) || (bug && analysisOnly && page);
@@ -256,7 +305,8 @@ function buildProfile(query, suppliedEvidence) {
   const explicitCode = hasAny(text, [
     "生成代码", "生成页面代码", "修改代码", "写代码", "直接实现", "直接做", "做页面", "加逻辑", "开发页面",
     "实现页面", "实现 vue", "写组件", "做组件", "做个组件", "改页面", "定位并修改", "定位并修复",
-  ]) || (text.includes("页面") && hasAny(text, ["做一下", "做出来", "实现"]));
+    "开发弹窗", "实现弹窗", "做弹窗", "开发一个弹窗", "实现一个弹窗",
+  ]) || (hasAny(text, ["页面", "弹窗", "dialog", "modal", "popup"]) && hasAny(text, ["做一下", "做出来", "实现", "开发"]));
 
   // Explicit browser/UI inspection wins over generic words such as “有问题” or “异常”.
   const specialized = test || live || plan || pageCenter || uiMeta || figma || custom || service;
@@ -489,6 +539,150 @@ async function executionContexts(root, profile, query, skillName) {
   return contexts.slice(0, 6);
 }
 
+function localPathMentions(query) {
+  const found = [];
+  const add = (value) => {
+    const cleaned = value.replace(/^[`'"(（]+|[`'"，。；;:：)）]+$/g, "");
+    if (!cleaned || cleaned.includes("://") || found.includes(cleaned)) return;
+    found.push(cleaned);
+  };
+  for (const match of query.matchAll(/(?:\.{0,2}\/)?(?:[A-Za-z0-9_@.-]+\/)+[A-Za-z0-9_@.*-]+(?:\.[A-Za-z0-9]+)?/g)) add(match[0]);
+  for (const match of query.matchAll(/(?:^|[\s`'"(（])([A-Za-z0-9_@.-]+\.(?:vue|tsx?|jsx?|css|scss|less|json|mjs|cjs|md|py|go|java|kt|swift))(?=$|[\s`'"，。；;:：)）])/gi)) add(match[1]);
+  return found.slice(0, 4);
+}
+
+function isFilePath(value) {
+  return /\.(?:vue|tsx?|jsx?|css|scss|less|json|mjs|cjs|md|py|go|java|kt|swift)$/i.test(value);
+}
+
+function confirmedContextFor(query, evidenceItems) {
+  const contexts = evidenceItems.map(({ type, value, source }) => ({ type, value, source }));
+  const add = (type, value, source) => {
+    if (!contexts.some((item) => item.type === type && item.value === value)) contexts.push({ type, value, source });
+  };
+  for (const target of localPathMentions(query)) {
+    const type = isFilePath(target) ? "target_file" : "target_directory";
+    add(type, `${type === "target_file" ? "目标文件" : "目标目录"}：${target}`, "user_text:path");
+  }
+
+  const text = query.toLowerCase();
+  const hasEvidenceType = (type) => evidenceItems.some((item) => item.type === type);
+  const excludesDesign = hasAny(text, ["没有设计稿", "无设计稿", "未提供设计稿", "没有视觉稿", "不用 figma", "不参考 figma"]);
+  const excludesApi = hasAny(text, ["没有接口文档", "无接口文档", "未提供接口", "没有接口信息", "不参考接口文档"]);
+  if (!hasEvidenceType("visual_design") && !excludesDesign && hasAny(text, ["参考设计稿", "根据设计稿", "设计稿如下", "参考视觉稿", "figma 链接"])) {
+    add("visual_design", "用户明确引用的设计稿", "user_text:explicit_reference");
+  }
+  if (!hasEvidenceType("api_document") && !excludesApi && hasAny(text, ["参考接口文档", "根据接口文档", "接口文档如下", "参考接口信息", "openapi 文档"])) {
+    add("api_document", "用户明确引用的接口资料", "user_text:explicit_reference");
+  }
+  if (!hasEvidenceType("screenshot") && hasAny(text, ["见截图", "参考截图", "截图如下", "根据这张图"])) {
+    add("screenshot_reference", "用户明确引用的截图", "user_text:explicit_reference");
+  }
+  return contexts.slice(0, 8);
+}
+
+function topicFrom(query) {
+  let topic = query
+    .replace(/^\s*\$ai-talk(?::ai-talk)?\s*/i, "")
+    .split(/[，。；;\n]/, 1)[0]
+    .replace(/(?:\.{0,2}\/)?(?:[A-Za-z0-9_@.-]+\/)+[A-Za-z0-9_@.*-]+(?:\.[A-Za-z0-9]+)?/g, " ")
+    .replace(/\b[A-Za-z0-9_@.-]+\.(?:vue|tsx?|jsx?|css|scss|less|json|mjs|cjs|md|py|go|java|kt|swift)\b/gi, " ")
+    .replace(/^\s*(?:请|麻烦|请你|帮我|帮忙|需要你)\s*/, "")
+    .replace(/^\s*(?:开发|实现|新增|创建|生成|修改|修复|定位并修复|排查并修复|做|写)\s*(?:一个|一份|这个|当前)?\s*/, "")
+    .replace(/^\s*(?:下|目录下|文件中|中)的?\s*/, "")
+    .replace(/\s*(?:请)?(?:定位并|排查并)?修复(?:这个)?(?:问题|异常)?\s*$/, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (topic.length > 48) topic = topic.slice(0, 48).trim();
+  return topic || "当前研发任务";
+}
+
+function retrievalQueriesFor(query, profile, contexts, evidenceItems) {
+  const topic = topicFrom(query);
+  const text = query.toLowerCase();
+  const result = [];
+  const add = (value) => {
+    const normalized = clean(value, 100);
+    if (normalized && !result.includes(normalized)) result.push(normalized);
+  };
+  const dialog = hasAny(text, ["弹窗", "dialog", "modal", "popup"]);
+  const bug = isBugRequest(text);
+  const target = contexts.find((item) => ["target_file", "target_directory"].includes(item.type))?.value.replace(/^目标(?:文件|目录)：/, "");
+
+  add(topic);
+  if (dialog && (topic === "弹窗" || evidenceItems.length === 0)) add(`${topic} dialog modal popup`);
+  if (target && bug) add(`${target} ${topic}`);
+  add(`${topic} 当前项目已有实现`);
+
+  for (const evidence of evidenceItems) {
+    if (evidence.type === "visual_design") add(`${topic} 视觉稿与设计规范`);
+    if (evidence.type === "interaction_flow") add(`${topic} 交互流程`);
+    if (evidence.type === "api_document") {
+      const subject = evidence.detail.replace(/(?:接口信息|接口资料|接口文档|api 文档)$/i, "").trim();
+      add(subject && subject !== "接口" ? `${subject} 接口用法` : `${topic} 接口用法`);
+    }
+    if (evidence.type === "screenshot") add(`${topic} 截图对应已有实现`);
+  }
+
+  if (dialog || profile.target_category === "generic_component") add(`${topic} 组件知识库`);
+  if (result.length < 6) add(`${topic} 公司 Docs`);
+  if (result.length < 6) add(`${topic} 相关 Skill 适用场景`);
+  while (result.length < 3) add(`${topic} 项目约定`);
+  return result.slice(0, 6);
+}
+
+function boundariesFor(profile, query, contexts) {
+  const result = [];
+  const add = (value) => {
+    if (value && !result.includes(value)) result.push(value);
+  };
+  const implementation = [
+    "frontend_code_changes", "page_center_config", "activity_block_component", "service_files", "midscene_test_file",
+  ].includes(profile.desired_output);
+  const text = query.toLowerCase();
+  if (implementation) add("基于检索到的真实公司资料实施");
+  if (profile.desired_output === "frontend_code_changes" && !isBugRequest(text)
+    && hasAny(text, ["页面", "组件", "弹窗", "dialog", "modal", "popup"])) {
+    add("优先复用项目已有实现和组件");
+  }
+  for (const exclusion of profile.exclusion_terms) add(exclusion);
+  if (implementation) add("不补充用户未确认的业务逻辑");
+  const target = contexts.find((item) => ["target_file", "target_directory"].includes(item.type));
+  if (target) add(`修改范围限于 ${target.value.replace(/^目标(?:文件|目录)：/, "")} 及必要直接依赖`);
+  return result.slice(0, 6);
+}
+
+function unknownsFor(profile, query, contexts) {
+  if (profile.desired_output === "unknown") {
+    return ["期望交付物尚未明确。"];
+  }
+  if (profile.desired_output !== "frontend_code_changes" || isBugRequest(query.toLowerCase())) return [];
+  const hasTarget = contexts.some((item) => ["target_file", "target_directory"].includes(item.type));
+  const dialog = hasAny(query.toLowerCase(), ["弹窗", "dialog", "modal", "popup"]);
+  if (dialog && hasTarget) return ["弹窗触发入口尚未确认；如果当前代码能够确定，则不追问。"];
+  if (dialog) return ["弹窗所属页面或目标目录尚未明确。"];
+  if (!hasTarget) return ["目标页面、目录或文件尚未明确；如果当前代码上下文能够确定，则不追问。"];
+  return [];
+}
+
+function ambiguityExplanation(selected, availableNames, query) {
+  if (!selected) return null;
+  const text = query.toLowerCase();
+  if (selected.name === "gen-code" && availableNames.has("gen-frontend-plan")
+    && hasAny(text, ["方案", "计划", "docs/plan"]) && hasAny(text, ["实现", "开发", "修改", "修复"])) {
+    return "任务同时提到方案与代码实施，本轮按最终需要修改代码选择 gen-code。";
+  }
+  if (availableNames.has("ui-self-check") && availableNames.has("ai-test")
+    && hasAny(text, ["midscene", "测试文件", "自动化测试"]) && isExplicitLiveInspection(text)) {
+    return `任务同时要求页面即时检查和自动化测试，本轮按主要交付选择 ${selected.name}。`;
+  }
+  if (selected.name === "gen-code" && availableNames.has("figma-analyze")
+    && text.includes("figma") && hasAny(text, ["分析", "梳理"]) && hasAny(text, ["实现", "开发", "修改"])) {
+    return "Figma 分析与代码实施同时出现，本轮按最终需要修改代码选择 gen-code。";
+  }
+  return null;
+}
+
 function exclusionReason(name, profile, query) {
   if (name === "ai-test") return "因为本轮是页面即时检查，不需要生成或运行 Midscene 测试。";
   if (name === "ui-self-check") return "因为当前产物是 Midscene 测试，不是即时页面检查。";
@@ -523,7 +717,8 @@ export async function routeCompanySkills(args) {
   for (const source of roots) all.push(...await discoverRoot(source, exclusions, warnings));
   const conflicts = conflictsFor(all);
   const skills = uniqueSkills(all);
-  const profile = buildProfile(args.query, args.evidenceTypes);
+  const evidenceItems = parseEvidenceItems(args.evidenceTypes);
+  const profile = buildProfile(args.query, evidenceItems.map((item) => item.profileType));
   const ranked = skills.map((skill) => scoreSkill(skill, profile, args.query))
     .sort((a, b) => b.score - a.score || a.skill.name.localeCompare(b.skill.name));
   const positive = ranked.filter((item) => item.score > 0).slice(0, args.limit);
@@ -550,23 +745,35 @@ export async function routeCompanySkills(args) {
     .filter((name) => shouldExplainAlternative(top?.skill.name, name, profile, args.query))
     .slice(0, 1)
     .map((name) => ({ name, path: byName.get(name).skill.path, reason: exclusionReason(name, profile, args.query) }));
+  const recommendation = top ? candidate(top) : null;
+  const alternatives = positive.slice(1, 3).map(candidate);
+  const confirmedContext = confirmedContextFor(args.query, evidenceItems);
+  const unknowns = unknownsFor(profile, args.query, confirmedContext);
+  profile.unknowns = unknowns;
+  const index = {
+    roots,
+    excluded_roots: exclusions,
+    stats: { files: all.length, unique_names: skills.length, by_scope: byScope },
+    duplicate_name_conflicts: conflicts,
+    warnings,
+  };
   return {
-    schema_version: 2,
+    schema_version: 3,
     original_goal: args.query,
-    retrieval_profile: profile,
-    expanded_terms: EXPANDED_TERMS[profile.desired_output] || [],
-    recommendation: top ? candidate(top) : null,
-    alternatives: positive.slice(1, 3).map(candidate),
-    recommendation_basis: top ? reasonsFor(top, profile, args.query) : [],
-    execution_contexts: await executionContexts(root, profile, args.query, top?.skill.name),
-    excluded_similar_skills: excludedSimilarSkills,
-    blocking_unknown: profile.unknowns[0] || null,
-    index: {
-      roots,
-      excluded_roots: exclusions,
-      stats: { files: all.length, unique_names: skills.length, by_scope: byScope },
-      duplicate_name_conflicts: conflicts,
-      warnings,
+    confirmed_context: confirmedContext,
+    retrieval_queries: retrievalQueriesFor(args.query, profile, confirmedContext, evidenceItems),
+    boundaries: boundariesFor(profile, args.query, confirmedContext),
+    unknowns,
+    execution_skill: recommendation?.name || null,
+    selection_explanation: ambiguityExplanation(recommendation, new Set(skills.map((skill) => skill.name)), args.query),
+    routing: {
+      retrieval_profile: profile,
+      expanded_terms: EXPANDED_TERMS[profile.desired_output] || [],
+      recommendation,
+      alternatives,
+      recommendation_basis: top ? reasonsFor(top, profile, args.query) : [],
+      excluded_similar_skills: excludedSimilarSkills,
+      index,
     },
   };
 }

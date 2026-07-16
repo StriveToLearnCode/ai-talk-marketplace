@@ -1,87 +1,112 @@
 ---
 name: ai-talk
-description: 在用户显式调用 $ai-talk 并希望为研发任务选择公司 Skill 时，基于真实运行时 SKILL.md 决定一个 Skill，并以 Execution Brief 解释任务理解、具体决策依据、将利用的真实上下文和 Skill 职责。只做决策解释，不执行任务、不调用下游 Skill。
+description: 在用户显式调用 $ai-talk 时，将研发需求、附件和真实项目信息整理为带来源的上下文、检索查询、任务边界与阻塞未知项，并在内部路由到真实公司 Skill。只增强任务上下文和检索表达，不扩展业务需求、不代替下游 Skill 执行。
 ---
 
-# AI Talk Decision Layer
+# AI Talk 研发任务上下文增强器
 
-完成公司 Skill 路由，并用执行前摘要解释 AI 的决策。不要扩展 Prompt Builder，不读取或执行候选 Skill 正文。
+保留用户原始业务意图，提取有来源的真实上下文，将自然语言和附件规范化为适合检索公司 Docs、Skill、组件知识库和项目已有实现的查询，再把结果交给真实执行 Skill。不要扩写成长 Prompt，也不要把 Skill 推荐作为主体。
 
-## 边界
+## 每轮流程
 
-1. 原样保留用户目标，不增加功能、交互、组件、数据结构或验收要求。
-2. 每轮只运行一次 `scripts/route-company-skills.mjs`，使用其默认用户文本输出。
-3. 只索引当前项目 `.agents/skills/**/SKILL.md`、显式批准的公司 Skill 根和插件自带 `ui-self-check`。
-4. 只解析 `SKILL.md` frontmatter 的真实 `name`、`description`，以及标题明确标记为“触发条件/适用场景”的短段；不读取其他正文、references、脚本或知识库。
-5. 不索引 `plugins/ai-talk/docs/skills/` 对照副本，不扫描组件源码、普通文档或 `.claude/skills` 补候选。
-6. 不修改代码，不访问外部工具，不运行测试、构建、服务或部署。
-7. 不调用已决定或备选 Skill，不生成详细实施方案、Context Builder、组件库或自定义 UI。
-
-## 内部检索画像
-
-内部保留 `original_goal`，并生成：
-
-- `task_action`
-- `target_category`
-- `desired_output`
-- `execution_mode`
-- `evidence_types`
-- `intent_terms`
-- `exclusion_terms`
-- `unknowns`
-
-仅在当前请求真实包含图片附件、显式传入 `evidence_type=screenshot`，或用户明确说“见截图、参考截图、截图如下、根据这张图”时，才把截图作为 `screenshot` 证据。“图片、图标、背景图、已领取图片”等对象词不代表用户提供了截图。脚本返回的 `expanded_terms` 只用于检索召回，不得写成用户已确认需求。
-
-## 索引与匹配
+1. 原样保留用户目标；只移除 `$ai-talk` 调用标记，不增加功能、交互、组件、数据结构或验收要求。
+2. 检查本轮真实输入，识别目标目录、目标文件、选中代码和附件角色。每条上下文必须记录 `source`。
+3. 仅运行一次 `scripts/route-company-skills.mjs`。附件按实际内容传入重复的 `--evidence-type`：
+   - `visual=<附件摘要>`：视觉稿或设计稿。
+   - `interaction=<附件摘要>`：交互图或流程图。
+   - `api=<附件摘要>`：接口资料。
+   - `screenshot=<附件摘要>`：无法进一步分类的真实截图。
+   - `selected_code=<选中内容摘要>`：编辑器明确提供的选中代码。
+4. 使用脚本默认文本作为最终输出。只有调试和测试可以增加 `--debug-json`。
+5. 将 `execution_skill` 作为下游真实执行能力；AI Talk 本身不读取该 Skill 的知识库、不实施代码，也不编造执行结果。
 
 ```bash
 node scripts/route-company-skills.mjs \
   --root <项目根目录> \
   --query '<用户原始输入>' \
   [--source-root <公司标签=真实Skill根>] \
-  [--evidence-type screenshot]
+  [--evidence-type 'visual=第一张图的真实摘要']
 ```
 
-默认入口只输出用户文本。仅内部调试和测试可显式增加 `--debug-json` 查看路由数据；旧 `--profile-json` 协议已禁用，不得进入默认流程。
+## 统一结果结构
 
-重复 `name` 必须在内部调试结果中报告全部真实路径。匹配综合期望产物、执行方式、适用场景、目标类别和排除项，单个关键词不能独立决定 Top 1。
+默认展示字段来自以下结构：
 
-- 生成或维护 `midscene-test.ts`、Midscene 用例或报告：`ai-test`。
-- “打开页面 / 看看页面 / 浏览器检查”与“视觉 / 交互 / 响应式 / 控制台 / 网络”同时出现时，优先视为即时 UI 检查并选择 `ui-self-check`；“有问题、异常、不对”等泛化词不能覆盖此意图。
-- 输出 `docs/plan/`：`gen-frontend-plan`。
-- 实际修改前端代码：`gen-code`。
-- “为什么没有显示”“这里不对”“修一下”等明确指向已有实现的异常默认按定位并修复处理，选择 `gen-code`；即时 UI 检查场景只有明确要求定位并修改现有代码时才选择 `gen-code`。
-- Figma 只作为开发证据时不选 `figma-analyze`。
-- 只有 PageCenter 配置/推送产物才选配置 Skill。
-- 只有活动积木或 uiMeta 可配置玩法块才选积木 Skill。
-- “测一下”是泛化词；没有 Midscene 或测试文件产物时不得选择 `ai-test`。
+```yaml
+original_goal: 用户原始目标
+confirmed_context:
+  - type: target_file | target_directory | visual_design | interaction_flow | api_document | screenshot | selected_code
+    value: 可展示的真实信息
+    source: user_text:path | user_text:explicit_reference | attachment:<序号>
+retrieval_queries:
+  - 面向真实知识源的查询
+boundaries:
+  - 本任务真实适用的范围或禁止事项
+unknowns:
+  - 最多一个可能阻塞执行的问题
+execution_skill: 真实索引中的 Skill 名称
+```
 
-## Execution Brief
+Skill 评分、候选、重复名称、路径和索引统计仅存在于 `routing` 调试对象，不进入默认输出。
 
-独立 `format-user-output.mjs` 将内部路由结果转换为最终文本。输出按“AI 理解 / 为什么这样决定 / AI 将利用 / AI 已决定”组织，使用确定语气，不得用“推荐”“可能”“建议”表达已完成的决策。
+## 上下文证据
+
+- 附件角色来自实际附件内容，顺序和 `source` 必须对应真实附件。
+- “见截图、参考截图、截图如下、根据这张图”只表示用户明确引用截图；没有附件标记时不得写成“已提供截图”。
+- “图片没有显示”“替换奖励图片”“图标”“背景图”等普通对象词不是截图附件。
+- 设计稿、接口资料和路径只有在用户明确提供、明确引用或输入中真实出现时才进入 `confirmed_context`。
+- 不固定加入项目代码、`AGENTS.md`、PageCenter、ESLint、Prettier 或任何不存在的上下文。
+
+## 检索查询
+
+- 默认生成 3～6 个高价值方向，覆盖当前任务真正适用的公司 Docs、Skill、组件知识库或项目已有实现。
+- 可以扩展中英文同义词和公司常用表达，例如将“弹窗”扩展为 `dialog modal popup`。
+- 扩展词只是建议检索，不得写成用户已确认需求。
+- 不维护另一套公司组件索引，不预设具体组件名称，不编造 Docs、Skill、路径、接口或业务规则。
+- 公司现有 Skill 负责消费自己的知识库并执行；AI Talk 只帮助它提出更准确的查询。
+
+## 边界与未知项
+
+- 边界只包含当前任务真实适用的修改范围、用户明确禁止事项，以及防止扩展未确认业务逻辑所需的约束。
+- 只有新 UI 开发等确实适用的任务才提示优先复用已有实现和组件。
+- 有明确目标路径时，修改范围可限制在该路径及必要直接依赖；不得凭空写“当前活动”。
+- `unknowns` 最多一个可能阻塞执行的问题。若当前代码能够确定答案，应继续执行而不是追问。
+- 明确文件 Bug 不追加泛化工程套话，也不为已有异常重复追问交付物。
+
+## Skill 路由
+
+路由继续只读取真实运行时 `SKILL.md` 的 frontmatter、`description`，以及标题明确标记为“触发条件/适用场景”的短段。索引当前项目 `.agents/skills/**/SKILL.md`、显式批准的公司 Skill 根和插件自带 `ui-self-check`；不索引 `plugins/ai-talk/docs/skills/` 对照副本，不读取 references、脚本、知识库或普通正文。
+
+- `midscene-test.ts`、Midscene 测试文件或自动化测试产物：`ai-test`。
+- 浏览器即时视觉、交互、响应式、控制台或网络检查：`ui-self-check`。
+- `docs/plan/` 前端实施方案：`gen-frontend-plan`。
+- 实际开发或修复前端代码，包括普通弹窗：`gen-code`。
+- Figma 仅作为开发证据时不选择 `figma-analyze`。
+- 只有 PageCenter 配置或推送产物才选择配置 Skill。
+- 只有活动积木或 uiMeta 可配置玩法块才选择积木 Skill。
+- “测一下”没有测试文件产物时不得选择 `ai-test`。
+
+## 默认输出
+
+只展示四个区域，并在结尾显示真实 Skill 名称：
 
 ```text
-💡 AI 理解
-<任务类型>
-<一句话说明用户目标。>
+用户目标：
+<原始业务意图>
 
-🤔 为什么这样决定？
-✓ <最多 4 条当前任务中的具体事实>
+已确认上下文：
+- <真实上下文>
 
-🚀 AI 将利用
-<仅列出已确认且本轮确实会读取的上下文；没有则明确没有额外上下文>
+建议检索：
+- <检索方向>
 
-🛠 AI 已决定
-<Skill 名称>
-负责<职责>
+任务边界与未知项：
+- 边界：<真实适用边界>
+- 尚未确认：<最多一个阻塞项>
+
+执行能力：<真实 Skill 名称>
 ```
 
-检索画像、候选路径、索引统计、重复 `name` 冲突、评分、匹配词和 warnings 都是内部调试数据，不得出现在默认回复中。只使用真实 Skill 名称，不显示绝对路径、备选列表或内部字段名。
+不得显示大块“AI 已决定”“为什么选择 Skill”“未选择 Skill”、职责介绍、评分、候选或绝对路径。只有输入同时明确要求两个容易混淆的交付物，存在真正 Skill 选型歧义时，才在执行能力前增加一行 `选型说明`。
 
-“为什么这样决定？”最多 4 条，只能写当前任务中已明确的目标对象、输入证据和期望产物；不得写“适用范围相关”等泛化理由。
-
-“AI 将利用”是动态上下文清单，不是执行步骤。截图、设计稿和接口文档只在本轮真实提供或明确引用时显示；项目代码、`AGENTS.md` 和已有组件只在对应路径真实存在且已决定工作流会读取时显示。不得固定输出“读取规范”“格式化代码”“验证代码”等默认工程动作。
-
-Skill 名称下必须显示一句职责，例如 `gen-code / 负责代码开发`、`ui-self-check / 负责浏览器检查`、`gen-frontend-plan / 负责实施方案设计`。只有在一个相近 Skill 确实容易引起疑问时，才在“AI 已决定”中补充“为什么不用<职责名称>？”和一句自然语言原因；不得输出“未选择”字段。最多 1 个阻塞性问题以“执行前需确认”并入“AI 已决定”，没有则省略。
-
-不得输出 `task_action`、`target_category`、`desired_output`、`execution_mode`、`evidence_types`、`intent_terms`、`exclusion_terms`、`unknowns`、`query_terms` 原始字段名、绝对路径、评分、`matched_fields`、`matched_terms`、候选数组、索引详情、冲突详情或路由细节。不得输出 `<details>`、长执行 Prompt、短 Prompt、伪执行按钮、详细实施方案、自定义 UI 或自动调用下游 Skill。完成决策解释后立即停止。
+旧 `--profile-json` 协议保持禁用。完成上下文整理后立即停止，不输出长 Prompt、实施步骤、代码、配置、测试结果、自定义 UI 或伪执行按钮。

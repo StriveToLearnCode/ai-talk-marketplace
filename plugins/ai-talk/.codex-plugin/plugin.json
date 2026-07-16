@@ -1,34 +1,35 @@
 {
   "name": "ai-talk",
-  "version": "0.4.0+codex.20260716031107",
-  "description": "AI Talk 以 Execution Brief 解释研发任务理解、决策依据、真实上下文和 Skill 职责。",
+  "version": "0.4.0+codex.20260716040037",
+  "description": "AI Talk \u5c06\u7814\u53d1\u9700\u6c42\u6574\u7406\u4e3a\u5e26\u6765\u6e90\u7684\u4e0a\u4e0b\u6587\u3001\u68c0\u7d22\u67e5\u8be2\u3001\u4efb\u52a1\u8fb9\u754c\u548c\u771f\u5b9e\u6267\u884c Skill\u3002",
   "author": {
     "name": "sf"
   },
   "skills": "./skills/",
   "interface": {
     "displayName": "AI Talk",
-    "shortDescription": "用 Execution Brief 解释 AI 的研发决策",
-    "longDescription": "AI Talk 是只读的 AI Decision Layer。它用 Execution Brief 向开发者展示任务理解、最多四条具体决策依据、动态真实上下文，以及已选 Skill 的职责。它不展示路由内部状态和执行步骤，不读取候选 Skill 知识库，不调用下游 Skill，也不修改代码。",
+    "shortDescription": "\u6574\u7406\u7814\u53d1\u4e0a\u4e0b\u6587\u5e76\u751f\u6210\u77e5\u8bc6\u5e93\u68c0\u7d22\u67e5\u8be2",
+    "longDescription": "AI Talk \u662f\u7814\u53d1\u4efb\u52a1\u4e0a\u4e0b\u6587\u589e\u5f3a\u5668\u3002\u5b83\u4fdd\u7559\u7528\u6237\u539f\u59cb\u76ee\u6807\uff0c\u63d0\u53d6\u5e26\u6765\u6e90\u7684\u771f\u5b9e\u4e0a\u4e0b\u6587\uff0c\u4e3a\u516c\u53f8 Docs\u3001Skill\u3001\u7ec4\u4ef6\u77e5\u8bc6\u5e93\u548c\u9879\u76ee\u5df2\u6709\u5b9e\u73b0\u751f\u6210\u68c0\u7d22\u67e5\u8be2\uff0c\u8865\u5145\u5fc5\u8981\u8fb9\u754c\u4e0e\u4e00\u4e2a\u963b\u585e\u672a\u77e5\u9879\uff0c\u5e76\u6807\u6ce8\u771f\u5b9e\u6267\u884c Skill\u3002\u5b83\u4e0d\u6269\u5c55\u4e1a\u52a1\u9700\u6c42\uff0c\u4e5f\u4e0d\u4ee3\u66ff\u4e0b\u6e38 Skill \u6267\u884c\u3002",
     "developerName": "sf",
     "category": "Productivity",
     "capabilities": [
-      "Intent normalization",
-      "Structured Skill query profiles",
+      "Original goal preservation",
+      "Source-backed context extraction",
+      "Attachment role normalization",
       "Real project Skill routing",
       "Bounded applicability metadata reads",
-      "Synonym-expanded retrieval queries",
+      "Knowledge retrieval queries",
       "Desired-output-aware Skill routing",
       "Duplicate Skill name detection",
       "Deterministic user-output formatting",
-      "Decision explanation",
-      "Execution Brief",
+      "Task boundaries and blocking unknowns",
+      "Context handoff",
       "Zero downstream execution"
     ],
     "defaultPrompt": [
-      "$ai-talk 新增奖励确认弹窗，不改领取逻辑；解释任务理解、决策依据、将利用的上下文和 Skill 职责",
-      "$ai-talk 打开页面检查视觉和交互问题；解释任务理解、决策依据、将利用的上下文和 Skill 职责",
-      "$ai-talk 奖励状态为什么没有显示；解释任务理解、决策依据、将利用的上下文和 Skill 职责"
+      "$ai-talk \u65b0\u589e\u5956\u52b1\u786e\u8ba4\u5f39\u7a97\uff0c\u4e0d\u6539\u9886\u53d6\u903b\u8f91",
+      "$ai-talk \u53c2\u8003\u89c6\u89c9\u7a3f\u3001\u4ea4\u4e92\u56fe\u548c\u63a5\u53e3\u8d44\u6599\u5f00\u53d1\u5f39\u7a97",
+      "$ai-talk \u4fee\u590d\u6307\u5b9a\u6587\u4ef6\u91cc\u7684\u5956\u52b1\u72b6\u6001\u663e\u793a\u95ee\u9898"
     ]
   }
 }
