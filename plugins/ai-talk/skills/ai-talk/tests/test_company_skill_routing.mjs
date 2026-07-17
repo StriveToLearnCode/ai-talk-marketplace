@@ -78,21 +78,26 @@ function chineseCharacterCount(value) {
 
 function assertCompactProtocol(output, { minChineseCharacters = 0 } = {}) {
   const chineseHeadings = new Set([
-    "用户原意：", "AI 推断：", "项目上下文：", "实现约束：", "建议 Skill：",
+    "用户目标：", "任务定位：", "项目上下文：", "建议检索：", "实现边界：", "建议 Skill：",
   ]);
   const englishHeadings = new Set(["Goal", "Context", "Need Knowledge", "Assumptions", "Constraints", "Next Skill"]);
   const lines = output.split("\n").filter(Boolean);
   const chineseCharacters = chineseCharacterCount(output);
   assert.ok(chineseCharacters >= minChineseCharacters, `protocol too short (${chineseCharacters} Chinese characters):\n${output}`);
   assert.ok(lines.length <= 45, `protocol exceeds one screen (${lines.length} lines):\n${output}`);
-  const chinese = lines[0] === "用户原意：";
-  assert.equal(lines[0], chinese ? "用户原意：" : "Goal", output);
+  const chinese = lines[0] === "用户目标：";
+  assert.equal(lines[0], chinese ? "用户目标：" : "Goal", output);
   if (chinese) {
-    const reasoningIndex = lines.indexOf("AI 推断：");
+    const reasoningIndex = lines.indexOf("任务定位：");
     if (reasoningIndex >= 0) {
       assert.ok(chineseCharacterCount(lines[reasoningIndex + 1] || "") <= 100, `reasoning exceeds 100 Chinese characters:\n${output}`);
     }
-    const constraintIndex = lines.indexOf("实现约束：");
+    const retrievalIndex = lines.indexOf("建议检索：");
+    const retrievalNextHeading = lines.findIndex((line, index) => index > retrievalIndex && chineseHeadings.has(line));
+    const retrievalEnd = retrievalNextHeading >= 0 ? retrievalNextHeading : lines.length;
+    const retrievalLines = retrievalIndex >= 0 ? lines.slice(retrievalIndex + 1, retrievalEnd) : [];
+    assert.ok(retrievalLines.length <= 5, `too many retrieval targets:\n${output}`);
+    const constraintIndex = lines.indexOf("实现边界：");
     const nextHeadingIndex = lines.findIndex((line, index) => index > constraintIndex && chineseHeadings.has(line));
     const constraintEnd = nextHeadingIndex >= 0 ? nextHeadingIndex : lines.length;
     const constraintLines = constraintIndex >= 0 ? lines.slice(constraintIndex + 1, constraintEnd) : [];
@@ -105,7 +110,7 @@ function assertCompactProtocol(output, { minChineseCharacters = 0 } = {}) {
   const headings = lines.filter((line) => allowedHeadings.has(line));
   assert.equal(new Set(headings).size, headings.length, output);
   if (chinese) {
-    const plainValues = new Set([lines[1], lines[lines.indexOf("AI 推断：") + 1], lines[lines.indexOf("建议 Skill：") + 1]]);
+    const plainValues = new Set([lines[1], lines[lines.indexOf("任务定位：") + 1], lines[lines.indexOf("建议 Skill：") + 1]]);
     assert.ok(lines.every((line) => plainValues.has(line) || chineseHeadings.has(line) || line.startsWith("- ")), output);
     for (const leaked of ["reward-state", "reward-render", "claimed-state", "progress-rule", "similar-implementation"]) {
       assert.ok(!output.includes(leaked), output);
@@ -260,7 +265,7 @@ test("multiple image attachments keep visual, interaction, and API roles with so
   assert.ok(values(payload, "target_scope").includes("recharge/components/dialogs"));
   assert.deepEqual(payload.retrieval_query_groups.components, ["弹窗组件", "弹窗触发逻辑", "弹窗交互逻辑"]);
   assertCategorizedQueries(payload);
-  for (const text of ["用户原意：", "礼物连爆弹窗", "项目上下文：", "目标目录：recharge/components/dialogs", "建议 Skill：\ngen-code"]) assert.ok(output.includes(text), output);
+  for (const text of ["用户目标：", "礼物连爆弹窗", "项目上下文：", "目标目录：recharge/components/dialogs", "建议 Skill：\ngen-code"]) assert.ok(output.includes(text), output);
   for (const evidence of ["视觉稿：已提供（attachment:1）", "交互流程：已提供（attachment:2）", "接口资料：连爆次数接口信息"]) assert.ok(output.includes(evidence), output);
   assertCompactProtocol(output);
 });
@@ -303,8 +308,8 @@ test("a generic dialog request expands retrieval vocabulary without inventing re
     assert.ok(!JSON.stringify(payload).includes(invented), JSON.stringify(payload));
     assert.ok(!output.includes(invented), output);
   }
-  assert.ok(output.includes("AI 推断：\n用户只明确要开发弹窗，这是新增 UI 需求"), output);
-  assert.deepEqual(payload.skill_handoff.retrieval_semantics, ["弹窗组件复用", "弹窗触发逻辑", "弹窗交互逻辑"]);
+  assert.ok(output.includes("任务定位：\n这是新增 UI 需求"), output);
+  assert.deepEqual(payload.skill_handoff.retrieval_semantics, ["现有弹窗组件", "弹窗同类实现"]);
   assert.deepEqual(payload.confirmed_context, []);
   assert.deepEqual(payload.unknowns, ["弹窗所属页面或目标目录尚未明确。"]);
   assertCompactProtocol(output);
@@ -329,10 +334,10 @@ test("coding tasks expose only the short protocol and matched Skill", async (t) 
     const payload = await routeDebug(root, prompt);
     const output = await routeUser(root, prompt);
     assert.equal(payload.recommended_skill, "gen-code", prompt);
-    assert.match(output, /^用户原意：\n/);
+    assert.match(output, /^用户目标：\n/);
     assert.ok(!output.includes(JSON.stringify(payload.retrieval_queries)), output);
     assert.match(output, /\n建议 Skill：\ngen-code$/);
-    for (const old of ["用户目标：", "AI 推导（Task Reasoning）：", "已确认上下文：", "研发概念：", "建议优先检索：", "关系与冲突："]) {
+    for (const old of ["用户原意：", "AI 推导（Task Reasoning）：", "已确认上下文：", "研发概念：", "建议优先检索：", "关系与冲突："]) {
       assert.ok(!output.includes(old), output);
     }
     for (const optional of ["建议验证：", "验收标准："]) assert.ok(!output.includes(optional), output);
@@ -428,10 +433,10 @@ test("reward mask request extracts UI semantics without treating the asset as a 
   assert.ok(!values(payload, "target_scope").includes("icon/mask"));
   assert.ok(!payload.unknowns.includes("期望交付物尚未明确。"));
   for (const expected of [
-    "用户原意：\n奖励获取到的时候需要加蒙层，蒙层图片：icon/mask",
-    "AI 推断：\n用户描述了奖励领取后的蒙层变化并提供 icon/mask",
-    "更可能是已有奖励节点的领取态视觉扩展", "优先确认领取状态判断与 icon/mask 的引用方式",
-    "项目上下文：\n- 资源：icon/mask", "实现约束：",
+    "用户目标：\n为已有奖励节点增加领取后的 icon/mask 视觉效果。",
+    "任务定位：\n这是已有奖励节点领取态的视觉修改",
+    "重点确认领取状态判断、icon/mask 引用和项目内同类实现",
+    "项目上下文：\n- 资源：icon/mask", "建议检索：", "实现边界：",
   ]) {
     assert.ok(output.includes(expected), output);
   }
@@ -524,9 +529,9 @@ test("explicit user constraints suppress conflicting default rules without chang
   const output = await routeUser(root, prompt);
   assert.ok(!payload.default_rules.some((item) => /复用|沿用/.test(item.value)));
   assert.ok(!payload.default_rules.some((item) => item.value === "修改范围限于当前任务相关模块"));
-  assert.ok(output.startsWith("用户原意：\n修改 src/index.ts，重写实现，不要复用现有模式，可以全局重构\n"), output);
-  assert.ok(output.includes("实现约束："), output);
-  assert.ok(!output.includes("AI 推断："), output);
+  assert.ok(output.startsWith("用户目标：\n"), output);
+  assert.ok(output.includes("实现边界："), output);
+  assert.ok(!output.includes("任务定位："), output);
 });
 
 test("query builder supports all six declared development intents", async (t) => {
@@ -556,7 +561,7 @@ test("reviewed Chinese protocol cases separate semantics, constraints, and routi
   assert.equal(rewardProtocol.goal, "定位第 3 个奖励展示异常。");
   assert.deepEqual(rewardProtocol.developmentObjects, ["奖励", "第 3 个奖励"]);
   assert.deepEqual(rewardProtocol.states, []);
-  assert.deepEqual(rewardProtocol.retrievalSemantics, ["奖励状态映射", "奖励展示条件", "当前项目同类实现"]);
+  assert.deepEqual(rewardProtocol.retrievalSemantics, ["第 3 个奖励节点数据", "奖励状态判断", "奖励渲染条件", "当前项目同类实现"]);
 
   const taskPayload = await routeDebug(root, "积分阶段 PROGRESS_TASK_ID：7，然后一样展示进度和奖励");
   const taskProtocol = buildExecutionProtocol(taskPayload);
@@ -568,8 +573,8 @@ test("reviewed Chinese protocol cases separate semantics, constraints, and routi
   assert.equal(taskProtocol.nextSkill, "gen-code");
 
   const vague = await routeUser(root, "这个好像有点不太对");
-  assert.ok(vague.includes("用户原意：\n这个好像有点不太对"), vague);
-  assert.ok(!vague.includes("AI 推断："), vague);
+  assert.ok(vague.includes("用户目标：\n这个好像有点不太对。"), vague);
+  assert.ok(!vague.includes("任务定位："), vague);
   for (const output of [formatUserOutput(rewardPayload), formatUserOutput(taskPayload), vague]) assertCompactProtocol(output);
 });
 
@@ -586,7 +591,7 @@ test("English input uses the same execution protocol headings", async (t) => {
   assertCompactProtocol(output);
 });
 
-test("formatter does not expose retrieval queries or canonical ontology", () => {
+test("formatter exposes short retrieval targets without internal query structures or ontology", () => {
   const payload = {
     original_goal: "检查奖励进度渲染",
     confirmed_context: [],
@@ -602,7 +607,7 @@ test("formatter does not expose retrieval queries or canonical ontology", () => 
   const output = formatUserOutput(payload);
 
   assert.deepEqual(protocol.retrievalSemantics, ["奖励状态映射", "奖励展示条件", "当前项目同类实现"]);
-  for (const semantic of ["奖励状态映射", "奖励展示条件", "当前项目同类实现"]) assert.ok(!output.includes(`检索语义：${semantic}`), output);
+  for (const semantic of ["奖励状态映射", "奖励展示条件", "当前项目同类实现"]) assert.ok(output.includes(`- ${semantic}`), output);
   for (const leaked of ["Semantic Context", "\nObject\n", "\nRelation\n", "reward-progress", "reward-progress-render", "retrieval_query_groups"]) {
     assert.ok(!output.includes(leaked), output);
   }
@@ -621,7 +626,7 @@ test("an unmatched query omits the Skill section instead of inventing a placehol
   assertCompactProtocol(output);
 });
 
-test("skill choice stays concise and does not expose internal retrieval semantics", async (t) => {
+test("skill choice stays concise and exposes only user-facing retrieval targets", async (t) => {
   const root = await fixture();
   t.after(() => rm(root, { recursive: true, force: true }));
   const plain = await routeUser(root, "开发一个弹窗");
@@ -629,7 +634,7 @@ test("skill choice stays concise and does not expose internal retrieval semantic
   const ambiguousDialog = await routeUser(root, "先输出前端方案并开发一个弹窗");
   assert.ok(!plain.includes("冲突："), plain);
   assert.ok(!ambiguous.includes("冲突："), ambiguous);
-  assert.ok(!ambiguousDialog.includes("弹窗组件复用"), ambiguousDialog);
+  assert.ok(ambiguousDialog.includes("建议检索："), ambiguousDialog);
   assert.ok(!ambiguousDialog.includes("冲突："), ambiguousDialog);
   assert.match(ambiguous, /\n建议 Skill：\ngen-code$/);
   assertCompactProtocol(ambiguous);
@@ -646,7 +651,7 @@ test("UI-first evidence produces a bounded understanding and semantic retrieval 
     "visual=资源 banner/progress 和 banner/banner01",
   ]);
 
-  for (const text of ["用户原意：", "AI 推断：", "视觉稿：已提供（attachment:1）", "交互流程：已提供（attachment:2）", "截图：已提供（attachment:3）", "资源：banner/progress"]) assert.ok(output.includes(text), output);
+  for (const text of ["用户目标：", "任务定位：", "视觉稿：已提供（attachment:1）", "交互流程：已提供（attachment:2）", "截图：已提供（attachment:3）"]) assert.ok(output.includes(text), output);
   for (const screenshotDetail of ["Banner Spin 默认视觉和完成态", "定义整体页面布局和交互流程", "Reward Stage Completed，RTL 页面奖励进度条"]) {
     assert.ok(!output.includes(screenshotDetail), output);
   }
@@ -658,7 +663,7 @@ test("API and page state mismatch yields facts and knowledge gaps without a gues
   t.after(() => rm(root, { recursive: true, force: true }));
   const output = await routeUser(root, "调整奖励页面 UI", ["api=state=0", "screenshot=页面显示已领取"]);
 
-  for (const text of ["接口资料：state=0", "AI 推断：", "state=0 与页面领取表现冲突", "优先确认 state 到领取样式的映射", "当前证据不足以判断哪一方语义正确"]) {
+  for (const text of ["接口资料：state=0", "任务定位：", "状态证据与页面领取表现不一致", "重点确认状态证据、领取态展示条件和项目内同类映射"]) {
     assert.ok(output.includes(text), output);
   }
   assert.ok(!output.includes("页面显示已领取"), output);
@@ -672,8 +677,8 @@ test("ordinal reward issue becomes business context and explicit knowledge gaps"
   const output = await routeUser(root, "为什么第三个奖励没显示？");
 
   for (const text of [
-    "用户原意：\n为什么第三个奖励没显示？", "AI 推断：",
-    "更可能是单个节点的数据、状态或渲染条件异常", "优先确认该节点的数据、状态和渲染条件",
+    "用户目标：\n定位第 3 个奖励展示异常。", "任务定位：",
+    "单个奖励节点的展示异常", "重点确认该节点数据、状态和渲染条件",
   ]) assert.ok(output.includes(text), output);
   for (const leaked of ["stage3", "reward-render", "reward-index-mapping", "claimed-state", "领取状态"]) assert.ok(!output.includes(leaked), output);
   assertCompactProtocol(output);
@@ -695,7 +700,7 @@ test("execution contexts cover round rewards, state conflicts, assets, and dialo
   const stateOutput = await routeUser(root, "state=0 页面却已领取");
   assert.equal(statePayload.intent, "bug_fix");
   assert.ok(values(statePayload, "issue_symptom").includes("state-display-mismatch"));
-  for (const text of ["state=0", "AI 推断：", "优先确认 state 到领取样式的映射"]) {
+  for (const text of ["state=0", "任务定位：", "状态证据与页面领取表现不一致"]) {
     assert.ok(stateOutput.includes(text), stateOutput);
   }
   for (const verdict of ["state=0 就是已领取", "state=0 就是未领取", "一定是接口问题"]) {
@@ -708,48 +713,60 @@ test("execution contexts cover round rewards, state conflicts, assets, and dialo
   assert.deepEqual(values(assetPayload, "asset_resource"), ["icon/mask"]);
   assert.ok(!assetPayload.confirmed_context.some((item) => item.type === "target_directory"));
   assert.ok(assetOutput.includes("项目上下文：\n- 资源：icon/mask"), assetOutput);
-  assert.ok(!assetOutput.includes("AI 推断："), assetOutput);
+  assert.ok(assetOutput.includes("任务定位："), assetOutput);
 
   const dialogOutput = await routeUser(root, "开发一个弹窗");
-  for (const text of ["AI 推断：", "新增 UI 需求", "优先查找项目已有弹窗实现"]) {
+  for (const text of ["任务定位：", "新增 UI 需求", "重点确认项目已有弹窗组件和同类实现"]) {
     assert.ok(dialogOutput.includes(text), dialogOutput);
   }
   for (const output of [roundOutput, stateOutput, assetOutput, dialogOutput]) assertCompactProtocol(output);
 });
 
-test("task-specific reasoning covers the five exact acceptance cases", async (t) => {
+test("task positioning and retrieval targets cover the five boundary acceptance cases", async (t) => {
   const root = await fixture();
   t.after(() => rm(root, { recursive: true, force: true }));
 
-  const mask = await routeUser(root, "奖励领取后增加 icon/mask 蒙层");
-  for (const text of ["AI 推断：", "已有奖励节点的领取态视觉扩展", "优先确认领取状态判断与 icon/mask 的引用方式"]) {
+  const h5Prompt = "调整 banner-spin.vue 中点击跳转活动半屏 H5，url 为活动 H5 链接，需要完整链接。";
+  const h5Code = "const openActivity = () => { const url = new URL(path); ins.$we('openH5', { url, height: 550 }); };";
+  const h5 = await routeUser(root, h5Prompt, [`selected_code=${h5Code}`]);
+  for (const text of [
+    "用户目标：\n调整 banner-spin.vue 中的活动半屏 H5 跳转，确保传给 openH5 的是完整活动链接。",
+    "任务定位：\n这是已有跳转逻辑调整，不是新增跳转能力",
+    "目标节点：openActivity", "调用：ins.$we('openH5', ...)", "半屏高度：550",
+    "openH5 调用方式", "openActivity 同类实现", "活动 H5 完整 URL 构建", "半屏 H5 跳转规范",
+    "建议 Skill：\ngen-code",
+  ]) assert.ok(h5.includes(text), h5);
+  assert.ok(!h5.includes("使用 new URL()"), h5);
+  const inlineH5 = await routeUser(root, `${h5Prompt} 当前代码：${h5Code}`);
+  for (const text of ["目标节点：openActivity", "调用：ins.$we('openH5', ...)", "半屏高度：550"]) {
+    assert.ok(inlineH5.includes(text), inlineH5);
+  }
+  for (const falseParameter of ["明确参数：context=const", "明确参数：url=new", "明确参数：height=550"]) {
+    assert.ok(!inlineH5.includes(falseParameter), inlineH5);
+  }
+
+  const mask = await routeUser(root, "奖励领取后增加 icon/mask");
+  for (const text of ["任务定位：", "已有奖励节点领取态的视觉修改", "奖励领取状态判断", "icon/mask 引用方式", "当前项目同类实现"]) {
     assert.ok(mask.includes(text), mask);
   }
-  for (const forbidden of ["state=", "status=", "一定", "必然"]) assert.ok(!mask.includes(forbidden), mask);
+  for (const forbidden of ["state=", "status=", "claimed=", "一定", "必然"]) assert.ok(!mask.includes(forbidden), mask);
 
   const ordinal = await routeUser(root, "为什么第三个奖励没显示？");
-  for (const text of ["单个节点的数据、状态或渲染条件异常", "优先确认该节点的数据、状态和渲染条件"]) {
+  for (const text of ["单个奖励节点的展示异常", "第 3 个奖励节点数据", "奖励状态判断", "奖励渲染条件"]) {
     assert.ok(ordinal.includes(text), ordinal);
   }
   assert.ok(!ordinal.includes("rewardList[2]"), ordinal);
 
-  const mismatch = await routeUser(root, "state=0 但页面显示已领取");
-  for (const text of ["state=0 与页面领取表现冲突", "优先确认 state 到领取样式的映射", "证据不足以判断哪一方语义正确"]) {
-    assert.ok(mismatch.includes(text), mismatch);
-  }
-  for (const verdict of ["state=0 就是已领取", "state=0 就是未领取", "接口导致"]) assert.ok(!mismatch.includes(verdict), mismatch);
-
   const dialog = await routeUser(root, "开发一个弹窗");
-  for (const text of ["这是新增 UI 需求", "优先查找项目已有弹窗实现", "再决定是否新增局部组件"]) {
+  for (const text of ["这是新增 UI 需求", "现有弹窗组件", "弹窗同类实现"]) {
     assert.ok(dialog.includes(text), dialog);
   }
   for (const invented of ["按钮", "props", "事件"]) assert.ok(!dialog.includes(invented), dialog);
 
-  const copy = await routeUser(root, "修改 src/index.ts 中的一句文案");
-  assert.ok(copy.includes("项目上下文：\n- 目标文件：src/index.ts"), copy);
-  assert.ok(!copy.includes("AI 推断："), copy);
+  const explicit = await routeUser(root, "调整 banner-spin.vue 的半屏 H5 完整链接，明确使用 new URL()。");
+  assert.ok(explicit.includes("实现边界：\n- 使用 new URL()"), explicit);
 
-  for (const output of [mask, ordinal, mismatch, dialog, copy]) assertCompactProtocol(output);
+  for (const output of [h5, inlineH5, mask, ordinal, dialog, explicit]) assertCompactProtocol(output);
 });
 
 test("AI Talk emits a typed retrieval context and unlocks only on explicit follow-up", async (t) => {
@@ -764,14 +781,14 @@ test("AI Talk emits a typed retrieval context and unlocks only on explicit follo
   assert.equal(payload.recommended_skill, "gen-code");
   assert.deepEqual(executionGateFor(prompt, payload), { authorized: false, skill: null });
   assert.deepEqual(executionGateFor("开始执行", null), { authorized: false, skill: null });
-  for (const heading of ["用户原意：", "项目上下文：", "实现约束：", "建议 Skill："]) {
+  for (const heading of ["用户目标：", "项目上下文：", "建议检索：", "实现边界：", "建议 Skill："]) {
     assert.ok(output.includes(heading), output);
   }
   assert.ok(output.includes("建议 Skill：\ngen-code"), output);
   assert.ok(output.includes("项目上下文：\n- 目标文件：banner-spin.vue"), output);
   assert.equal(payload.skill_handoff.execution_focus, "任务 7 数据 → 积分阶段进度与奖励展示");
   assert.deepEqual(payload.skill_handoff.retrieval_semantics, ["积分阶段任务关联", "进度展示逻辑", "奖励展示逻辑"]);
-  assert.equal(output.split("PROGRESS_TASK_ID: 7").length - 1, 1, output);
+  assert.equal(output.split("PROGRESS_TASK_ID: 7").length - 1, 0, output);
   assert.ok(!output.includes("关键配置"), output);
   assertCompactProtocol(output);
 
@@ -780,7 +797,7 @@ test("AI Talk emits a typed retrieval context and unlocks only on explicit follo
   assertCompactProtocol(unrelatedCode);
   assert.ok(fieldEvidence.includes("progressValue"), fieldEvidence);
   assert.ok(fieldEvidence.includes("rewardList"), fieldEvidence);
-  for (const old of ["用户目标：", "AI 推导", "已确认上下文：", "研发概念：", "建议优先检索：", "关系与冲突：", "任务协议已生成"]) assert.ok(!output.includes(old), output);
+  for (const old of ["用户原意：", "AI 推导", "已确认上下文：", "研发概念：", "建议优先检索：", "关系与冲突：", "任务协议已生成"]) assert.ok(!output.includes(old), output);
   for (const forbidden of ["已改为", "验证通过", "核心实现见"]) assert.ok(!output.includes(forbidden), output);
   assert.equal(await readFile(target, "utf8"), before);
 
@@ -814,7 +831,7 @@ test("explicit result text does not create an analysis-style acceptance section"
   const bug = await routeUser(root, "修复弹窗无法关闭，验收标准：可以正常关闭");
 
   assert.ok(!plain.includes("验收标准："), plain);
-  assert.ok(explicit.includes("用户原意：\n开发一个活动弹窗，验收标准：支持关闭；提交成功后展示成功态；兼容旧浏览器"), explicit);
+  assert.ok(explicit.startsWith("用户目标：\n"), explicit);
   assert.ok(!explicit.includes("\n验收标准：\n"), explicit);
   assert.ok(!explicit.includes("检索语义："), explicit);
   assert.ok(!bug.includes("\n验收标准：\n"), bug);
@@ -829,6 +846,6 @@ test("profile-json legacy protocol is disabled and default output is formatted t
     (error) => error.code === 2 && error.stderr.includes("Unknown argument: --profile-json"),
   );
   const output = await routeUser(root, "帮我生成一份前端实施计划");
-  assert.match(output, /^用户原意：\n/);
+  assert.match(output, /^用户目标：\n/);
   assertCompactProtocol(output);
 });

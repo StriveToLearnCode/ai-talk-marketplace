@@ -1,7 +1,7 @@
 {
   "name": "ai-talk",
   "version": "0.4.0+codex.20260716181417",
-  "description": "AI Talk preserves user intent, adds evidence-based task reasoning, reads bounded project context, and keeps constraints separate from optional Skill recommendations.",
+  "description": "AI Talk turns development requests into bounded task positioning, verified project context, high-signal retrieval targets, and optional Skill recommendations.",
   "author": {
     "name": "sf"
   },
@@ -9,13 +9,15 @@
   "interface": {
     "displayName": "AI Talk",
     "shortDescription": "Build evidence-based development handoffs",
-    "longDescription": "AI Talk preserves the user's original request, adds task-specific engineering reasoning only when current evidence supports it, reads only explicit-target project context, and keeps implementation constraints separate from optional Skill recommendations. It never modifies the project or invokes a downstream Skill during protocol generation.",
+    "longDescription": "AI Talk summarizes the user's actual goal, classifies the task without designing the implementation, separates verified project facts from conclusions, and emits searchable retrieval targets plus explicit implementation boundaries. It never modifies the project or invokes a downstream Skill during protocol generation.",
     "developerName": "sf",
     "category": "Productivity",
     "capabilities": [
-      "Verbatim user intent preservation",
-      "Evidence-based task-specific reasoning",
-      "Reasoning omission when evidence is insufficient",
+      "Concise user goal preservation",
+      "Evidence-based task positioning",
+      "Positioning omission when evidence is insufficient",
+      "High-signal retrieval targets",
+      "Fact and implementation conclusion separation",
       "Lossless execution goal generation",
       "Sourced development default rules",
       "Bounded explicit-target project reads",
@@ -29,7 +31,7 @@
       "Desired-output-aware Skill recommendation",
       "Duplicate Skill name detection",
       "Deterministic user-output formatting",
-      "Typed context and implementation constraints",
+      "Typed context and implementation boundaries",
       "Uncertain state mapping protection",
       "Compact task protocol generation",
       "Explicit execution permission gate",

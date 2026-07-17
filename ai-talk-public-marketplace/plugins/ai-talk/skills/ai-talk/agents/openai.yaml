@@ -1,7 +1,7 @@
 interface:
   display_name: "AI Talk"
-  short_description: "保留用户原意并生成有证据的任务推断与执行约束"
-  default_prompt: "使用 $ai-talk 保留我的原始需求，基于当前证据生成任务专属工程推断，并整理项目上下文、实现约束和可选 Skill。"
+  short_description: "提炼用户目标并分离任务定位、检索目标与实现边界"
+  default_prompt: "使用 $ai-talk 提炼我的用户目标，定位任务类型与检索重点，并整理项目上下文、建议检索、实现边界和可选 Skill。"
 
 policy:
   allow_implicit_invocation: false
