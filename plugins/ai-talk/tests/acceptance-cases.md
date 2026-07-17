@@ -1,101 +1,62 @@
-# AI Talk Context Gap 验收场景
+# AI Talk 验收场景
 
-<<<<<<< HEAD
-## A. 状态型蒙层
-
-`$ai-talk 奖励获取后增加蒙层，资源 icon/mask`
-
-- `icon/mask` 是 `asset_resource`，不是目录或目标范围。
-- 状态字段未说明时，只产生非阻塞 `state_condition` 缺口。
-- Task Contract 提示后续 Codex 从当前项目代码验证，不立即追问。
-
-## B. 状态映射冲突
-
-`$ai-talk 这里 state=0，但页面显示已领取`
-
-- 记录接口数据和页面表现冲突。
-- `state_mapping` 是待验证关系和非阻塞缺口。
-- 不直接判断 `state=0` 的业务含义，不产生“交付物不明确”。
-
-## C. 泛化弹窗
-
-`$ai-talk 开发一个弹窗`
-
-- 不补充按钮、props、事件或样式。
-- 缺少所属页面或模块确实导致无法定位时，`target_scope` 是唯一阻塞缺口。
-
-## D. 页面检查
-
-`$ai-talk 打开这个 URL 检查视觉和交互`
-
-- `page_entry` 和 `inspection_goal` 已具备。
-- 不要求目标文件、接口、设计稿或测试。
-- 没有缺口时省略“上下文缺口”区域。
-
-## E. 明确文件文案修改
-
-`$ai-talk 修改 src/components/title.vue 的文案为“立即领取”`
-
-- 确认目标文件与文案修改。
-- 不产生接口、设计稿、测试或状态条件缺口。
-- 直接生成简短 Task Contract。
-
-## F. 证据与输出边界
-
-- `icon/close`、`progress/bg-1` 等资源标识不得识别为目录。
-- 截图只证明页面表现，不作为接口数据或代码实现事实。
-- 每个 Gap 只包含 `type`、`reason`、`blocking` 和可选 `suggested_source`。
-- 最多一个阻塞 Gap；非阻塞 Gap 不打断工作流。
-- 默认输出不展示内部字段名、JSON、评分、绝对路径、检索计划或执行 Skill。
-=======
-## A. 积分阶段关联任务
+## A. 原意与 AI 推断
 
 `$ai-talk 在 banner-spin.vue 中，积分阶段 PROGRESS_TASK_ID: 7，然后一样展示进度和奖励`
 
-- 任务目标说明积分阶段接入任务 7，并复用现有方式展示进度和奖励。
-- 研发对象逐字保留 `banner-spin.vue`、`PROGRESS_TASK_ID=7`，并包含积分阶段。
-- 关键关系为 `任务 7 数据 → 积分阶段进度与奖励展示`。
-- 检索语义为积分阶段任务关联、进度展示逻辑、奖励展示逻辑。
-- 实现约束为复用现有展示方式、不影响其他阶段。
+- 用户原意只移除 `$ai-talk` 标记，其余文本逐字保留。
+- 当前证据不足以形成新的工程判断时，省略 AI 推断。
+- 不用通用规则填充 AI 推断。
 
-## B. 第三个奖励未展示
-
-`$ai-talk 为什么第三个奖励没显示`
-
-- 任务目标为定位第 3 个奖励展示异常。
-- 研发对象包含第 3 个奖励，不无依据补出领取状态。
-- 检索语义为奖励状态映射、奖励展示条件、当前项目同类实现。
-- 不输出 `reward-render`、`reward-index-mapping`、`claimed-state` 或 `stage3`。
-
-## C. 状态与页面表现冲突
-
-`$ai-talk state=0 页面却已领取`
-
-- 接口字段逐字保留 `state=0`，状态规范化为已领取状态。
-- 检索语义使用奖励状态映射、奖励展示条件和当前项目同类实现。
-- 不认定 `state=0` 代表已领取或未领取，不直接判定接口或页面错误。
-
-## D. 资源标识
-
-`$ai-talk 奖励领取后增加 icon/mask 蒙层`
-
-- `icon/mask` 进入资源，不生成研发文件对象，路径保持原样。
-- 状态为已领取状态，视觉效果为蒙层。
-- 检索语义使用奖励状态映射、蒙层展示逻辑和当前项目同类实现。
-
-## E. 新增弹窗
+## B. 任务专属推断与实现约束
 
 `$ai-talk 开发一个弹窗`
 
-- 研发对象只确认弹窗。
-- 检索语义使用弹窗组件复用、弹窗触发逻辑和弹窗交互逻辑。
-- 不预设 props、事件、按钮和业务逻辑。
+- 推断为新增 UI 需求，优先查找项目已有弹窗实现。
+- 不预设 props、事件、按钮或业务逻辑。
+- 通用规则进入最多 2 条实现约束，不得作为 AI 推断。
+- 输入“不要复用现有实现，可以全局重构”时，删除冲突的复用和范围限制规则。
 
-## F. 分层与输出
+## C. 显式项目上下文
 
-- 中文默认输出只使用任务目标、研发对象、状态、视觉效果、资源、配置变量、接口字段、关键关系、检索语义、实现约束和建议 Skill。
-- Retrieval Query、canonical entity、routing profile、评分、候选和分析过程不进入协议。
-- 中文研发概念不输出英文 ontology；文件名、变量名、接口名、资源路径和 Skill 名称保持原样。
-- 空栏目省略；建议 Skill 低置信时省略。
-- 输出协议后停止，不执行代码修改或下游 Skill。
->>>>>>> 6ab4b54 (Refactor AI Talk tests and acceptance cases to enhance clarity and align with updated skill routing and output structures)
+`$ai-talk 修复 src/feature/target.ts 中的显示问题`
+
+- 读取并列出目标文件、从项目根到目标路径生效的 `AGENTS.md` 和目标文件的一层相对依赖。
+- 不读取无关兄弟文件，不递归目标目录，不读取 `node_modules`。
+- 项目规则使用 `[项目]` 来源，并带真实 evidence。
+
+## D. 读取边界
+
+- 仓库外符号链接不得被读取，原因进入 Handoff 待确认。
+- 文件超过 128 KiB 时不得读取内容，原因进入 Handoff 待确认。
+- 总读取文件数不得超过 8 个。
+- 缺失或不可读目标不得触发全仓搜索。
+
+## E. 附件、资源与接口
+
+`$ai-talk 奖励领取后增加 icon/mask 蒙层`
+
+- `icon/mask` 进入项目上下文的资源项，不识别为目录。
+- 视觉稿、交互图和截图只显示已提供及附件来源，不复述 OCR。
+- 接口资料保留 `state=0` 等真实字段，不猜业务含义。
+
+## F. 建议 Skill
+
+- 高置信时输出建议 Skill；低置信时省略整个建议 Skill 模块。
+- 内部 Handoff 字段保持 schema v6 兼容，但不在简短用户输出中展开。
+- 建议 Skill 不触发自动执行，后续仍需独立一轮明确授权。
+
+## G. schema v6 与兼容
+
+- 调试结果包含 `execution_goal`、`default_rules`、`project_context` 和 `skill_handoff`。
+- `default_rules` 每项包含 `value`、`source` 和可选 `evidence`，总数不超过 5。
+- 保留 `confirmed_context`、`intent`、`entities`、检索、边界、unknown 和路由字段。
+- 中文输出不暴露评分、候选、canonical ontology、内部 Query 或分析过程。
+
+## H. 五个精确推断用例
+
+- 奖励领取后增加 `icon/mask` 蒙层：判断为已有奖励节点的领取态视觉扩展，优先确认状态判断与资源引用，不猜状态字段。
+- 第三个奖励没显示：判断为单节点异常，优先确认数据、状态和渲染条件，不推断 `rewardList[2]`。
+- `state=0` 但页面显示已领取：识别状态映射冲突，不判断 `state=0` 的业务含义。
+- 开发一个弹窗：判断为新增 UI，优先查找已有弹窗实现，不补充按钮、props 或事件。
+- 明确文件修改一句文案：省略 AI 推断。

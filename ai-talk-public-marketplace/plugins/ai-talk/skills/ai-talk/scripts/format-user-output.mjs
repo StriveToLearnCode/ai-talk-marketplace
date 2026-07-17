@@ -1,16 +1,14 @@
-<<<<<<< HEAD
-function cleanedStrings(values, limit = 8) {
-=======
 const MAX_CONTEXT_ITEMS = 8;
 const MAX_NEED_KNOWLEDGE_ITEMS = 4;
 const MAX_ASSUMPTIONS = 2;
 const MAX_CONSTRAINTS = 5;
+const MAX_OUTPUT_CONSTRAINTS = 2;
+const MAX_REASONING_CHINESE_CHARACTERS = 100;
 const MAX_GOAL_CHINESE_CHARACTERS = 50;
 const MIN_SKILL_SCORE = 70;
 const MIN_SKILL_MARGIN = 15;
 
 function cleanedStrings(values, limit = Number.POSITIVE_INFINITY) {
->>>>>>> 6ab4b54 (Refactor AI Talk tests and acceptance cases to enhance clarity and align with updated skill routing and output structures)
   return [...new Set((values || [])
     .filter((value) => typeof value === "string" && value.trim())
     .map((value) => value.replace(/\s+/g, " ").trim()))]
@@ -18,77 +16,11 @@ function cleanedStrings(values, limit = Number.POSITIVE_INFINITY) {
 }
 
 function cleanGoal(value) {
-  return String(value || "").replace(/^\s*\$ai-talk(?::ai-talk)?\s*/i, "").trim();
+  return String(value || "")
+    .replace(/^\s*\$ai-talk(?::ai-talk)?\s*/i, "")
+    .trim();
 }
 
-<<<<<<< HEAD
-function safeDisplay(value) {
-  return String(value || "").replace(/(^|\s)(\/(?:Users|home|private|var|tmp)\/\S+)/g, (_, prefix, absolute) => {
-    const parts = absolute.replace(/\/$/, "").split("/");
-    return `${prefix}${parts.at(-1) || "目标位置"}`;
-  });
-}
-
-const SOURCE_LABELS = {
-  project: "当前项目代码",
-  docs: "公司文档",
-  skill: "相关 Skill",
-  user: "用户确认",
-};
-
-export function formatUserOutput(result) {
-  const contexts = cleanedStrings((result?.confirmed_context || []).map((item) => safeDisplay(item?.value)), 10);
-  const conceptLabels = [
-    ["task", "任务"],
-    ["ui_component", "组件"],
-    ["business_object", "业务对象"],
-    ["state", "状态"],
-    ["visual_change", "视觉修改"],
-    ["asset_resource", "资源"],
-    ["issue_symptom", "问题表现"],
-    ["target_scope", "目标范围"],
-    ["page_entry", "页面入口"],
-    ["inspection_goal", "检查目标"],
-    ["goal", "目标"],
-    ["scope", "范围"],
-  ];
-  const concepts = [];
-  for (const [type, heading] of conceptLabels) {
-    const labels = cleanedStrings((result?.entities?.[type] || []).map((item) => safeDisplay(item?.label)), 6);
-    if (labels.length) concepts.push(`${heading}：${labels.join("、")}`);
-  }
-  const relationships = cleanedStrings(result?.relationships_and_conflicts, 6);
-  const boundaries = cleanedStrings(result?.boundaries, 6);
-  const acceptance = cleanedStrings(result?.acceptance_criteria, 6);
-  const gaps = (result?.unknowns || []).filter((item) => item && item.type && item.reason && typeof item.blocking === "boolean");
-
-  const lines = [
-    "用户目标：",
-    safeDisplay(cleanGoal(result?.original_goal)),
-    "",
-    "已确认上下文：",
-    ...contexts.map((context) => `- ${context}`),
-  ];
-
-  if (concepts.length) lines.push("", "研发概念：", ...concepts.map((concept) => `- ${concept}`));
-
-  lines.push("", "关系与冲突：");
-  if (relationships.length) lines.push(...relationships.map((item) => `- ${item}`));
-  else lines.push("- 已确认信息之间没有显式冲突。");
-
-  if (gaps.length) {
-    lines.push("", "上下文缺口：");
-    for (const item of gaps) {
-      lines.push(`- ${safeDisplay(item.reason)}`);
-      if (item.suggested_source) lines.push(`  建议来源：${SOURCE_LABELS[item.suggested_source] || item.suggested_source}。`);
-      lines.push(item.blocking ? "  阻塞，需要先确认。" : "  非阻塞，执行阶段先验证。");
-    }
-  }
-
-  lines.push("", "任务边界：", ...boundaries.map((item) => `- ${safeDisplay(item)}`));
-  lines.push("", "验收标准：", ...acceptance.map((item) => `- ${safeDisplay(item)}`));
-  return lines.join("\n");
-=======
 function isChinese(result) {
   return /\p{Script=Han}/u.test(cleanGoal(result?.original_goal));
 }
@@ -407,18 +339,11 @@ function constraintsFor(result) {
 }
 
 const CHINESE_TERMS = Object.freeze({
-  taskType: "任务类型",
-  goal: "任务目标",
-  developmentObject: "研发对象",
-  state: "状态",
-  visualEffect: "视觉效果",
-  resource: "资源",
-  configVariable: "配置变量",
-  apiField: "接口字段",
-  relation: "关键关系",
-  retrievalSemantic: "检索语义",
-  constraint: "实现约束",
-  nextSkill: "建议 Skill",
+  originalIntent: "用户原意",
+  taskReasoning: "AI 推断",
+  projectContext: "项目上下文",
+  implementationConstraint: "实现约束",
+  recommendedSkill: "建议 Skill",
 });
 
 const CHINESE_TASK_TYPES = {
@@ -595,10 +520,150 @@ function chineseConstraintsFor(result) {
   return constraints.slice(0, 3);
 }
 
-function buildChineseProtocol(result, nextSkill) {
+const DEFAULT_RULE_SOURCE_LABELS = {
+  universal: "通用",
+  intent: "任务",
+  project: "项目",
+};
+
+const PROJECT_CONTEXT_LABELS = {
+  target_file: "目标文件",
+  target_directory: "目标目录",
+  project_rule: "项目规则",
+  direct_dependency: "直接依赖",
+  asset_resource: "资源",
+  api: "接口",
+  api_document: "接口资料",
+  screenshot: "截图",
+  visual_design: "视觉稿",
+  interaction_flow: "交互流程",
+  selected_code: "选中代码",
+};
+
+function fallbackDefaultRulesFor(result) {
+  const rules = [];
+  const add = (value, source) => {
+    if (value && !rules.some((item) => item.value === value)) rules.push({ value, source });
+  };
+  add("不引入用户未确认的业务逻辑", "universal");
+  if (["feature_create", "feature_modify", "bug_fix", "automated_test"].includes(result?.intent)) {
+    add("修改范围限于当前任务相关模块", "universal");
+  }
+  const intentRule = {
+    feature_create: "优先复用项目已有实现和组件",
+    feature_modify: "保持未涉及功能的现有行为不变",
+    bug_fix: "先确认根因，再进行最小范围修复",
+    ui_inspection: "保持只读，只报告实际页面证据支持的问题",
+    planning: "基于真实项目上下文说明关键假设",
+    automated_test: "测试应可重复运行且不改变生产行为",
+  }[result?.intent];
+  if (intentRule) add(intentRule, "intent");
+  return rules;
+}
+
+function defaultRulesFor(result) {
+  const rules = Array.isArray(result?.default_rules) && result.default_rules.length
+    ? result.default_rules : fallbackDefaultRulesFor(result);
+  return rules.filter((item) => item?.value && DEFAULT_RULE_SOURCE_LABELS[item.source]).slice(0, 5);
+}
+
+function taskSpecificReasoningFor(result) {
+  if (!isChinese(result)) return "";
+
+  const goal = cleanGoal(result?.original_goal);
+  const objects = entityValues(result, "business_object");
+  const states = entityValues(result, "state");
+  const components = entityValues(result, "ui_component");
+  const hasReward = objects.some((value) => ["reward", "reward-item", "reward-stage", "round-reward"].includes(value))
+    || Boolean(rewardIndexFor(result));
+  let reasoning = "";
+
+  const resource = entityItems(result, "asset_resource")[0]?.value;
+  if (hasReward
+    && states.includes("claimed")
+    && entityValues(result, "visual_effect").includes("mask")
+    && resource) {
+    reasoning = `用户描述了奖励领取后的蒙层变化并提供 ${publicPath(resource)}，因此本次更可能是已有奖励节点的领取态视觉扩展，而不是新增奖励组件。优先确认领取状态判断与 ${publicPath(resource)} 的引用方式。`;
+  } else if (rewardIndexFor(result) && /(?:没|未|没有|不)(?:显示|展示)/.test(goal)) {
+    const index = rewardIndexFor(result);
+    reasoning = `仅第 ${index} 个奖励未显示，更可能是单个节点的数据、状态或渲染条件异常，而不是整个奖励模块失效。优先确认该节点的数据、状态和渲染条件。`;
+  } else if (hasStateDisplayMismatch(result)) {
+    const assignment = assignmentsFor(result).find((item) => /^(?:state|status)$/i.test(item.name));
+    const stateEvidence = assignment?.value || "状态值";
+    reasoning = `${stateEvidence} 与页面领取表现冲突，应优先确认 ${assignment?.name || "状态"} 到领取样式的映射；当前证据不足以判断哪一方语义正确。`;
+  } else if (components.includes("dialog")
+    && result?.intent === "feature_create"
+    && /^(?:开发|新增|创建|实现)(?:一个|一个新的|新的)?弹窗[。.!！]?$/.test(goal)) {
+    reasoning = "用户只明确要开发弹窗，这是新增 UI 需求，但具体业务和交互尚不明确；应优先查找项目已有弹窗实现，再决定是否新增局部组件。";
+  } else {
+    const contexts = projectContextFor(result);
+    const hasVisualEvidence = contexts.some((item) => ["screenshot", "visual_design"].includes(item?.type));
+    const hasApiEvidence = contexts.some((item) => item?.type === "api_document");
+    if (hasVisualEvidence && !hasApiEvidence && /(?:先|仅|只).{0,6}(?:开发|完成|实现|还原).{0,4}(?:静态)?\s*UI/i.test(goal)) {
+      reasoning = "当前资料以视觉信息为主且目标是先完成 UI，因此更可能是静态界面实现。优先确认现有页面结构与资源引用，数据接入需从现有代码确认。";
+    }
+  }
+
+  return [...reasoning.matchAll(/\p{Script=Han}/gu)].length <= MAX_REASONING_CHINESE_CHARACTERS ? reasoning : "";
+}
+
+function implementationConstraintsFor(result) {
+  const constraints = [];
+  const add = (value) => pushUnique(constraints, value);
+  const exactScope = (result?.boundaries || []).find((item) => /修改范围限于/.test(item));
+  if (exactScope) add(exactScope);
+
+  const rules = defaultRulesFor(result);
+  for (const rule of rules.filter((item) => item.source === "project")) add(rule.value);
+  for (const rule of rules.filter((item) => item.source === "universal")) add(rule.value);
+  for (const rule of rules.filter((item) => item.source === "intent")) add(rule.value);
+  return constraints.slice(0, MAX_OUTPUT_CONSTRAINTS);
+}
+
+function fallbackProjectContextFor(result) {
+  const contexts = [];
+  const add = (type, value, source) => {
+    const cleaned = evidenceDetail({ value });
+    if (cleaned && !contexts.some((item) => item.type === type && item.value === cleaned)) contexts.push({ type, value: cleaned, source });
+  };
+  for (const item of result?.confirmed_context || []) {
+    if (PROJECT_CONTEXT_LABELS[item?.type]) add(item.type, item.value, item.source);
+  }
+  for (const item of entityItems(result, "asset_resource")) add("asset_resource", item.value, item.source);
+  for (const item of entityItems(result, "api")) add("api", item.value, item.source);
+  return contexts.slice(0, 16);
+}
+
+function projectContextFor(result) {
+  return Array.isArray(result?.project_context) && result.project_context.length
+    ? result.project_context : fallbackProjectContextFor(result);
+}
+
+function displayProjectContext(item) {
+  const label = PROJECT_CONTEXT_LABELS[item?.type];
+  if (!label) return "";
+  if (["screenshot", "visual_design", "interaction_flow", "selected_code"].includes(item.type)) {
+    return `${label}：已提供（${item.source}）`;
+  }
+  return `${label}：${item.value}`;
+}
+
+function skillHandoffFor(result, chineseProtocol, nextSkill) {
+  const unresolved = cleanedStrings((result?.unknowns || []).map((item) => typeof item === "string" ? item : item?.reason), 4);
   return {
+    execution_focus: chineseProtocol.relations[0] || chineseProtocol.executionGoal.replace(/[。.!！]+$/g, ""),
+    unresolved,
+    retrieval_semantics: chineseProtocol.retrievalSemantics,
+    recommended_skill: nextSkill,
+  };
+}
+
+function buildChineseProtocol(result, nextSkill) {
+  const protocol = {
     taskType: CHINESE_TASK_TYPES[result?.intent] || "",
-    goal: goalFor(result),
+    originalIntent: cleanGoal(result?.original_goal),
+    executionGoal: result?.execution_goal || goalFor(result),
+    goal: result?.execution_goal || goalFor(result),
     developmentObjects: chineseDevelopmentObjectsFor(result),
     states: chineseStatesFor(result),
     visualEffects: chineseVisualEffectsFor(result),
@@ -608,8 +673,14 @@ function buildChineseProtocol(result, nextSkill) {
     relations: chineseRelationsFor(result),
     retrievalSemantics: chineseRetrievalSemanticsFor(result),
     constraints: chineseConstraintsFor(result),
+    defaultRules: defaultRulesFor(result),
+    taskReasoning: taskSpecificReasoningFor(result),
+    implementationConstraints: implementationConstraintsFor(result),
+    projectContext: projectContextFor(result),
     nextSkill,
   };
+  protocol.skillHandoff = skillHandoffFor(result, protocol, nextSkill);
+  return protocol;
 }
 
 function hasExplicitSkillMode(skill, goal) {
@@ -649,7 +720,20 @@ export function buildExecutionProtocol(result) {
     constraints: constraintsFor(result),
     nextSkill: nextSkillFor(result),
   };
-  return isChinese(result) ? { ...protocol, ...buildChineseProtocol(result, protocol.nextSkill) } : protocol;
+  if (!isChinese(result)) {
+    return {
+      ...protocol,
+      executionGoal: protocol.goal,
+      skillHandoff: {
+        execution_focus: protocol.goal.replace(/[.!]+$/g, ""),
+        unresolved: cleanedStrings((result?.unknowns || []).map((item) => typeof item === "string" ? item : item?.reason), 4),
+        retrieval_semantics: [],
+        recommended_skill: protocol.nextSkill,
+      },
+    };
+  }
+  const chinese = buildChineseProtocol(result, protocol.nextSkill);
+  return { ...protocol, ...chinese, executionGoal: chinese.executionGoal };
 }
 
 function section(heading, items) {
@@ -675,22 +759,19 @@ function chineseSection(heading, items, { bullets = true } = {}) {
 }
 
 function renderChinese(protocol) {
+  const context = protocol.projectContext.map(displayProjectContext).filter(Boolean);
   return [
-    chineseSection(CHINESE_TERMS.goal, [protocol.goal], { bullets: false }),
-    chineseSection(CHINESE_TERMS.developmentObject, protocol.developmentObjects),
-    chineseSection(CHINESE_TERMS.state, protocol.states),
-    chineseSection(CHINESE_TERMS.visualEffect, protocol.visualEffects),
-    chineseSection(CHINESE_TERMS.resource, protocol.resources),
-    chineseSection(CHINESE_TERMS.apiField, protocol.apiFields),
-    chineseSection(CHINESE_TERMS.relation, protocol.relations),
-    chineseSection(CHINESE_TERMS.retrievalSemantic, protocol.retrievalSemantics),
-    chineseSection(CHINESE_TERMS.constraint, protocol.constraints),
-    protocol.nextSkill ? chineseSection(CHINESE_TERMS.nextSkill, [protocol.nextSkill]) : "",
+    chineseSection(CHINESE_TERMS.originalIntent, [protocol.originalIntent], { bullets: false }),
+    chineseSection(CHINESE_TERMS.taskReasoning, [protocol.taskReasoning], { bullets: false }),
+    chineseSection(CHINESE_TERMS.projectContext, context),
+    chineseSection(CHINESE_TERMS.implementationConstraint, protocol.implementationConstraints),
+    protocol.skillHandoff.recommended_skill
+      ? chineseSection(CHINESE_TERMS.recommendedSkill, [protocol.skillHandoff.recommended_skill], { bullets: false })
+      : "",
   ].filter(Boolean).join("\n\n");
 }
 
 export function formatUserOutput(result) {
   const protocol = buildExecutionProtocol(result);
   return isChinese(result) ? renderChinese(protocol) : render(protocol);
->>>>>>> 6ab4b54 (Refactor AI Talk tests and acceptance cases to enhance clarity and align with updated skill routing and output structures)
 }

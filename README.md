@@ -1,35 +1,18 @@
 # AI Talk
 
-<<<<<<< HEAD
-AI Talk 是显式调用的研发 Task Contract 生成器。它保留用户原始目标和真实证据，识别会影响业务结果、修改范围或实现方向的 Context Gap，再把合同交给后续 Codex 自行检索和执行。
+AI Talk 是显式调用的研发执行协议生成器。它不只改写需求，而是按价值顺序输出：
 
 ```text
-用户原始目标与真实证据
-→ confirmed_context（每项带 source）
-→ 五类 intent + 研发概念
-→ 关系与冲突
-→ 结构化 unknowns（阻塞 / 非阻塞）
-→ 任务边界与验收标准
-→ Task Contract
+用户原意
+→ 有证据时的任务专属 AI 推断
+→ 显式目标内的项目上下文
+→ 最多 2 条实现约束
+→ 可选的建议 Skill
 ```
 
-AI Talk 不搜索项目、不读取公司 Docs、不调用 Skill、不规划检索顺序，也不扩展用户未确认的功能、交互或数据结构。
-=======
-AI Talk 是显式调用的 AI Execution Protocol Builder。它把自然语言、截图、文件和代码上下文整理为交给 Company Skill 的执行协议。
+AI 推断只判断当前任务更可能属于哪类工程修改，以及应优先确认哪些具体对象；证据不足时整个模块省略。通用规则只进入实现约束。项目上下文只读取显式目标、沿路径生效的 `AGENTS.md` 和目标文件的一层本地依赖，不执行全仓搜索。
 
-```text
-Goal
-Context
-Need Knowledge
-Assumptions（按需）
-Constraints
-Next Skill（仅高置信）
-```
-
-协议回答六件事：最终完成什么、已经确认什么、执行前还必须知道什么、实现方向依赖哪些真实假设、不能越过哪些边界、哪个 Skill 最适合继续。
-
-内部 `intent`、`entities`、分类 Query 和 Skill 路由继续负责检索与判断，但不会出现在协议中。AI Talk 不输出 Object、Relation、ontology、OCR 总结、分析过程、评分或验收报告，也不代替下游 Skill 执行。
->>>>>>> 6ab4b54 (Refactor AI Talk tests and acceptance cases to enhance clarity and align with updated skill routing and output structures)
+解析轮只允许受限只读，不修改项目、不调用下游 Skill。建议 Skill 仅在高置信时出现，并且仍需用户在后续一轮明确授权执行。
 
 ## 安装
 
@@ -38,30 +21,6 @@ codex plugin marketplace add /absolute/path/to/ai-talk-marketplace
 codex plugin add ai-talk@ai-talk-marketplace
 ```
 
-<<<<<<< HEAD
-安装或更新后新建对话，再显式调用：
-
-```text
-$ai-talk 奖励获取后增加蒙层，资源 icon/mask
-```
-
-公开 marketplace 使用 `$ai-talk:ai-talk`。
-
-## 文件职责
-
-- `plugins/ai-talk/skills/ai-talk/SKILL.md`：Context Gap 与 Task Contract 契约。
-- `plugins/ai-talk/skills/ai-talk/scripts/route-company-skills.mjs`：历史兼容入口；只生成 Task Contract，不执行路由。
-- `plugins/ai-talk/skills/ai-talk/scripts/format-user-output.mjs`：确定性的默认输出。
-- `ai-talk-public-marketplace/`：公开发布副本。
-
-## 验证
-
-```bash
-PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover \
-  -s plugins/ai-talk/skills/ai-talk/tests -v
-node --test plugins/ai-talk/skills/ai-talk/tests/*.mjs
-```
-=======
 ## 使用
 
 ```text
@@ -73,4 +32,3 @@ $ai-talk 开发一个弹窗
 ```
 
 详见 [USAGE.md](USAGE.md)。
->>>>>>> 6ab4b54 (Refactor AI Talk tests and acceptance cases to enhance clarity and align with updated skill routing and output structures)

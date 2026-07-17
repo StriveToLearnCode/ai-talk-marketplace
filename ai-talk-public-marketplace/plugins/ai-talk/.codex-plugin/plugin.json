@@ -1,64 +1,44 @@
 {
   "name": "ai-talk",
-<<<<<<< HEAD
-  "version": "0.4.0",
-  "description": "AI Talk 将研发需求整理为最小 Task Contract，并标注真正影响实现的 Context Gap。",
-=======
-  "version": "0.4.0+codex.20260716171744",
-  "description": "AI Talk builds execution protocols from user language, evidence, and code context for company Skills.",
->>>>>>> 6ab4b54 (Refactor AI Talk tests and acceptance cases to enhance clarity and align with updated skill routing and output structures)
+  "version": "0.4.0+codex.20260716181417",
+  "description": "AI Talk preserves user intent, adds evidence-based task reasoning, reads bounded project context, and keeps constraints separate from optional Skill recommendations.",
   "author": {
     "name": "sf"
   },
   "skills": "./skills/",
   "interface": {
     "displayName": "AI Talk",
-<<<<<<< HEAD
-    "shortDescription": "整理研发上下文并标注真正影响实现的缺口",
-    "longDescription": "AI Talk 保留用户原始目标和真实证据，识别会影响业务结果、修改范围或实现方向的 Context Gap，并生成最小 Task Contract 交给后续 Codex。它不搜索项目、不读取公司文档、不调用 Skill、不规划检索顺序，也不扩展业务需求。",
-=======
-    "shortDescription": "Build execution protocols for company Skills",
-    "longDescription": "AI Talk converts user language, screenshots, files, and code context into an execution protocol containing a normalized goal, confirmed context, required knowledge gaps, real constraints, optional assumptions, and a high-confidence next Skill. It stops after formatting and requires explicit follow-up authorization before execution.",
->>>>>>> 6ab4b54 (Refactor AI Talk tests and acceptance cases to enhance clarity and align with updated skill routing and output structures)
+    "shortDescription": "Build evidence-based development handoffs",
+    "longDescription": "AI Talk preserves the user's original request, adds task-specific engineering reasoning only when current evidence supports it, reads only explicit-target project context, and keeps implementation constraints separate from optional Skill recommendations. It never modifies the project or invokes a downstream Skill during protocol generation.",
     "developerName": "sf",
     "category": "Productivity",
     "capabilities": [
-      "Goal compression without information loss",
-      "Source-backed context extraction",
-      "Company Skill execution protocol generation",
+      "Verbatim user intent preservation",
+      "Evidence-based task-specific reasoning",
+      "Reasoning omission when evidence is insufficient",
+      "Lossless execution goal generation",
+      "Sourced development default rules",
+      "Bounded explicit-target project reads",
+      "One-hop local dependency context",
+      "Project AGENTS.md provenance",
       "Attachment role normalization",
-<<<<<<< HEAD
-      "Five development task types",
-      "Structured blocking and non-blocking gaps",
-      "State mapping conflict detection",
-      "Asset resource classification",
-      "Deterministic Task Contract formatting",
-      "Task boundaries and acceptance criteria",
-      "Context handoff",
-      "Zero retrieval and downstream execution"
-    ],
-    "defaultPrompt": [
-      "$ai-talk:ai-talk 奖励获取后增加蒙层，资源 icon/mask",
-      "$ai-talk:ai-talk 这里 state=0，但页面显示已领取",
-      "$ai-talk:ai-talk 打开这个 URL 检查视觉和交互"
-=======
       "Real project Skill recommendation",
       "Bounded applicability metadata reads",
+      "Always-on Skill Handoff generation",
       "Knowledge-gap extraction",
       "Desired-output-aware Skill recommendation",
       "Duplicate Skill name detection",
       "Deterministic user-output formatting",
       "Typed context and implementation constraints",
       "Uncertain state mapping protection",
-      "One-screen task protocol generation",
+      "Compact task protocol generation",
       "Explicit execution permission gate",
       "Zero downstream execution"
     ],
     "defaultPrompt": [
-      "$ai-talk \u4e3a\u4ec0\u4e48\u6ca1\u6709\u5c55\u793a\u8f6e\u6b21\u5956\u52b1",
+      "$ai-talk \u4fee\u590d src/components/reward-card.vue \u4e2d\u56fe\u7247\u672a\u663e\u793a\u95ee\u9898",
       "$ai-talk state=0 \u9875\u9762\u5374\u5df2\u9886\u53d6",
-      "$ai-talk \u5f00\u53d1\u4e00\u4e2a\u5f39\u7a97"
->>>>>>> 6ab4b54 (Refactor AI Talk tests and acceptance cases to enhance clarity and align with updated skill routing and output structures)
+      "$ai-talk \u5f00\u53d1\u4e00\u4e2a\u5f39\u7a97\uff0c\u4e0d\u8981\u6269\u5c55\u4e1a\u52a1\u9700\u6c42"
     ]
   }
 }
