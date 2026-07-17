@@ -31,28 +31,29 @@ class Contract(unittest.TestCase):
         self.assertIn("schema_version: 6", self.skill)
         self.assertIn("schema_version: 6", self.router)
 
-    def test_chinese_output_separates_reasoning_context_constraints_and_skill(self):
+    def test_chinese_output_separates_positioning_context_retrieval_boundaries_and_skill(self):
         for text in (
-            'originalIntent: "用户原意"', 'taskReasoning: "AI 推断"',
-            'projectContext: "项目上下文"', 'implementationConstraint: "实现约束"',
+            'userGoal: "用户目标"', 'taskPositioning: "任务定位"',
+            'projectContext: "项目上下文"', 'suggestedRetrieval: "建议检索"',
+            'implementationBoundary: "实现边界"',
             'recommendedSkill: "建议 Skill"', "renderChinese",
         ):
             self.assertIn(text, self.formatter)
         for old in ('goal: "任务目标"', 'developmentObject: "研发对象"', 'defaultRule: "研发默认规则（AI 补充）"'):
             self.assertNotIn(old, self.formatter)
 
-    def test_original_intent_and_reasoning_are_bounded(self):
+    def test_user_goal_and_positioning_are_bounded(self):
         for text in (
-            "逐字保留用户原意", "不把用户原意替换为总结", "内部执行目标不得替代用户原意",
+            "用一句话保留用户真正想完成的结果", "不补充未提出的业务结果",
             "不超过 100 个中文字符", "MAX_REASONING_CHINESE_CHARACTERS = 100", "cleanGoal(result?.original_goal)",
         ):
             self.assertIn(text, self.skill + self.formatter)
 
-    def test_task_reasoning_is_evidence_gated_and_separate_from_constraints(self):
+    def test_task_positioning_is_bounded_and_separate_from_retrieval_and_boundaries(self):
         for text in (
-            "taskSpecificReasoningFor", "implementationConstraintsFor", "证据不足时省略推断",
+            "taskSpecificReasoningFor", "implementationBoundariesFor", "整个“任务定位”模块省略",
             "不能只根据 `feature_create | feature_modify | bug_fix` 等任务类型套固定模板",
-            "整个“AI 推断”模块省略", "MAX_OUTPUT_CONSTRAINTS = 2",
+            "不得输出具体代码方案", "MAX_OUTPUT_CONSTRAINTS = 2", "MAX_OUTPUT_RETRIEVAL_TARGETS = 5",
         ):
             self.assertIn(text, self.skill + self.formatter)
 
@@ -120,14 +121,16 @@ class Contract(unittest.TestCase):
             self.assertIn(text, self.skill)
 
     def test_metadata_matches_the_new_contract(self):
-        self.assertIn("保留用户原意", self.agent)
-        self.assertIn("任务推断", self.agent)
-        self.assertIn("实现约束", self.agent)
+        self.assertIn("用户目标", self.agent)
+        self.assertIn("任务定位", self.agent)
+        self.assertIn("建议检索", self.agent)
+        self.assertIn("实现边界", self.agent)
         self.assertIn("allow_implicit_invocation: false", self.agent)
         self.assertEqual(self.manifest["version"].split("+")[0], "0.4.0")
         for capability in (
-            "Verbatim user intent preservation", "Sourced development default rules",
-            "Evidence-based task-specific reasoning", "Reasoning omission when evidence is insufficient",
+            "Concise user goal preservation", "Sourced development default rules",
+            "Evidence-based task positioning", "Positioning omission when evidence is insufficient",
+            "High-signal retrieval targets", "Fact and implementation conclusion separation",
             "Bounded explicit-target project reads", "Always-on Skill Handoff generation",
             "Explicit execution permission gate",
         ):

@@ -3,6 +3,8 @@ const MAX_NEED_KNOWLEDGE_ITEMS = 4;
 const MAX_ASSUMPTIONS = 2;
 const MAX_CONSTRAINTS = 5;
 const MAX_OUTPUT_CONSTRAINTS = 2;
+const MAX_OUTPUT_PROJECT_CONTEXT = 4;
+const MAX_OUTPUT_RETRIEVAL_TARGETS = 5;
 const MAX_REASONING_CHINESE_CHARACTERS = 100;
 const MAX_GOAL_CHINESE_CHARACTERS = 50;
 const MIN_SKILL_SCORE = 70;
@@ -66,6 +68,7 @@ function assignmentsFor(result) {
   const addFrom = (value, source, kind = "config") => {
     const pattern = /\b([A-Za-z_$][\w$]*)\s*[:=：]\s*([A-Za-z0-9_.-]+)/g;
     for (const match of String(value || "").matchAll(pattern)) {
+      if (/^(?:const|let|var|new|function|class|return|async|await)$/i.test(match[2])) continue;
       assignments.push({ name: match[1], value: `${match[1]}=${match[2]}`, source, kind });
     }
   };
@@ -111,18 +114,45 @@ function hasStateDisplayMismatch(result) {
   return hasApiState && hasPageState;
 }
 
+function isH5LinkAdjustment(value) {
+  const text = String(value || "");
+  return /(?:半屏[^，。；;\n]{0,12}H5|H5[^，。；;\n]{0,12}半屏|openH5)/i.test(text)
+    && /(?:完整(?:活动)?链接|完整\s*URL|活动\s*H5\s*链接)/i.test(text);
+}
+
+function hasCodeEvidence(result, pattern) {
+  if (pattern.test(cleanGoal(result?.original_goal))) return true;
+  return projectContextFor(result).some((item) => item?.type === "selected_code" && pattern.test(String(item.value || "")));
+}
+
+function isClaimedRewardVisualChange(value) {
+  return /(?:领奖后|奖励[^，。；;\n]{0,8}(?:领取|获取)(?:到)?后|(?:领取|获取)(?:到)?奖励后)/.test(String(value || ""));
+}
+
 function goalFor(result) {
   const original = cleanGoal(result?.original_goal).replace(/\s+/g, " ").trim();
   const chinese = isChinese(result);
   if (!original) return chinese ? "明确并完成本次任务。" : "Define and complete the task.";
 
   if (chinese) {
+    if (isH5LinkAdjustment(original)) {
+      const target = projectContextFor(result).find((item) => item?.type === "target_file")?.value;
+      const prefix = target ? `调整 ${target} 中的` : "调整";
+      const method = /使用\s*new\s+URL\s*\(\s*\)/i.test(original) ? "使用 new URL() " : "";
+      const resultText = hasCodeEvidence(result, /\bopenH5\b/)
+        ? "确保传给 openH5 的是完整活动链接" : "确保使用完整活动链接";
+      return `${method}${prefix}活动半屏 H5 跳转，${resultText}。`;
+    }
     const progressTask = assignmentsFor(result).find((item) => item.name === "PROGRESS_TASK_ID");
     if (progressTask && /积分阶段/.test(original) && /进度/.test(original) && /奖励/.test(original)) {
       const taskId = progressTask.value.split("=")[1];
       return `积分阶段接入任务 ${taskId}，复用现有方式展示进度和奖励。`;
     }
     const resource = entityItems(result, "asset_resource")[0]?.value;
+    if (/(?:领奖后|奖励[^，。；;\n]{0,12}(?:领取|获取)(?:到)?(?:以后|后|时|的时候)|(?:领取|获取)(?:到)?奖励后)/.test(original)
+      && resource) {
+      return `为已有奖励节点增加领取后的 ${publicPath(resource)} 视觉效果。`;
+    }
     if (/(?:领奖后|奖励[^，。；;\n]{0,12}(?:领取|获取)(?:到)?(?:以后|后|时|的时候)|(?:领取|获取)(?:到)?奖励后)/.test(original) && /蒙层/.test(original)) {
       return `已领取状态增加${resource ? ` ${publicPath(resource)}` : ""} 蒙层。`;
     }
@@ -267,11 +297,12 @@ function needKnowledgeFor(result) {
     add("确认轮次奖励的渲染链路", "Confirm the round reward rendering flow");
     add("确认轮次奖励的展示条件", "Confirm the round reward display conditions");
     add("确认是否已有同类奖励实现", "Confirm whether a similar reward implementation exists");
-  } else if (hasReward && entityValues(result, "visual_effect").includes("mask")) {
+  } else if (hasReward && (states.includes("claimed") || isClaimedRewardVisualChange(goal))
+    && (entityValues(result, "visual_effect").includes("mask") || entityItems(result, "asset_resource").length)) {
     add("确认奖励领取状态的判断来源", "Confirm how the claimed state is determined");
-    add("确认蒙层资源的引用方式", "Confirm how the overlay resource is referenced");
-    add("确认奖励蒙层的渲染组件", "Confirm which component renders the reward overlay");
-    add("确认是否已有同类蒙层实现", "Confirm whether a similar overlay implementation exists");
+    add("确认领取态视觉资源的引用方式", "Confirm how the claimed-state visual resource is referenced");
+    add("确认领取态视觉的渲染节点", "Confirm where the claimed-state visual is rendered");
+    add("确认是否已有同类领取态视觉实现", "Confirm whether a similar claimed-state visual implementation exists");
   } else if (components.includes("dialog")) {
     add("确认是否已有可复用弹窗组件", "Confirm whether a reusable dialog component exists");
     add("确认弹窗所属页面与触发入口", "Confirm the owning page and trigger entry");
@@ -339,10 +370,11 @@ function constraintsFor(result) {
 }
 
 const CHINESE_TERMS = Object.freeze({
-  originalIntent: "用户原意",
-  taskReasoning: "AI 推断",
+  userGoal: "用户目标",
+  taskPositioning: "任务定位",
   projectContext: "项目上下文",
-  implementationConstraint: "实现约束",
+  suggestedRetrieval: "建议检索",
+  implementationBoundary: "实现边界",
   recommendedSkill: "建议 Skill",
 });
 
@@ -452,6 +484,7 @@ function chineseRelationsFor(result) {
 
 function chineseRetrievalSemanticsFor(result) {
   const semantics = [];
+  const goal = cleanGoal(result?.original_goal);
   const objects = entityValues(result, "business_object");
   const components = entityValues(result, "ui_component");
   const symptoms = entityValues(result, "issue_symptom");
@@ -460,7 +493,13 @@ function chineseRetrievalSemanticsFor(result) {
   const hasReward = objects.some((value) => ["reward", "reward-item", "reward-stage", "round-reward"].includes(value))
     || Boolean(rewardIndexFor(result));
 
-  if (progressTask && /积分阶段/.test(cleanGoal(result?.original_goal))) {
+  if (isH5LinkAdjustment(goal)) {
+    if (hasCodeEvidence(result, /\bopenH5\b/)) pushUnique(semantics, "openH5 调用方式");
+    if (hasCodeEvidence(result, /\bopenActivity\b/)) pushUnique(semantics, "openActivity 同类实现");
+    pushUnique(semantics, "活动 H5 完整 URL 构建");
+    pushUnique(semantics, "半屏 H5 跳转规范");
+    pushUnique(semantics, "当前项目活动链接生成方式");
+  } else if (progressTask && /积分阶段/.test(goal)) {
     pushUnique(semantics, "积分阶段任务关联");
     pushUnique(semantics, "进度展示逻辑");
     pushUnique(semantics, "奖励展示逻辑");
@@ -472,9 +511,17 @@ function chineseRetrievalSemanticsFor(result) {
     pushUnique(semantics, "奖励状态映射");
     pushUnique(semantics, "奖励展示条件");
     pushUnique(semantics, "当前项目同类实现");
-  } else if (hasReward && entityValues(result, "visual_effect").includes("mask")) {
-    pushUnique(semantics, "奖励状态映射");
-    pushUnique(semantics, "蒙层展示逻辑");
+  } else if (hasReward && (states.includes("claimed") || isClaimedRewardVisualChange(goal))
+    && (entityValues(result, "visual_effect").includes("mask") || entityItems(result, "asset_resource").length)) {
+    const resource = entityItems(result, "asset_resource")[0]?.value;
+    pushUnique(semantics, "奖励领取状态判断");
+    if (resource) pushUnique(semantics, `${publicPath(resource)} 引用方式`);
+    pushUnique(semantics, "奖励领取态视觉实现");
+    pushUnique(semantics, "当前项目同类实现");
+  } else if (rewardIndexFor(result)) {
+    pushUnique(semantics, `第 ${rewardIndexFor(result)} 个奖励节点数据`);
+    pushUnique(semantics, "奖励状态判断");
+    pushUnique(semantics, "奖励渲染条件");
     pushUnique(semantics, "当前项目同类实现");
   } else if (hasReward) {
     pushUnique(semantics, "奖励状态映射");
@@ -485,9 +532,8 @@ function chineseRetrievalSemanticsFor(result) {
     pushUnique(semantics, "进度状态映射");
     pushUnique(semantics, "当前项目同类实现");
   } else if (components.includes("dialog")) {
-    pushUnique(semantics, "弹窗组件复用");
-    pushUnique(semantics, "弹窗触发逻辑");
-    pushUnique(semantics, "弹窗交互逻辑");
+    pushUnique(semantics, "现有弹窗组件");
+    pushUnique(semantics, "弹窗同类实现");
   } else if (symptoms.includes("image-not-updated")) {
     pushUnique(semantics, "图片资源绑定");
     pushUnique(semantics, "图片展示条件");
@@ -497,7 +543,7 @@ function chineseRetrievalSemanticsFor(result) {
     pushUnique(semantics, "展示条件");
     pushUnique(semantics, "当前项目同类实现");
   }
-  return semantics.slice(0, 3);
+  return semantics.slice(0, MAX_OUTPUT_RETRIEVAL_TARGETS);
 }
 
 function chineseConstraintsFor(result) {
@@ -579,22 +625,21 @@ function taskSpecificReasoningFor(result) {
   let reasoning = "";
 
   const resource = entityItems(result, "asset_resource")[0]?.value;
-  if (hasReward
-    && states.includes("claimed")
-    && entityValues(result, "visual_effect").includes("mask")
+  if (isH5LinkAdjustment(goal)) {
+    const callTarget = hasCodeEvidence(result, /\bopenH5\b/) ? "项目内 openH5 的标准调用" : "项目内同类半屏 H5 调用";
+    reasoning = `这是已有跳转逻辑调整，不是新增跳转能力。重点确认当前 URL 构建方式和${callTarget}。`;
+  } else if (hasReward
+    && (states.includes("claimed") || isClaimedRewardVisualChange(goal))
     && resource) {
-    reasoning = `用户描述了奖励领取后的蒙层变化并提供 ${publicPath(resource)}，因此本次更可能是已有奖励节点的领取态视觉扩展，而不是新增奖励组件。优先确认领取状态判断与 ${publicPath(resource)} 的引用方式。`;
+    reasoning = `这是已有奖励节点领取态的视觉修改，不是新增奖励能力。重点确认领取状态判断、${publicPath(resource)} 引用和项目内同类实现。`;
   } else if (rewardIndexFor(result) && /(?:没|未|没有|不)(?:显示|展示)/.test(goal)) {
-    const index = rewardIndexFor(result);
-    reasoning = `仅第 ${index} 个奖励未显示，更可能是单个节点的数据、状态或渲染条件异常，而不是整个奖励模块失效。优先确认该节点的数据、状态和渲染条件。`;
+    reasoning = "这是单个奖励节点的展示异常，不是整个奖励模块失效。重点确认该节点数据、状态和渲染条件。";
   } else if (hasStateDisplayMismatch(result)) {
-    const assignment = assignmentsFor(result).find((item) => /^(?:state|status)$/i.test(item.name));
-    const stateEvidence = assignment?.value || "状态值";
-    reasoning = `${stateEvidence} 与页面领取表现冲突，应优先确认 ${assignment?.name || "状态"} 到领取样式的映射；当前证据不足以判断哪一方语义正确。`;
+    reasoning = "这是状态证据与页面领取表现不一致的排查任务。重点确认状态证据、领取态展示条件和项目内同类映射。";
   } else if (components.includes("dialog")
     && result?.intent === "feature_create"
     && /^(?:开发|新增|创建|实现)(?:一个|一个新的|新的)?弹窗[。.!！]?$/.test(goal)) {
-    reasoning = "用户只明确要开发弹窗，这是新增 UI 需求，但具体业务和交互尚不明确；应优先查找项目已有弹窗实现，再决定是否新增局部组件。";
+    reasoning = "这是新增 UI 需求。重点确认项目已有弹窗组件和同类实现，具体业务与交互仍以用户输入和真实上下文为准。";
   } else {
     const contexts = projectContextFor(result);
     const hasVisualEvidence = contexts.some((item) => ["screenshot", "visual_design"].includes(item?.type));
@@ -607,9 +652,16 @@ function taskSpecificReasoningFor(result) {
   return [...reasoning.matchAll(/\p{Script=Han}/gu)].length <= MAX_REASONING_CHINESE_CHARACTERS ? reasoning : "";
 }
 
-function implementationConstraintsFor(result) {
-  const constraints = [];
-  const add = (value) => pushUnique(constraints, value);
+function implementationBoundariesFor(result) {
+  const boundaries = [];
+  const goal = cleanGoal(result?.original_goal);
+  const add = (value) => pushUnique(boundaries, value);
+  if (/使用\s*new\s+URL\s*\(\s*\)/i.test(goal)) add("使用 new URL()");
+  if (isH5LinkAdjustment(goal)) {
+    add("仅调整当前跳转节点");
+    add("不修改无关跳转逻辑");
+    return boundaries.slice(0, MAX_OUTPUT_CONSTRAINTS);
+  }
   const exactScope = (result?.boundaries || []).find((item) => /修改范围限于/.test(item));
   if (exactScope) add(exactScope);
 
@@ -617,7 +669,7 @@ function implementationConstraintsFor(result) {
   for (const rule of rules.filter((item) => item.source === "project")) add(rule.value);
   for (const rule of rules.filter((item) => item.source === "universal")) add(rule.value);
   for (const rule of rules.filter((item) => item.source === "intent")) add(rule.value);
-  return constraints.slice(0, MAX_OUTPUT_CONSTRAINTS);
+  return boundaries.slice(0, MAX_OUTPUT_CONSTRAINTS);
 }
 
 function fallbackProjectContextFor(result) {
@@ -648,6 +700,30 @@ function displayProjectContext(item) {
   return `${label}：${item.value}`;
 }
 
+function outputProjectContextFor(protocol) {
+  const contexts = protocol.projectContext || [];
+  const output = contexts.filter((item) => item?.type !== "selected_code")
+    .map(displayProjectContext).filter(Boolean);
+  if (!isH5LinkAdjustment(protocol.originalIntent)) {
+    for (const value of protocol.configVariables || []) pushUnique(output, `明确参数：${value}`);
+  }
+  const selectedCode = contexts.find((item) => item?.type === "selected_code");
+  if (isH5LinkAdjustment(protocol.originalIntent)) {
+    const code = String(selectedCode?.value || protocol.originalIntent || "");
+    const hasInlineCodeContext = /(?:当前|现有)?代码(?:上下文)?\s*[：:]/.test(protocol.originalIntent);
+    if (/\bopenActivity\b/.test(code)) pushUnique(output, "目标节点：openActivity");
+    if (/ins\.\$we\s*\(\s*(['"])openH5\1/.test(code)) pushUnique(output, "调用：ins.$we('openH5', ...)");
+    const height = code.match(/\bheight\s*:\s*(\d+)/)?.[1];
+    if (height) pushUnique(output, `半屏高度：${height}`);
+    if ((selectedCode || hasInlineCodeContext) && /\bnew\s+URL\s*\(/.test(code)) {
+      pushUnique(output, "当前代码：存在 new URL() 构建逻辑");
+    }
+  } else if (selectedCode) {
+    pushUnique(output, displayProjectContext(selectedCode));
+  }
+  return output.slice(0, MAX_OUTPUT_PROJECT_CONTEXT);
+}
+
 function skillHandoffFor(result, chineseProtocol, nextSkill) {
   const unresolved = cleanedStrings((result?.unknowns || []).map((item) => typeof item === "string" ? item : item?.reason), 4);
   return {
@@ -662,6 +738,7 @@ function buildChineseProtocol(result, nextSkill) {
   const protocol = {
     taskType: CHINESE_TASK_TYPES[result?.intent] || "",
     originalIntent: cleanGoal(result?.original_goal),
+    userGoal: result?.execution_goal || goalFor(result),
     executionGoal: result?.execution_goal || goalFor(result),
     goal: result?.execution_goal || goalFor(result),
     developmentObjects: chineseDevelopmentObjectsFor(result),
@@ -674,8 +751,9 @@ function buildChineseProtocol(result, nextSkill) {
     retrievalSemantics: chineseRetrievalSemanticsFor(result),
     constraints: chineseConstraintsFor(result),
     defaultRules: defaultRulesFor(result),
-    taskReasoning: taskSpecificReasoningFor(result),
-    implementationConstraints: implementationConstraintsFor(result),
+    taskPositioning: taskSpecificReasoningFor(result),
+    suggestedRetrieval: chineseRetrievalSemanticsFor(result),
+    implementationBoundaries: implementationBoundariesFor(result),
     projectContext: projectContextFor(result),
     nextSkill,
   };
@@ -690,7 +768,8 @@ function hasExplicitSkillMode(skill, goal) {
   }
   if (skill === "ai-test") return /midscene|自动化测试|测试用例|测试文件|(?:生成|编写|写|运行|执行|跑).{0,8}测试/i.test(text);
   if (skill === "gen-frontend-plan") return /(?:生成|编写|输出|制定|给出).{0,10}(?:前端)?(?:方案|计划)|docs\/plan/i.test(text);
-  if (skill === "gen-code") return /生成代码|修改代码|直接实现|PROGRESS_TASK_ID\s*[:=：]\s*\d+[^。\n]{0,48}(?:展示|显示)(?:进度|奖励)|(?:开发|实现|修改|修复|新增|改造|调整|编写).{0,64}(?:页面|活动页|组件|弹窗|列表|代码|逻辑|功能|蒙层|ui)|(?:页面|活动页|组件|弹窗|列表|代码|逻辑|功能|ui).{0,24}(?:开发|实现|修改|修复|新增|改造|调整)/i.test(text);
+  if (skill === "gen-code") return isH5LinkAdjustment(text)
+    || /生成代码|修改代码|直接实现|PROGRESS_TASK_ID\s*[:=：]\s*\d+[^。\n]{0,48}(?:展示|显示)(?:进度|奖励)|(?:开发|实现|修改|修复|新增|改造|调整|编写).{0,64}(?:页面|活动页|组件|弹窗|列表|代码|逻辑|功能|蒙层|ui)|(?:页面|活动页|组件|弹窗|列表|代码|逻辑|功能|ui).{0,24}(?:开发|实现|修改|修复|新增|改造|调整)/i.test(text);
   if (skill === "figma-analyze") return /(?:分析|梳理).{0,12}figma|figma.{0,12}(?:分析|文档)/i.test(text);
   if (skill === "figma-to-ui-meta") return /figma.{0,16}(?:ui-meta|mercury|转换)|(?:ui-meta|mercury).{0,16}figma/i.test(text);
   if (skill === "gen-page-center-config") return /page-?center.{0,16}(?:配置|推送)|(?:生成|修改|推送).{0,12}配置/i.test(text);
@@ -759,12 +838,13 @@ function chineseSection(heading, items, { bullets = true } = {}) {
 }
 
 function renderChinese(protocol) {
-  const context = protocol.projectContext.map(displayProjectContext).filter(Boolean);
+  const context = outputProjectContextFor(protocol);
   return [
-    chineseSection(CHINESE_TERMS.originalIntent, [protocol.originalIntent], { bullets: false }),
-    chineseSection(CHINESE_TERMS.taskReasoning, [protocol.taskReasoning], { bullets: false }),
+    chineseSection(CHINESE_TERMS.userGoal, [protocol.userGoal], { bullets: false }),
+    chineseSection(CHINESE_TERMS.taskPositioning, [protocol.taskPositioning], { bullets: false }),
     chineseSection(CHINESE_TERMS.projectContext, context),
-    chineseSection(CHINESE_TERMS.implementationConstraint, protocol.implementationConstraints),
+    chineseSection(CHINESE_TERMS.suggestedRetrieval, protocol.suggestedRetrieval),
+    chineseSection(CHINESE_TERMS.implementationBoundary, protocol.implementationBoundaries),
     protocol.skillHandoff.recommended_skill
       ? chineseSection(CHINESE_TERMS.recommendedSkill, [protocol.skillHandoff.recommended_skill], { bullets: false })
       : "",
