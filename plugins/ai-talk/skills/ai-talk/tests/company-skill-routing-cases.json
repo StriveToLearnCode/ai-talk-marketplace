@@ -3,31 +3,52 @@
     "id": "ui-live",
     "clarity": "clear",
     "prompt": "用浏览器检查 recharge Tab2 的视觉、交互和响应式，发现问题直接修复并复验",
-    "expected_skill": "ui-self-check"
+    "expected_skill": "ui-self-check",
+    "expected_mode": "inspect_fix_verify",
+    "must_preserve": ["recharge Tab2", "视觉", "交互", "响应式", "修复", "复验"],
+    "must_include_boundaries": ["浏览器检查、修复、复验"],
+    "must_not_include": ["只检查并报告"],
+    "expected_unknowns": []
   },
   {
     "id": "ui-generic",
     "clarity": "clear",
-    "prompt": "这个活动页面帮我测一下，看看按钮点击和布局有没有问题",
-    "expected_skill": "ui-self-check"
+    "prompt": "用浏览器现场检查这个活动页面的按钮点击和布局，只检查，不修改代码",
+    "expected_skill": "ui-self-check",
+    "expected_mode": "inspect_only",
+    "must_preserve": ["浏览器现场检查", "按钮点击", "布局", "只检查", "不修改代码"],
+    "must_include_boundaries": ["不修改代码"],
+    "must_not_include": ["检查、修复并复验"]
   },
   {
     "id": "ui-shot",
     "clarity": "clear",
     "prompt": "按参考截图做页面截图对比，只检查不修改",
-    "expected_skill": "ui-self-check"
+    "expected_skill": "ui-self-check",
+    "expected_mode": "inspect_only",
+    "must_preserve": ["参考截图", "截图对比", "只检查不修改"],
+    "must_include_boundaries": ["只检查不修改"],
+    "must_not_include": ["检查、修复并复验"]
   },
   {
     "id": "ui-console",
     "clarity": "clear",
     "prompt": "打开页面检查交互，同时看控制台报错和失败网络请求",
-    "expected_skill": "ui-self-check"
+    "expected_skill": "ui-self-check",
+    "expected_mode": "inspect_only",
+    "must_preserve": ["交互", "控制台报错", "失败网络请求"],
+    "must_not_include": ["检查、修复并复验"],
+    "expected_unknowns": ["目标页面、组件或文件尚未明确"]
   },
   {
     "id": "ui-no-file",
     "clarity": "clear",
-    "prompt": "测一下充值页的移动端布局，不要生成测试文件",
-    "expected_skill": "ui-self-check"
+    "prompt": "用浏览器测一下充值页的移动端布局，不要生成测试文件",
+    "expected_skill": "ui-self-check",
+    "expected_mode": "inspect_only",
+    "must_preserve": ["浏览器", "充值页", "移动端布局", "不要生成测试文件"],
+    "must_include_boundaries": ["不要生成测试文件"],
+    "must_not_include": ["检查、修复并复验"]
   },
   {
     "id": "test-new",
@@ -63,7 +84,12 @@
     "id": "plan-only",
     "clarity": "clear",
     "prompt": "先给 recharge 页出前端方案文档，只出方案，不生成代码",
-    "expected_skill": "gen-frontend-plan"
+    "expected_skill": "gen-frontend-plan",
+    "expected_mode": "plan_only",
+    "must_preserve": ["recharge", "前端方案文档", "只出方案", "不生成代码"],
+    "must_include_boundaries": ["只出方案"],
+    "must_not_include": ["修改并验证"],
+    "expected_unknowns": []
   },
   {
     "id": "plan-assets",
@@ -75,31 +101,48 @@
     "id": "code-plan",
     "clarity": "clear",
     "prompt": "根据现有 docs/plan 直接生成页面代码并完成验证",
-    "expected_skill": "gen-code"
+    "expected_skill": "gen-code",
+    "expected_mode": "modify",
+    "must_preserve": ["docs/plan", "生成页面代码", "完成验证"],
+    "must_not_include": ["analysis_only"]
   },
   {
     "id": "code-logic",
     "clarity": "clear",
     "prompt": "给 recharge 页面加上领取奖励逻辑，实际修改代码",
-    "expected_skill": "gen-code"
+    "expected_skill": "gen-code",
+    "expected_mode": "modify",
+    "must_preserve": ["recharge", "领取奖励逻辑", "实际修改代码"],
+    "must_not_include": ["analysis_only"],
+    "expected_unknowns": []
   },
   {
     "id": "code-page",
     "clarity": "clear",
     "prompt": "把这个活动页做出来，包含 UI 和业务逻辑",
-    "expected_skill": "gen-code"
+    "expected_skill": "gen-code",
+    "expected_mode": "modify",
+    "must_preserve": ["活动页", "UI", "业务逻辑"],
+    "must_not_include": ["analysis_only"]
   },
   {
     "id": "figma-doc",
     "clarity": "clear",
     "prompt": "分析这个 Figma 原型，输出页面、弹窗和交互的 Markdown 方案文档",
-    "expected_skill": "figma-analyze"
+    "expected_skill": "figma-analyze",
+    "expected_mode": "plan_only",
+    "must_preserve": ["Figma", "弹窗", "交互", "Markdown 方案文档"],
+    "must_not_include": ["修改并验证"]
   },
   {
     "id": "figma-code",
     "clarity": "clear",
     "prompt": "参考这个 Figma 直接做页面，不要单独分析 Figma",
-    "expected_skill": "gen-code"
+    "expected_skill": "gen-code",
+    "expected_mode": "modify",
+    "must_preserve": ["参考这个 Figma", "直接做页面", "不要单独分析 Figma"],
+    "must_include_boundaries": ["不要单独分析 Figma"],
+    "must_not_include": ["analysis_only"]
   },
   {
     "id": "figma-meta",
@@ -114,7 +157,10 @@
     "expected_skill": "gen-code",
     "evidence_types": [
       "screenshot"
-    ]
+    ],
+    "expected_mode": "modify",
+    "must_preserve": ["截图", "Vue 活动页面", "修改代码"],
+    "must_not_include": ["ui-self-check（"]
   },
   {
     "id": "pc-push",
@@ -200,7 +246,34 @@
   {
     "id": "bug-analysis-only",
     "clarity": "clear",
-    "prompt": "这个已有页面显示异常，只分析原因，不修改代码",
-    "expected_skill": "ui-self-check"
+    "prompt": "定位 claimed 状态下图片不切换的代码原因，只分析，不修改代码",
+    "expected_skill": "gen-code",
+    "expected_mode": "analysis_only",
+    "must_preserve": ["claimed", "图片不切换", "代码原因", "只分析", "不修改代码"],
+    "must_include_boundaries": ["只定位问题，不修改代码"],
+    "must_not_include": ["ui-self-check（", "修改并验证"],
+    "expected_unknowns": ["目标页面、组件或文件尚未明确"]
+  },
+  {
+    "id": "bug-analysis-visual-code",
+    "clarity": "clear",
+    "prompt": "定位 RewardDialog 视觉样式代码为什么异常，只排查原因，不修复",
+    "expected_skill": "gen-code",
+    "expected_mode": "analysis_only",
+    "must_preserve": ["RewardDialog", "视觉样式代码", "只排查原因", "不修复"],
+    "must_include_boundaries": ["只定位问题，不修改代码"],
+    "must_not_include": ["ui-self-check（", "修改并验证"],
+    "expected_unknowns": []
+  },
+  {
+    "id": "bug-analysis-page-code",
+    "clarity": "clear",
+    "prompt": "检查 recharge 页面代码为什么没有更新状态，只定位原因，不修改代码",
+    "expected_skill": "gen-code",
+    "expected_mode": "analysis_only",
+    "must_preserve": ["recharge", "页面代码", "没有更新状态", "只定位原因", "不修改代码"],
+    "must_include_boundaries": ["只定位问题，不修改代码"],
+    "must_not_include": ["ui-self-check（", "修改并验证"],
+    "expected_unknowns": []
   }
 ]

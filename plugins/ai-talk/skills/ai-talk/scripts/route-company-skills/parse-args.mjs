@@ -7,6 +7,7 @@ export function parseArgs(argv) {
     sourceRoots: [],
     excludeRoots: [],
     evidenceTypes: [],
+    previousContractPath: null,
     limit: 3,
     debugJson: false,
     format: "text",
@@ -22,7 +23,7 @@ export function parseArgs(argv) {
       args.debugJson = true;
       continue;
     }
-    if (!["--root", "--query", "--source-root", "--exclude-root", "--evidence-type", "--limit", "--top-k", "--format"].includes(flag)) {
+    if (!["--root", "--query", "--source-root", "--exclude-root", "--evidence-type", "--previous-contract", "--limit", "--top-k", "--format"].includes(flag)) {
       throw new Error(`Unknown argument: ${flag}`);
     }
     const value = argv[++index];
@@ -32,6 +33,7 @@ export function parseArgs(argv) {
     if (flag === "--source-root") args.sourceRoots.push(value);
     if (flag === "--exclude-root") args.excludeRoots.push(value);
     if (flag === "--evidence-type") args.evidenceTypes.push(value);
+    if (flag === "--previous-contract") args.previousContractPath = value;
     if (flag === "--format") {
       if (!["text", "json"].includes(value)) throw new Error("--format must be text or json.");
       args.format = value;
@@ -49,4 +51,4 @@ export function parseArgs(argv) {
   return args;
 }
 
-export const HELP = "Usage: route-company-skills.mjs --root <project> --query '<user input>' [--source-root <label=path>] [--evidence-type <type>] [--format text|json] [--debug-json]";
+export const HELP = "Usage: route-company-skills.mjs --root <project> --query '<user input>' [--source-root <label=path>] [--evidence-type <type>] [--previous-contract <json-file>] [--format text|json] [--debug-json]";

@@ -17,13 +17,13 @@ test("compatibility command preserves text output and supports explicit JSON", a
   await writeFile(path.join(directory, "SKILL.md"), "---\nname: gen-code\ndescription: 生成页面代码和业务逻辑。\n---\n");
   const args = [script, "--root", root, "--query", "把这个页面做出来并修改代码"];
   const output = (await run(process.execPath, args, { encoding: "utf8" })).stdout;
-  assert.match(output, /^使用 Skill：gen-code/);
-  assert.match(output, /用户原始目标：\n把这个页面做出来并修改代码/);
+  assert.match(output, /^任务目标：/);
+  assert.match(output, /建议 Skill：\ngen-code（修改并验证）/);
 
   const jsonOutput = (await run(process.execPath, [...args, "--format", "json"], { encoding: "utf8" })).stdout;
   const result = JSON.parse(jsonOutput);
   assert.equal(result.original_request, "把这个页面做出来并修改代码");
   assert.equal(result.recommended_skill, "gen-code");
-  assert.match(result.execution_prompt, /^使用 Skill：gen-code/);
+  assert.match(result.execution_prompt, /^任务目标：/);
   assert.ok(!Object.hasOwn(result, "_debug"));
 });
