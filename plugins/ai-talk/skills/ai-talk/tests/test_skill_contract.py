@@ -29,9 +29,10 @@ class Contract(unittest.TestCase):
     def test_public_result_contract_is_minimal(self):
         source = (ROUTER / "build-execution-prompt.mjs").read_text()
         for field in (
-            "original_request", "intent", "evidence", "recommended_skill",
+            "original_request", "task_goal", "engineering_judgment",
+            "required_knowledge", "retrieval_entries", "intent", "evidence", "recommended_skill",
             "alternative_skills", "selection_reason", "boundaries", "unknowns",
-            "execution_prompt",
+            "stage", "execution_mode", "execution_prompt",
         ):
             self.assertIn(field, source)
         for removed in ("retrieval_query_groups", "business_object", "visual_effect"):

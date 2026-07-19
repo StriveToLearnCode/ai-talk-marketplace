@@ -1,6 +1,6 @@
 {
   "name": "ai-talk",
-  "version": "0.4.0+codex.20260716181417",
+  "version": "0.4.0+codex.20260719155223",
   "description": "AI Talk turns development requests into bounded task positioning, verified project context, high-signal retrieval targets, and optional Skill recommendations.",
   "author": {
     "name": "sf"

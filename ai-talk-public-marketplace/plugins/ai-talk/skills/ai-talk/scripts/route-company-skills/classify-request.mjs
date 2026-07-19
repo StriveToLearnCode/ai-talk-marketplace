@@ -31,8 +31,13 @@ function suppliedEvidence(values) {
 
 function extractPaths(query) {
   const extension = "vue|tsx?|jsx?|mjs|cjs|json|css|scss|less|md|py|go|java|kt|swift";
-  const pattern = new RegExp(`(?:^|[\\s\\x60'\"（(])((?:\\.{0,2}/)?(?:[\\w@.-]+/)*[\\w@.-]+\\.(?:${extension}))(?=$|[\\s\\x60'\"，。；;）)])`, "giu");
+  const pattern = new RegExp(`(?:^|[\\s\\x60'\"（(：:])((?:\\.{0,2}/)?(?:[\\w@.-]+/)*[\\w@.-]+\\.(?:${extension}))(?=$|[\\s\\x60'\"，。；;：:）)])`, "giu");
   return [...query.matchAll(pattern)].map((match) => match[1]).filter((value) => !value.startsWith("http"));
+}
+
+function referencesFigma(query) {
+  return /(?:根据|参考|提供|上传|打开|查看|看看|看一下|分析|梳理|读取|访问|使用|转换|转成)\s*(?:这个|该|当前|已有|所附|附件中的)?\s*figma/i.test(query)
+    || /figma\s*(?:链接|原型|文件|设计稿|页面|弹窗|交互|ui[\s_-]*meta)/i.test(query);
 }
 
 function extractApiNames(query) {
@@ -57,52 +62,127 @@ function extractStates(query) {
   return unique(values.map((value) => value.toLowerCase()));
 }
 
+function extractResources(query) {
+  const values = [];
+  for (const match of query.matchAll(/\b(?:icon|mask|sprite|image|img|asset)s?(?:\/[\w@.-]+)+\b/gi)) values.push(match[0]);
+  return unique(values);
+}
+
 function inferEvidence(query, provided) {
   const text = query.toLowerCase();
   const evidence = [...provided];
   const add = (type, value) => evidence.push({ type, value, source: "user_request" });
   if (includesAny(text, KEYWORDS.screenshotEvidence)) add("screenshot", "用户在原话中明确引用的截图");
-  if (text.includes("figma")) add("figma", "用户在原话中明确提供或引用的 Figma");
+  if (referencesFigma(query)) add("figma", "用户在原话中明确提供或引用的 Figma");
   if (includesAny(text, KEYWORDS.designEvidence)) add("design", "用户在原话中明确提供或引用的设计稿");
   if (includesAny(text, KEYWORDS.apiEvidence)) add("api", "用户在原话中明确提供或引用的接口资料");
   for (const value of extractPaths(query)) add("target_file", value);
   for (const value of extractApiNames(query)) add("api_name", value);
   for (const value of extractComponents(query)) add("component", value);
   for (const value of extractStates(query)) add("state", value);
+  for (const value of extractResources(query)) add("resource", value);
   return unique(evidence, (item) => `${item.type}:${item.value}`);
 }
 
 function classifyIntent(query) {
   const text = query.toLowerCase();
+  const figmaReference = referencesFigma(query);
+  const liveInspect = includesAny(text, KEYWORDS.inspect)
+    || /(?:检查|查看|看看|测试|测一下).{0,16}(?:视觉|交互|响应式|布局|按钮点击)/i.test(text);
+  const rejectsAutomatedTest = /(?:不要|不需要|无需|禁止|不)\s*(?:生成|创建|编写)?\s*(?:自动化)?测试(?:文件|用例)?/i.test(text);
   const flags = {
     analysisOnly: includesAny(text, KEYWORDS.analysisOnly),
-    automatedTest: includesAny(text, KEYWORDS.automatedTest),
+    automatedTest: includesAny(text, KEYWORDS.automatedTest) && !rejectsAutomatedTest,
     plan: includesAny(text, KEYWORDS.plan),
     noCode: includesAny(text, KEYWORDS.noCode),
     code: includesAny(text, KEYWORDS.code),
     bug: includesAny(text, KEYWORDS.bug),
-    inspect: includesAny(text, KEYWORDS.inspect),
-    figma: includesAny(text, KEYWORDS.figma),
+    inspect: liveInspect,
+    figma: figmaReference,
     analyze: includesAny(text, KEYWORDS.analyze),
     document: includesAny(text, KEYWORDS.document),
   };
 
   if (flags.automatedTest) return { action: "test", target: "test", desired_output: "automated_test", flags };
   if (flags.plan && (flags.noCode || !flags.code)) return { action: "plan", target: "frontend", desired_output: "implementation_plan", flags };
+  if (flags.inspect) return { action: "inspect", target: "page", desired_output: "live_page_findings", flags };
   if (!flags.analysisOnly && (flags.code || flags.bug)) return { action: "modify", target: "code", desired_output: "code_changes", flags };
   if (flags.figma && flags.analyze && (flags.document || !flags.inspect)) {
     return { action: "analyze", target: "figma", desired_output: "figma_analysis_document", flags };
   }
-  if (flags.inspect || flags.analysisOnly) return { action: "inspect", target: "page_or_problem", desired_output: "live_page_findings", flags };
+  if (flags.analysisOnly) return { action: "analyze", target: "code", desired_output: "code_changes", flags };
   if (flags.figma) return { action: "analyze", target: "figma", desired_output: "figma_analysis_document", flags };
   return { action: "clarify", target: "unknown", desired_output: "unknown", flags };
 }
 
+function executionModeFor(intent, flags) {
+  if (intent.desired_output === "live_page_findings") {
+    return flags.analysisOnly || !flags.code ? "inspect_only" : "inspect_fix_verify";
+  }
+  if (intent.desired_output === "code_changes") return flags.analysisOnly ? "analysis_only" : "modify";
+  if (["implementation_plan", "figma_analysis_document"].includes(intent.desired_output)) return "plan_only";
+  if (intent.desired_output === "automated_test") return "modify";
+  return "plan_only";
+}
+
 function targetPageFor(query) {
-  const match = query.match(/([\p{Script=Han}A-Za-z0-9_-]{2,40})\s*(?:页面|页)(?=$|[\s，。；;])/u)
-    || query.match(/([A-Za-z0-9_-]{2,40})\s*tab\b/i);
+  const match = query.match(/([\p{Script=Han}A-Za-z0-9_-]{2,40})\s*(?:页面|页)/u)
+    || query.match(/([A-Za-z0-9_-]{2,40})\s*tab\d*\b/i);
   const value = match?.[1]?.replace(/^(?:(?:请|帮我|修复|修改|开发|实现|检查|打开|看看|分析|根据|这个|目标|当前|已有))+/, "") || null;
   return ["打开", "看看", "检查", "这个", "目标", "当前", "已有"].includes(value) ? null : value;
+}
+
+function taskTypeFor(query, evidence) {
+  const text = query.toLowerCase();
+  const hasTargetFile = evidence.some((item) => item.type === "target_file");
+  if (hasTargetFile && /(?:文案|文字|copy|标题|提示语)/i.test(query)) return "copy_change";
+  if (/(?:动态组件|dynamic component)/i.test(query) && /(?:未注册|没有注册|找不到|unknown|not registered|failed to resolve)/i.test(query)) {
+    return "dynamic_component_registration";
+  }
+  if (/(?:奖励|reward)/i.test(query) && /(?:icon\/mask|蒙层|mask)/i.test(query) && /(?:领取|claimed|claim)/i.test(query)) {
+    return "reward_claim_visual";
+  }
+  if (/(?:奖励|reward)/i.test(query) && /(?:名称|name)/i.test(query) && /(?:角标|badge|tag)/i.test(query)
+    && /(?:缺失|没有|没显示|不显示|missing)/i.test(query)) return "reward_metadata_missing";
+  if (/(?:弹窗|dialog|modal|popup)/i.test(query) && /(?:一进入|首次进入|进入页面|自动打开|自动开启|就开启|就打开)/i.test(query)) {
+    return "dialog_auto_open";
+  }
+  if (/(?:弹窗|dialog|modal|popup)/i.test(text)) return "dialog_change";
+  return "generic";
+}
+
+function taskGoalFor(query, taskType) {
+  if (taskType === "dialog_auto_open") return "新增一个弹窗组件模板，并在首次进入页面时自动打开。";
+  if (taskType === "reward_metadata_missing") return "修复奖励名称和角标缺失的问题。";
+  if (taskType === "dynamic_component_registration") return "修复动态组件未注册的问题。";
+  if (taskType === "reward_claim_visual") return "在奖励领取后增加 icon/mask 蒙层。";
+  if (taskType === "copy_change") {
+    const cleaned = query.replace(/^(?:请|麻烦)?(?:帮我)?\s*/u, "").replace(/[。！!]+$/g, "").trim();
+    return `${cleaned}。`;
+  }
+  const cleaned = query.replace(/^(?:请|麻烦)?(?:帮我)?\s*/u, "").replace(/[。！!]+$/g, "").trim();
+  return `${cleaned || query.trim()}。`;
+}
+
+function requiredKnowledgeFor(taskType, evidence) {
+  const known = {
+    dialog_auto_open: ["弹窗模板结构", "弹窗打开与关闭方式", "页面首次进入生命周期", "页面弹窗挂载方式"],
+    dialog_change: ["弹窗模板结构", "弹窗打开与关闭方式", "目标页面弹窗挂载方式"],
+    reward_metadata_missing: ["奖励名称和角标的接口字段", "抽奖结果到弹窗数据的适配", "奖励弹窗的字段渲染"],
+    dynamic_component_registration: ["动态组件名称生成", "动态组件注册规则", "实际组件名称"],
+    reward_claim_visual: ["奖励领取状态判断", "icon/mask 资源引用", "奖励节点渲染"],
+    copy_change: ["目标文案位置"],
+    generic: null,
+  }[taskType];
+  if (known) return known;
+  const result = [];
+  for (const item of evidence) {
+    if (item.type === "api_name") result.push(`${item.value} 接口响应`);
+    if (item.type === "state") result.push(`${item.value} 状态判断`);
+    if (item.type === "component") result.push(`${item.value} 渲染逻辑`);
+    if (item.type === "target_file") result.push(`${path.basename(item.value)} 中的目标行为`);
+  }
+  return unique(result).slice(0, 4);
 }
 
 export function classifyRequest(query, evidenceTypes = []) {
@@ -111,12 +191,18 @@ export function classifyRequest(query, evidenceTypes = []) {
   const evidence = inferEvidence(original, suppliedEvidence(evidenceTypes));
   const page = targetPageFor(original);
   if (page) evidence.push({ type: "target_page", value: page, source: "user_request" });
+  const normalizedEvidence = unique(evidence, (item) => `${item.type}:${item.value}`);
+  const taskType = taskTypeFor(original, normalizedEvidence);
 
   return {
     originalRequest: original,
     intent: { action: intent.action, target: intent.target, desired_output: intent.desired_output },
-    evidence: unique(evidence, (item) => `${item.type}:${item.value}`),
+    evidence: normalizedEvidence,
     flags: intent.flags,
+    executionMode: executionModeFor(intent, intent.flags),
+    taskType,
+    taskGoal: taskGoalFor(original, taskType),
+    requiredKnowledge: requiredKnowledgeFor(taskType, normalizedEvidence),
   };
 }
 

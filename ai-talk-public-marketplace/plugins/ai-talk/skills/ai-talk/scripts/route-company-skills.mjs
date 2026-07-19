@@ -2,6 +2,7 @@
 
 import path from "node:path";
 import process from "node:process";
+import { readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 
 import { buildResult } from "./route-company-skills/build-execution-prompt.mjs";
@@ -27,12 +28,39 @@ function normalizeExecutionRequest(value) {
 export function executionGateFor(currentInput, previousContract) {
   const request = normalizeExecutionRequest(currentInput);
   const previousSkill = previousContract?.recommended_skill || null;
-  const authorized = Boolean(previousSkill && EXECUTION_REQUESTS.has(request));
-  const skill = authorized && request === "调用 gen-code 执行" ? "gen-code" : authorized ? previousSkill : null;
+  const requestedSkill = request.match(/^调用 ([a-z0-9-]+) 执行$/i)?.[1] || null;
+  const authorized = Boolean(previousSkill
+    && EXECUTION_REQUESTS.has(request)
+    && (!requestedSkill || requestedSkill === previousSkill));
+  const skill = authorized ? previousSkill : null;
   return { authorized, skill };
 }
 
+export function executionHandoffFor(currentInput, previousContract) {
+  const gate = executionGateFor(currentInput, previousContract);
+  const executionPrompt = gate.authorized
+    ? [
+      "执行授权：",
+      "已通过",
+      "",
+      "执行 Skill：",
+      gate.skill,
+      "",
+      "上一轮协议：",
+      previousContract.execution_prompt || "上一轮协议未包含 execution_prompt。",
+    ].join("\n")
+    : [
+      "执行授权：",
+      "未通过",
+      "",
+      "原因：",
+      "需要上一轮协议中的建议 Skill，且当前输入必须是独立的授权指令。",
+    ].join("\n");
+  return { ...gate, execution_prompt: executionPrompt };
+}
+
 export async function routeCompanySkills(args) {
+  if (args.previousContract) return executionHandoffFor(args.query, args.previousContract);
   const classification = classifyRequest(args.query, args.evidenceTypes || []);
   const discovery = await discoverSkills({
     root: args.root,
@@ -43,7 +71,7 @@ export async function routeCompanySkills(args) {
   });
   const ranking = rankSkills(discovery.skills, classification, args.limit || 3);
   const context = await collectContext(discovery.root, classification);
-  const searchSuggestions = buildSearchSuggestions(classification);
+  const searchSuggestions = await buildSearchSuggestions(discovery.root, classification, discovery.skills);
   const debug = args.debugJson ? {
     candidates: ranking.debug,
     skill_index: {
@@ -64,6 +92,10 @@ export async function main(argv = process.argv.slice(2)) {
     if (args.help) {
       process.stdout.write(`${HELP}\n`);
       return;
+    }
+    if (args.previousContractPath) {
+      const source = await readFile(path.resolve(args.previousContractPath), "utf8");
+      args.previousContract = JSON.parse(source);
     }
     const result = await routeCompanySkills(args);
     const output = args.format === "json" ? JSON.stringify(result, null, 2) : result.execution_prompt;

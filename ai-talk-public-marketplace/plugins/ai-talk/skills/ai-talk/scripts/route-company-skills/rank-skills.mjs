@@ -16,11 +16,12 @@ function selectionReason(skill, classification, expected) {
   const { desired_output: output } = classification.intent;
   if (!skill && expected) return `目标产物需要 ${expected}，但当前 Skill 索引中未找到它；未改用其他职责的 Skill。`;
   if (!skill) return "没有发现与目标产物足够匹配的 Skill；未改用其他职责的 Skill。";
-  if (output === "live_page_findings") return classification.flags.analysisOnly
-    ? "用户明确只检查或定位，不允许修改代码，因此选择只产出检查结论的 ui-self-check。"
-    : "最终产物是页面视觉、交互或运行状态检查结论，不是自动化测试文件。";
+  if (output === "live_page_findings") return "用户明确要求浏览器现场检查页面视觉、交互或运行状态，不是代码静态定位或自动化测试文件。";
   if (output === "automated_test") return "用户明确要求 Midscene、自动化测试、测试文件或运行测试。";
   if (output === "implementation_plan") return "最终产物是实施方案或计划，不进入代码修改。";
+  if (output === "code_changes" && classification.executionMode === "analysis_only") {
+    return "用户要求定位代码问题但明确不修改代码，因此由 gen-code 按只分析模式执行。";
+  }
   if (output === "code_changes") return classification.flags.figma
     ? "Figma 是实现上下文，最终产物仍是代码修改。"
     : "用户最终要求实现、开发、修改或修复代码。";
