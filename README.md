@@ -1,35 +1,34 @@
 # AI Talk
 
-AI Talk 是显式调用的研发执行协议生成器。它不只改写需求，而是按价值顺序输出：
+AI Talk 是一个显式调用的研发任务整理工具。它先把需求和项目上下文整理成可核对的执行协议，确认后再进入代码实施，适合需求不完整、上下文分散或需要交接的研发任务。
 
 ```text
-用户目标
-→ 有证据时的任务定位
-→ 显式目标内的项目上下文
-→ 最多 5 条建议检索
-→ 最多 2 条实现边界
-→ 可选的建议 Skill
+匹配的 Skill
+→ 用户原始目标
+→ 已确认上下文
+→ 执行要求与建议检索
+→ 限制与未确认项
 ```
 
-任务定位只判断任务属于新增、修改、排查还是验证，识别用户关注的实现对象，并说明检索重点，不给出代码方案。真实代码事实只进入项目上下文；建议检索输出可直接用于公司 Skill、Docs、组件知识库或仓库代码搜索的短语。
-
-解析轮只允许受限只读，不修改项目、不调用下游 Skill。建议 Skill 仅在高置信时出现，并且仍需用户在后续一轮明确授权执行。
+第一轮只分析，不修改项目，也不会自动调用建议 Skill。检查协议无误后，在下一条消息中输入 `开始执行`。
 
 ## 安装
 
 ```bash
-codex plugin marketplace add /absolute/path/to/ai-talk-marketplace
+codex plugin marketplace add /绝对路径/ai-talk-public-marketplace
 codex plugin add ai-talk@ai-talk-marketplace
 ```
 
-## 使用
+## 快速使用
 
 ```text
-$ai-talk 在 banner-spin.vue 中，积分阶段 PROGRESS_TASK_ID: 7，然后一样展示进度和奖励
-$ai-talk 为什么第三个奖励没显示
-$ai-talk state=0 页面却已领取
-$ai-talk 奖励领取后增加 icon/mask 蒙层
-$ai-talk 开发一个弹窗
+$ai-talk:ai-talk 修复 src/components/reward-card.vue 中第三个奖励没有显示的问题
 ```
 
-详见 [USAGE.md](USAGE.md)。
+确认输出后，另发一条消息：
+
+```text
+开始执行
+```
+
+完整的安装步骤、提问模板、示例和常见问题见 [USAGE.md](USAGE.md)。
