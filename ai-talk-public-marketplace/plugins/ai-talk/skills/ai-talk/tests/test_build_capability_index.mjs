@@ -9,21 +9,21 @@ import test from "node:test";
 const run = promisify(execFile);
 const script = path.resolve(import.meta.dirname, "../scripts/build-capability-index.mjs");
 
-test("compatibility command uses the context-enhancer default flow", async (t) => {
+test("compatibility command preserves text output and supports explicit JSON", async (t) => {
   const root = await mkdtemp(path.join(os.tmpdir(), "ai-talk-entry-"));
   const directory = path.join(root, ".agents", "skills", "fe-gen-code");
   t.after(() => rm(root, { recursive: true, force: true }));
   await mkdir(directory, { recursive: true });
   await writeFile(path.join(directory, "SKILL.md"), "---\nname: gen-code\ndescription: 生成页面代码和业务逻辑。\n---\n");
-  const output = (await run(process.execPath, [script, "--root", root, "--query", "把这个页面做出来并修改代码"], { encoding: "utf8" })).stdout;
-  assert.match(output, /^用户目标：\n把这个页面做出来并修改代码。\n\n实现边界：\n/);
-  assert.match(output, /建议 Skill：\ngen-code/);
-  assert.ok([...output.matchAll(/\p{Script=Han}/gu)].length <= 200, output);
-  assert.doesNotMatch(output, /执行 Skill|建议验证|待验证|验收标准/);
-  assert.doesNotMatch(output, /用户原意：|AI 推导|研发概念：|建议优先检索：|任务协议已生成/);
-  assert.ok(!output.includes("AI 已决定"));
-  assert.ok(!output.includes("AI 将执行"));
-  assert.ok(!output.includes("原因："));
-  assert.ok(!output.includes("task_action"));
-  assert.ok(!output.includes("/Users/"));
+  const args = [script, "--root", root, "--query", "把这个页面做出来并修改代码"];
+  const output = (await run(process.execPath, args, { encoding: "utf8" })).stdout;
+  assert.match(output, /^使用 Skill：gen-code/);
+  assert.match(output, /用户原始目标：\n把这个页面做出来并修改代码/);
+
+  const jsonOutput = (await run(process.execPath, [...args, "--format", "json"], { encoding: "utf8" })).stdout;
+  const result = JSON.parse(jsonOutput);
+  assert.equal(result.original_request, "把这个页面做出来并修改代码");
+  assert.equal(result.recommended_skill, "gen-code");
+  assert.match(result.execution_prompt, /^使用 Skill：gen-code/);
+  assert.ok(!Object.hasOwn(result, "_debug"));
 });

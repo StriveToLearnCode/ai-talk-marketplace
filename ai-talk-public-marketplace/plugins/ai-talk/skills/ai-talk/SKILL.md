@@ -1,6 +1,6 @@
 ---
 name: ai-talk
-description: 在用户显式调用 $ai-talk 时，将自然语言、截图、文件和代码上下文整理为简短中文研发协议：提炼用户目标，定位任务类型与检索重点，分离真实项目上下文和实现结论，并给出高命中检索目标、实现边界与可选 Skill。解析轮不得修改项目或调用下游 Skill；只有用户后续明确授权才允许执行。
+description: 在用户显式调用 $ai-talk 时，将自然语言、截图、文件和代码上下文整理为可交接的研发执行提示：保留用户原话，判断目标产物，分离真实上下文、执行要求和限制，并推荐职责匹配且已安装的 Skill。解析轮不得修改项目或调用下游 Skill；只有用户后续明确授权才允许执行。
 ---
 
 # AI Talk 研发执行协议生成器
@@ -9,11 +9,11 @@ description: 在用户显式调用 $ai-talk 时，将自然语言、截图、文
 
 ## 工作流
 
-1. 移除 `$ai-talk` 调用标记，将真正要完成的结果提炼为一句用户目标，不丢失限定条件和技术标识。
+1. 移除 `$ai-talk` 调用标记，原样保留真正要完成的目标，不丢失限定条件和技术标识。
 2. 仅判断任务属于新增、修改、排查还是验证，识别用户关注的实现对象，并说明应优先检索哪些知识。
-3. 将真实代码事实放入项目上下文，将用户明确要求或可靠项目边界放入最多 2 条实现边界。
+3. 将真实代码事实放入已确认上下文，将用户明确要求或可靠项目边界放入限制。
 4. 在显式目标范围内执行受限只读，补齐目标文件、项目规则、一层本地依赖、资源、接口和附件上下文。
-5. 运行 `scripts/route-company-skills.mjs`，生成 schema v6 兼容协议；只在高置信时输出建议 Skill。
+5. 运行 `scripts/route-company-skills.mjs`，生成可直接交接的文本执行提示；只在目标产物与已安装 Skill 明确匹配时输出建议 Skill。
 6. 输出协议后立即停止。不要修改文件、调用下游 Skill、自动 handoff 或开始实施。
 
 ```bash
@@ -31,116 +31,74 @@ node scripts/route-company-skills.mjs \
 - `screenshot=<附件摘要>`：真实截图。
 - `selected_code=<选中内容摘要>`：编辑器明确提供的选中代码。
 
-只有调试和测试可以增加 `--debug-json`。旧 `--profile-json` 协议保持禁用。
+默认输出文本。机器调用使用 `--format json`；只有调试和测试可以增加 `--debug-json`，该参数会输出 JSON 并附加 `_debug`。旧 `--profile-json` 协议保持禁用。
 
 ## 输出协议
 
-### 用户目标
-
-- 用一句话保留用户真正想完成的结果，中文最多 50 个中文字符。
-- 保留用户明确的文件、符号、资源、API、函数和实现约束，不补充未提出的业务结果。
-
-### 任务定位
-
-任务定位只回答：属于新增、修改、排查还是验证；用户关注的实现对象是什么；为什么应优先检索哪些知识。保持 1～2 句且不超过 100 个中文字符。
-
-- 只能使用当前用户描述、附件和真实项目上下文中的证据，不能只根据 `feature_create | feature_modify | bug_fix` 等任务类型套固定模板。
-- 可以判断是已有节点视觉修改、单节点展示异常、状态表现冲突或新增 UI，但不能断言未经验证的字段含义、数组下标、组件或根因。
-- 不得输出具体代码方案、推荐 API 或函数、确定的数据字段、未经验证的参数处理方式，或“应该改成……”一类实现结论。
-- 代码中存在 `new URL()` 只能作为项目上下文；只有用户明确要求使用时，才能作为实现边界。
-- 不确定时使用“更可能……，需要从现有代码确认”，不得使用“一定、就是、必然、已经确认”。
-- 没有足够证据产生有价值的工程判断时，整个“任务定位”模块省略，不用通用规则填充。
-
-### 建议检索
-
-- 输出最多 5 条可直接用于公司 Skill、Docs、组件知识库或仓库代码搜索的短语。
-- 检索目标描述“要查什么”，不得描述“最终怎么实现”。
-- 禁止使用“公司 Docs”“当前项目已有实现”“相关 Skill”等没有搜索辨识度的泛词。
-
-### 实现边界
-
-内部 `default_rules` 每项保留 `value`、`source` 和可选 `evidence`，最多 5 条：
-
-- `universal`：不引入用户未确认的业务逻辑、限制无关修改等稳定规则。
-- `intent`：按 `feature_create | feature_modify | bug_fix | ui_inspection | planning | automated_test` 补充任务型规则。
-- `project`：只引用真实 `AGENTS.md` 或显式目标的一层直接依赖，不虚构项目规范。
-
-默认规则不能扩大业务需求。用户明确要求重写、不复用、全局重构或只读分析时删除冲突规则。用户输出不显示规则来源标签，只选取最多 2 条用户明确要求或可靠项目边界，不得混入任务定位。
+- `original_request` 和文本中的“用户原始目标”必须保留用户原话，只移除显式 `$ai-talk` 调用标记。
+- `intent` 只判断动作、关注对象和目标产物，不输出未经验证的根因或代码方案。
+- `evidence`、已确认上下文、执行要求、限制和未确认项必须区分事实、边界与下一步。
+- 建议检索最多 5 条，边界最多 5 条；只读请求必须明确写出不修改代码。
 
 ### 项目上下文
 
 只读取以下范围：
 
 - 用户或编辑器明确指出的目标文件、目标目录和资料。
-- 从项目根到目标路径逐级生效的 `AGENTS.md`。
+- 目标文件最近的 `AGENTS.md`。
 - 显式目标文件的一层相对本地导入。
 - 真实附件、选中代码、资源标识和接口标识。
 
-对所有路径执行 `realpath` 校验，确保位于 `--root` 内。禁止读取 `node_modules` 和仓库外符号链接；不读取无关兄弟模块或递归目录。最多读取 8 个文件，单文件最多 128 KiB。不存在、不可读、越界或超限时停止扩展，把原因写入 Handoff 待确认。
+对所有路径执行 `realpath` 校验，确保位于 `--root` 内。禁止读取 `node_modules` 和仓库外符号链接；不读取无关兄弟模块或递归目录。直接依赖总计最多 2 个，单文件最多 128 KiB。不存在、不可读、越界或超限时停止扩展，把原因写入未确认项。
 
-上下文项使用 `type | value | source`，类型包括 `target_file | target_directory | project_rule | direct_dependency | visual_design | interaction_flow | api_document | screenshot | selected_code | asset_resource | api`。文件名、变量名、接口名、资源路径和 Skill 名称不得翻译或改写。
+上下文项使用 `type | value | source`。文件名、变量名、接口名、资源路径和 Skill 名称不得翻译或改写。
 
 ### 建议 Skill
 
-内部继续生成 Handoff，并保留执行重点、待确认项和中文检索语义。用户输出只在满足高置信规则时显示建议 Skill；没有高置信结果时省略整个“建议 Skill”模块，不强制选择最接近的 Skill。
+建议 Skill 不构成执行授权。普通文本不要输出评分、候选 Skill、索引统计或其他调试信息。
 
-建议 Skill 不构成执行授权。不要输出评分、候选 Skill、内部 Query、selection explanation 或自动执行提示。
+## JSON 输出
 
-## schema v6
-
-调试结果新增并保留以下字段：
+`--format json` 输出当前最小结果对象：
 
 ```yaml
-schema_version: 6
-original_goal: 用户原始输入
-execution_goal: 规范化执行目标
-default_rules:
-  - value: 规则内容
-    source: universal | intent | project
-    evidence: 可选项目证据
-project_context:
-  - type: 上下文类型
-    value: 已确认值
-    source: 用户、附件或项目来源
-skill_handoff:
-  execution_focus: 执行重点
-  unresolved: 真正影响执行的待确认项
-  retrieval_semantics: 中文检索语义
-  recommended_skill: 高置信 Skill 或 null
+original_request: 用户原始输入
+intent: { action, target, desired_output }
+evidence: 带 type、value、source 的证据
+recommended_skill: 已匹配 Skill，未找到时为空字符串
+alternative_skills: 最多 2 个同类候选
+selection_reason: 选择或缺失原因
+boundaries: 执行边界
+unknowns: 待确认项和缺失 Skill 的下一步
+execution_prompt: 可直接交给后续 Codex 的完整文本
 ```
 
-继续保留 `confirmed_context`、`intent`、`entities`、`retrieval_query_groups`、`retrieval_queries`、`retrieval_directions`、`boundaries`、`unknowns`、`recommended_skill` 和 `routing`，兼容现有路由与评估调用方。
+`--debug-json` 保留以上字段，并增加 `_debug`。候选评分、索引详情和读取明细只出现在 `_debug`，不进入普通文本或 `--format json` 输出。
 
 ## 默认中文输出
 
-按以下顺序输出，空栏目省略：
+默认 CLI 输出就是 `execution_prompt`，按以下顺序输出：
 
 ```text
-用户目标：
-<一句话保留真正要完成的结果>
+使用 Skill：<已匹配 Skill，或明确的缺失说明>
 
-任务定位：
-<1～2 句、100 个中文字符以内的任务类型、实现对象和检索重点>
+用户原始目标：
+<不改写用户输入>
 
-项目上下文：
-- 目标文件：<相对路径>
-- 项目规则：<规则文件>
-- 直接依赖：<一层本地依赖>
-- 资源：<原始资源标识>
-- 接口资料：<真实接口事实>
-- 截图：已提供（<来源>）
+已确认上下文：
+- <真实证据、目标文件、项目规则和一层直接依赖>
 
-建议检索：
-- <最多 5 条高命中检索目标>
+执行要求：
+- <目标 Skill 的执行要求和建议检索>
 
-实现边界：
-- <最多 2 条用户明确要求或可靠项目边界>
+限制：
+- <只读或修改范围边界>
 
-建议 Skill：
-<仅高置信时出现>
+未确认项：
+- <真正影响执行的待确认项或缺失 Skill 的下一步>
 ```
 
-英文输入继续使用英文 Execution Protocol，保持现有兼容格式。
+普通输出不得包含候选评分、索引统计或调试字段。整个文本可直接交给后续 Codex，但仍不构成本轮执行授权。
 
 ## 事实边界
 
@@ -155,13 +113,13 @@ skill_handoff:
 
 只索引运行时 `.agents/skills/**/SKILL.md`、显式批准的公司 Skill 根和插件自带 `ui-self-check`。只读取 frontmatter、description 和明确的适用场景短段；不索引 `plugins/ai-talk/docs/skills/`，不读取 references、脚本、知识库或普通正文。
 
-高置信要求：recommendation 分数至少 70，领先下一候选至少 15 分，目标产物不为 unknown，名称与运行时索引一致，并有明确的目标产物或执行方式信号。单个“页面”“显示”“测试”等弱词和任意 `score > 0` 都不足以输出 Skill。
+建议 Skill 必须存在于运行时索引中，并与明确的目标产物一致。目标 Skill 不存在时，`recommended_skill` 保持空字符串，文本和 JSON 都要说明缺失原因与安装、启用或 `--source-root` 的下一步；禁止改选其他职责的 Skill。
 
 ## 执行授权门禁
 
 - 解析轮只允许上述受限只读；禁止修改文件；禁止调用任何下游工具或 Skill；禁止自动 handoff。
 - 只有上一轮已生成协议，且用户在后续独立一轮明确输入 `开始执行`、`直接修改`、`使用这个协议继续` 或 `调用 gen-code 执行`，才允许进入执行。
-- 引用、转述或列举授权表达不算授权。门禁通过后才可调用 `skill_handoff.recommended_skill` 或兼容字段 `recommended_skill`。
+- 引用、转述或列举授权表达不算授权。门禁通过后才可调用上一轮结果中的 `recommended_skill`。
 
 ## 必测场景
 
@@ -173,6 +131,5 @@ skill_handoff:
 - 显式目标存在时，读取目标、沿路径 `AGENTS.md` 和一层相对依赖；不读取无关兄弟文件。
 - 仓库外符号链接、`node_modules`、超大文件和缺失文件进入待确认，不泄漏文件内容。
 - “不要复用现有实现，可以全局重构”抑制冲突默认规则，不增加相反边界。
-- 没有足够任务证据时省略任务定位，不得用通用边界补位。
-- 没有高置信 Skill 时省略建议 Skill 模块，内部 Handoff 保持兼容。
+- 目标 Skill 不存在时明确说明原因和下一步，不得改选其他职责的 Skill。
 - `state=0 页面却显示已领取`保留接口事实和页面表现，不猜状态业务含义。
