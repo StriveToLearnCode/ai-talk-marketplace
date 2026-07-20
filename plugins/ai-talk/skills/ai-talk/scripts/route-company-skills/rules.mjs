@@ -1,5 +1,10 @@
 export const MAX_FILE_BYTES = 128 * 1024;
-export const MAX_DIRECT_DEPENDENCIES = 2;
+export const MAX_CONTEXT_FILES_READ = 5;
+export const MAX_INDEXED_FILES = 240;
+export const MAX_SIMILAR_IMPLEMENTATIONS = 1;
+export const MAX_RETRIEVAL_ENTRIES = 3;
+export const EARLY_STOP_RETRIEVAL_ENTRIES = 3;
+export const MAX_SKILL_METADATA_BYTES = 16 * 1024;
 
 export const SKILL_ROUTES = {
   "ui-self-check": {

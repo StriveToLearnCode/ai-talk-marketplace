@@ -1,0 +1,98 @@
+# AI Talk V1 冻结规范
+
+状态：Frozen  
+版本：V1 / TaskHandoff 1.1  
+生效日期：2026-07-20
+
+本文档是 AI Talk V1 唯一的产品与实现标准。README、USAGE、Skill 文档、代码与测试如有冲突，以本文档为准。
+
+## 1. 产品边界
+
+AI Talk 仅负责把用户的自然语言、附件和受限项目上下文整理为下一步 AI 可直接消费的 TaskHandoff，并推荐职责匹配且已安装的 Skill。
+
+解析轮必须保持只读，`route.authorization` 固定为 `inspect_only`。解析轮不得修改项目、调用或自动执行下游 Skill、自动 handoff，或开始实现。只有用户在后续独立一轮给出受支持的明确授权表达，才允许把既有 TaskHandoff 的授权更新为 `authorized`；授权只改变授权状态并移除授权 blocker。
+
+V1 不包含 `planned_changes`、写范围强制、来源优先级引擎、resolved lifecycle、自动 Skill 调用，以及任何新的顶层研发事实源。
+
+## 2. 固定输出
+
+默认文本输出只能按以下顺序包含五个模块，不得增加、改名或重排：
+
+1. `🎯 任务目标`
+2. `🧠 AI 判断`
+3. `🔍 优先检索`
+4. `⚠️ 待确认`，仅有硬阻塞时出现，最多 2 条
+5. `▶ 下一步`
+
+任务目标是一句最终交付结果。AI 判断使用 1～2 句说明任务类型、应复用的已有能力和确需新增或调整的内容。优先检索使用“知识对象 → 真实入口（检索原因）”，最多 3 项；没有证据的入口不得展示。普通输出不得展示内部评分、候选、索引、扫描信息、约束、验收、授权、非阻塞 unknown 或调试字段。
+
+`--format json` 保留现有 V1 兼容输出结构；`--debug-json` 才能增加 `_debug`。`execution_prompt` 必须且只能由 TaskHandoff 单向渲染，不得反向解析文本形成执行事实。
+
+## 3. TaskHandoff 1.1
+
+内部唯一事实源固定为以下结构，字段顺序与顶层字段集合均为协议的一部分：
+
+```yaml
+schema_version: "1.1"
+route: { skill, authorization }
+workspace: { project_root, workdir }
+workflow: { stage: { value, source, status } }
+task: { source_request, deliverable, reasoning }
+knowledge_requirements: []
+retrieval: []
+target_scope: []
+source_facts: []
+constraints: []
+blockers: []
+verification: []
+```
+
+约束：
+
+- `route.authorization` 只能是 `inspect_only` 或 `authorized`。
+- `knowledge_requirements` 最多 4 项，`retrieval` 最多 3 项。
+- `source_facts` 只保存 `fact` 或带置信度的 `inference`；`unknown` 必须进入 `blockers`。
+- 新 blocker 固定包含 `kind`、`description`、`status: unknown`、`resolution` 和 `blocking`；必须继续读取旧字符串 blocker。
+- `verification` 只保存行为级 assertion，不伪造 lint、test 或 e2e 命令。
+- 旧顶层兼容字段只能从 TaskHandoff 投影，不得形成平行事实源。
+- `development_context`、`ui_requirements`、`interaction_requirements`、`data_requirements`、`reusable_resources`、`acceptance_assertions` 不得成为顶层字段。
+
+## 4. 三阶段边界
+
+处理链固定为单向三阶段：
+
+1. 理解：只消费用户输入与 typed evidence，产出任务意图、目标、事实、知识对象和边界所需信号。
+2. 检索：只消费理解阶段生成的 RetrievalRequest 和允许的 Skill `name/description` 索引，产出有来源证据的上下文与入口。
+3. Formatter：只消费已校验的 TaskHandoff，输出固定文本；不得读取原始输入、项目文件、Skill 或旧兼容字段。
+
+任何阶段不得通过解析 Formatter 文本向前一阶段回填事实。
+
+## 5. 上下文预算与早停
+
+- 单个文件正文上限：128 KiB；超限不得读取。
+- 项目上下文正文默认上限：5 个文件；多图 UI 任务不得超过 5 个。
+- 多图 UI 默认只读取用户原话与附件、一个用户明确目标文件、该文件就近一份 `AGENTS.md`、最多一个目标文件真实引用的同类实现，以及最多一个真实资源或 Page Center 来源。
+- 没有显式目标文件的多图 UI 任务不得触发全仓兜底搜索；其他任务的同类实现正文最多读取 1 个。
+- 候选文件只做元数据初筛，最多 240 项；跳过 `.git`、`.agents`、`.codex`、`node_modules`、`dist`、`build`、`coverage`、Docs、隐藏目录和符号链接。
+- 项目外路径、仓库外符号链接、`node_modules`、缺失或不可读目标必须拒绝；缺失显式目标不得触发全仓兜底搜索。
+- Skill 发现只读取配置范围内 `SKILL.md` 的 frontmatter `name/description`，不读取正文用于路由。
+- 公开检索入口最多 3 项；当目标图、目标文件、2～3 个可靠入口、当前阶段与高置信 Skill 已确认时立即停止扩展。
+- 推荐入口必须有用户明确指定、目标真实引用、内容结构匹配、同类实现真实使用、明确组件文档或 Skill 索引中的至少一种证据。文件名只能用于限量初筛。
+
+## 6. 证据与截图
+
+typed evidence 必须包含 `kind` 和 `source`。事实与推断必须包含合法 `status`；推断必须包含 `confidence: high | medium | low`；blocker kind 必须使用 `status: unknown`。
+
+附件使用稳定的 `attachment_N`，并保留 `target | reference | comparison` 角色。截图只证明直接可见表现，不得据此猜接口字段、业务枚举、资源 key、页面路径或组件名。用户明确的交互和进度语义可作为 fact；未定位的数据、页面、组件和资源 key 进入非阻塞的 search-resolvable blocker。Page Center 资源只在有事实时保留 provider、附件来源和复用关系。
+
+## 7. Skill 路由与授权
+
+Skill 推荐只基于已安装索引中的职责匹配。目标 Skill 不存在时保持空值，并生成安装、启用或 `--source-root` 的硬阻塞；不得改选其他职责 Skill。推荐不构成授权。
+
+授权门禁优先读取 `execution_plan.route.skill`，仅旧协议回退到 `recommended_skill`。引用、转述、列举授权语句，或请求与计划不一致的 Skill，均不得通过。
+
+## 8. V1 黄金用例
+
+V1 固定 8 个黄金用例，覆盖：新增弹窗首次进入打开、奖励元数据缺失、动态组件未注册、奖励领取态蒙层、状态图片异常、明确文件文案修改、浏览器只读检查、只输出实施方案。
+
+黄金回归必须走真实路由链，逐项校验 TaskHandoff 顶层结构、最终 Formatter 文本、建议 Skill，并记录总处理时间、读取文件数、Skill 正文读取数、搜索扩展次数和早停原因。简单任务不超过 15 秒，标准任务不超过 45 秒，多图任务不超过 60 秒；多图任务默认读取文件不超过 5 个，Skill 正文默认读取 0 个。解析轮不得执行下游 Skill。

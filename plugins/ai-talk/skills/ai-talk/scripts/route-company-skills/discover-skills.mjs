@@ -1,7 +1,7 @@
 import { open, readdir, realpath, stat } from "node:fs/promises";
 import path from "node:path";
 
-import { MAX_FILE_BYTES } from "./rules.mjs";
+import { MAX_SKILL_METADATA_BYTES } from "./rules.mjs";
 
 const PRIORITY = { project: 3, plugin: 2, company: 1 };
 
@@ -21,9 +21,11 @@ async function readableDirectory(candidate) {
 async function readBounded(file) {
   const handle = await open(file, "r");
   try {
-    const buffer = Buffer.alloc(MAX_FILE_BYTES + 1);
+    const buffer = Buffer.alloc(MAX_SKILL_METADATA_BYTES + 1);
     const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
-    return bytesRead > MAX_FILE_BYTES ? null : buffer.subarray(0, bytesRead).toString("utf8");
+    const prefix = buffer.subarray(0, bytesRead).toString("utf8");
+    const frontmatter = prefix.match(/^\uFEFF?---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/)?.[0];
+    return frontmatter || null;
   } finally {
     await handle.close();
   }
@@ -37,12 +39,13 @@ async function walk(root, relative = "", depth = 0) {
   } catch {
     return [];
   }
+  const skillFile = entries.find((entry) => entry.isFile() && entry.name.toLowerCase() === "skill.md");
+  if (skillFile) return [path.join(relative, skillFile.name)];
   const files = [];
   for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
     if (entry.isSymbolicLink() || entry.name === "node_modules") continue;
     const child = path.join(relative, entry.name);
     if (entry.isDirectory()) files.push(...await walk(root, child, depth + 1));
-    if (entry.isFile() && entry.name.toLowerCase() === "skill.md") files.push(child);
   }
   return files;
 }
@@ -79,19 +82,36 @@ export function parseSkill(content) {
   return metadata;
 }
 
-async function discoverRoot(source, excludedRoots) {
+async function discoverRoot(source, excludedRoots, preferredSkill = null) {
   const root = path.resolve(source.root);
-  if (!(await readableDirectory(root)) || excludedRoots.some((item) => within(root, item))) return [];
+  if (!(await readableDirectory(root)) || excludedRoots.some((item) => within(root, item))) {
+    return { skills: [], indexFilesRead: 0 };
+  }
   const skills = [];
-  for (const relative of await walk(root)) {
+  let indexFilesRead = 0;
+  const files = await walk(root);
+  if (preferredSkill) {
+    files.sort((a, b) => {
+      const score = (value) => path.dirname(value).toLowerCase().includes(preferredSkill) ? 1 : 0;
+      return score(b) - score(a) || a.localeCompare(b);
+    });
+  }
+  for (const relative of files) {
     const file = path.join(root, relative);
     if (excludedRoots.some((item) => within(file, item))) continue;
+    indexFilesRead += 1;
     const content = await readBounded(file);
     const metadata = content && parseSkill(content);
     if (!metadata || metadata.name.toLowerCase() === "ai-talk") continue;
     skills.push({ ...metadata, path: file, source: source.label, scope: source.scope });
+    if (preferredSkill && metadata.name.toLowerCase() === preferredSkill) break;
   }
-  return skills;
+  return {
+    skills: preferredSkill
+      ? skills.filter((skill) => skill.name.toLowerCase() === preferredSkill)
+      : skills,
+    indexFilesRead,
+  };
 }
 
 function sourceRoot(raw) {
@@ -103,7 +123,14 @@ function sourceRoot(raw) {
   };
 }
 
-export async function discoverSkills({ root, pluginSkillsRoot, comparisonRoot, sourceRoots = [], excludeRoots = [] }) {
+export async function discoverSkills({
+  root,
+  pluginSkillsRoot,
+  comparisonRoot,
+  sourceRoots = [],
+  excludeRoots = [],
+  preferredSkill = null,
+}) {
   const projectRoot = await realpath(path.resolve(root));
   const explicitExclusions = [comparisonRoot, ...excludeRoots].filter(Boolean).map((item) => path.resolve(item));
   const roots = [
@@ -111,8 +138,23 @@ export async function discoverSkills({ root, pluginSkillsRoot, comparisonRoot, s
     { label: "ai-talk-plugin", root: pluginSkillsRoot, scope: "plugin" },
     ...sourceRoots.map(sourceRoot),
   ];
-  const discovered = [];
-  for (const source of roots) discovered.push(...await discoverRoot(source, explicitExclusions));
+  let discovered = [];
+  let indexFilesRead = 0;
+  if (preferredSkill) {
+    for (const source of roots) {
+      const result = await discoverRoot(source, explicitExclusions, preferredSkill);
+      indexFilesRead += result.indexFilesRead;
+      if (!result.skills.length) continue;
+      discovered = result.skills;
+      break;
+    }
+  } else {
+    const results = await Promise.all(
+      roots.map((source) => discoverRoot(source, explicitExclusions)),
+    );
+    discovered = results.flatMap((result) => result.skills);
+    indexFilesRead = results.reduce((total, result) => total + result.indexFilesRead, 0);
+  }
 
   const grouped = new Map();
   for (const skill of discovered) {
@@ -124,5 +166,13 @@ export async function discoverSkills({ root, pluginSkillsRoot, comparisonRoot, s
     .map(([name, items]) => ({ name, paths: items.map((item) => item.path).sort(), scopes: items.map((item) => item.scope) }));
   const skills = [...grouped.values()].map((items) => [...items].sort((a, b) => PRIORITY[b.scope] - PRIORITY[a.scope] || a.path.localeCompare(b.path))[0]);
 
-  return { root: projectRoot, roots, skills, conflicts, discovered };
+  return {
+    root: projectRoot,
+    roots,
+    skills,
+    conflicts,
+    discovered,
+    index_files_read: indexFilesRead,
+    body_files_read: 0,
+  };
 }

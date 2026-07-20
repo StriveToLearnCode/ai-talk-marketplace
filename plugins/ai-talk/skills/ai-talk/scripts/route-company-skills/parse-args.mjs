@@ -7,6 +7,7 @@ export function parseArgs(argv) {
     sourceRoots: [],
     excludeRoots: [],
     evidenceTypes: [],
+    evidenceEntries: [],
     previousContractPath: null,
     limit: 3,
     debugJson: false,
@@ -23,7 +24,7 @@ export function parseArgs(argv) {
       args.debugJson = true;
       continue;
     }
-    if (!["--root", "--query", "--source-root", "--exclude-root", "--evidence-type", "--previous-contract", "--limit", "--top-k", "--format"].includes(flag)) {
+    if (!["--root", "--query", "--source-root", "--exclude-root", "--evidence-type", "--evidence-json", "--previous-contract", "--limit", "--top-k", "--format"].includes(flag)) {
       throw new Error(`Unknown argument: ${flag}`);
     }
     const value = argv[++index];
@@ -33,6 +34,18 @@ export function parseArgs(argv) {
     if (flag === "--source-root") args.sourceRoots.push(value);
     if (flag === "--exclude-root") args.excludeRoots.push(value);
     if (flag === "--evidence-type") args.evidenceTypes.push(value);
+    if (flag === "--evidence-json") {
+      let entry;
+      try {
+        entry = JSON.parse(value);
+      } catch {
+        throw new Error("--evidence-json must be a valid JSON object.");
+      }
+      if (!entry || Array.isArray(entry) || typeof entry !== "object") {
+        throw new Error("--evidence-json must contain a JSON object.");
+      }
+      args.evidenceEntries.push(entry);
+    }
     if (flag === "--previous-contract") args.previousContractPath = value;
     if (flag === "--format") {
       if (!["text", "json"].includes(value)) throw new Error("--format must be text or json.");
@@ -51,4 +64,4 @@ export function parseArgs(argv) {
   return args;
 }
 
-export const HELP = "Usage: route-company-skills.mjs --root <project> --query '<user input>' [--source-root <label=path>] [--evidence-type <type>] [--previous-contract <json-file>] [--format text|json] [--debug-json]";
+export const HELP = "Usage: route-company-skills.mjs --root <project> --query '<user input>' [--source-root <label=path>] [--evidence-type <type>] [--evidence-json <json-object>] [--previous-contract <json-file>] [--format text|json] [--debug-json]";
