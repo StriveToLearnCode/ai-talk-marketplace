@@ -5,17 +5,50 @@ import process from "node:process";
 import { readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 
-import { buildResult } from "./route-company-skills/build-execution-prompt.mjs";
-import { classifyRequest } from "./route-company-skills/classify-request.mjs";
-import { buildSearchSuggestions, collectContext } from "./route-company-skills/collect-context.mjs";
+import {
+  buildExecutionPrompt,
+  buildResult,
+  normalizeTaskHandoff,
+} from "./route-company-skills/build-execution-prompt.mjs";
+import {
+  buildRetrievalRequest,
+  classifyRequest,
+} from "./route-company-skills/classify-request.mjs";
+import {
+  buildSearchSuggestions,
+  collectContext,
+} from "./route-company-skills/collect-context.mjs";
 import { discoverSkills } from "./route-company-skills/discover-skills.mjs";
 import { HELP, parseArgs } from "./route-company-skills/parse-args.mjs";
-import { rankSkills } from "./route-company-skills/rank-skills.mjs";
-import { EXECUTION_REQUESTS } from "./route-company-skills/rules.mjs";
+import { expectedSkillFor, rankSkills } from "./route-company-skills/rank-skills.mjs";
+import {
+  EXECUTION_REQUESTS,
+  MAX_CONTEXT_FILES_READ,
+  MAX_FILE_BYTES,
+  MAX_INDEXED_FILES,
+  MAX_RETRIEVAL_ENTRIES,
+  MAX_SIMILAR_IMPLEMENTATIONS,
+} from "./route-company-skills/rules.mjs";
 
 const PLUGIN_ROOT = path.resolve(import.meta.dirname, "..", "..", "..");
 const PLUGIN_SKILLS_ROOT = path.join(PLUGIN_ROOT, "skills");
 const COMPARISON_ROOT = path.join(PLUGIN_ROOT, "docs", "skills");
+const AUTHORIZATION_BLOCKER =
+  "需要上一轮协议中的建议 Skill，且当前输入必须是独立的授权指令。";
+
+function blockerDescription(blocker) {
+  return typeof blocker === "string" ? blocker : blocker?.description || blocker?.name || "";
+}
+
+function authorizationBlocker() {
+  return {
+    kind: "authorization",
+    description: AUTHORIZATION_BLOCKER,
+    status: "unknown",
+    resolution: "user_action_required",
+    blocking: true,
+  };
+}
 
 function normalizeExecutionRequest(value) {
   return String(value || "")
@@ -27,63 +60,157 @@ function normalizeExecutionRequest(value) {
 
 export function executionGateFor(currentInput, previousContract) {
   const request = normalizeExecutionRequest(currentInput);
-  const previousSkill = previousContract?.recommended_skill || null;
-  const requestedSkill = request.match(/^调用 ([a-z0-9-]+) 执行$/i)?.[1] || null;
-  const authorized = Boolean(previousSkill
-    && EXECUTION_REQUESTS.has(request)
-    && (!requestedSkill || requestedSkill === previousSkill));
+  const previousSkill = previousContract?.execution_plan
+    ? previousContract.execution_plan.route?.skill || null
+    : previousContract?.recommended_skill || null;
+  const requestedSkill =
+    request.match(/^调用 ([a-z0-9-]+) 执行$/i)?.[1] || null;
+  const authorized = Boolean(
+    previousSkill &&
+    EXECUTION_REQUESTS.has(request) &&
+    (!requestedSkill || requestedSkill === previousSkill),
+  );
   const skill = authorized ? previousSkill : null;
   return { authorized, skill };
 }
 
+function executionPlanFrom(previousContract) {
+  if (previousContract?.execution_plan)
+    return normalizeTaskHandoff(previousContract.execution_plan);
+  const stage = previousContract?.stage || null;
+  return normalizeTaskHandoff({
+    schema_version: "1.1",
+    route: {
+      skill: previousContract?.recommended_skill || null,
+      authorization: "inspect_only",
+    },
+    workspace: {
+      project_root: null,
+      workdir: null,
+    },
+    workflow: {
+      stage: {
+        value: stage,
+        source: stage ? "legacy_contract" : "unavailable",
+        status: stage ? "available" : "unavailable",
+      },
+    },
+    task: {
+      source_request: previousContract?.original_request || "",
+      deliverable: previousContract?.task_goal || null,
+      reasoning: previousContract?.engineering_judgment || null,
+    },
+    knowledge_requirements: [...(previousContract?.required_knowledge || [])],
+    retrieval: [...(previousContract?.retrieval_entries || [])],
+    target_scope: [],
+    source_facts: [...(previousContract?.evidence || [])],
+    constraints: [...(previousContract?.boundaries || [])],
+    blockers: [...(previousContract?.unknowns || [])],
+    verification: [],
+  });
+}
+
 export function executionHandoffFor(currentInput, previousContract) {
   const gate = executionGateFor(currentInput, previousContract);
-  const executionPrompt = gate.authorized
-    ? [
-      "执行授权：",
-      "已通过",
-      "",
-      "执行 Skill：",
-      gate.skill,
-      "",
-      "上一轮协议：",
-      previousContract.execution_prompt || "上一轮协议未包含 execution_prompt。",
-    ].join("\n")
-    : [
-      "执行授权：",
-      "未通过",
-      "",
-      "原因：",
-      "需要上一轮协议中的建议 Skill，且当前输入必须是独立的授权指令。",
-    ].join("\n");
-  return { ...gate, execution_prompt: executionPrompt };
+  const executionPlan = executionPlanFrom(previousContract);
+  executionPlan.route.authorization = gate.authorized
+    ? "authorized"
+    : "inspect_only";
+  if (gate.authorized) {
+    executionPlan.blockers = executionPlan.blockers.filter(
+      (blocker) => blockerDescription(blocker) !== AUTHORIZATION_BLOCKER,
+    );
+  } else if (!executionPlan.blockers.some((blocker) => blockerDescription(blocker) === AUTHORIZATION_BLOCKER)) {
+    executionPlan.blockers = [
+      ...executionPlan.blockers,
+      authorizationBlocker(),
+    ];
+  }
+  return {
+    ...gate,
+    execution_plan: executionPlan,
+    execution_prompt: buildExecutionPrompt(executionPlan),
+  };
 }
 
 export async function routeCompanySkills(args) {
-  if (args.previousContract) return executionHandoffFor(args.query, args.previousContract);
-  const classification = classifyRequest(args.query, args.evidenceTypes || []);
+  const startedAt = performance.now();
+  if (args.previousContract)
+    return executionHandoffFor(args.query, args.previousContract);
+  const understanding = classifyRequest(
+    args.query,
+    args.evidenceTypes || [],
+    args.evidenceEntries || [],
+  );
   const discovery = await discoverSkills({
     root: args.root,
     pluginSkillsRoot: PLUGIN_SKILLS_ROOT,
     comparisonRoot: COMPARISON_ROOT,
     sourceRoots: args.sourceRoots || [],
     excludeRoots: args.excludeRoots || [],
+    preferredSkill: understanding.multiImageUi ? expectedSkillFor(understanding) : null,
   });
-  const ranking = rankSkills(discovery.skills, classification, args.limit || 3);
-  const context = await collectContext(discovery.root, classification);
-  const searchSuggestions = await buildSearchSuggestions(discovery.root, classification, discovery.skills);
-  const debug = args.debugJson ? {
-    candidates: ranking.debug,
-    skill_index: {
-      roots: discovery.roots,
-      files: discovery.discovered.length,
-      unique_names: discovery.skills.length,
-      duplicate_name_conflicts: discovery.conflicts,
-    },
-    context: { ...context, search_suggestions: searchSuggestions },
-    flags: classification.flags,
-  } : null;
-  return buildResult(classification, ranking, context, searchSuggestions, debug);
+  const ranking = rankSkills(discovery.skills, understanding, args.limit || 3);
+  const retrievalRequest = buildRetrievalRequest(understanding);
+  const context = await collectContext(discovery.root, retrievalRequest);
+  const searchSuggestions = await buildSearchSuggestions(
+    discovery.root,
+    retrievalRequest,
+    discovery.skills,
+    context,
+  );
+  const debug = args.debugJson
+    ? {
+        candidates: ranking.debug,
+        skill_index: {
+          roots: discovery.roots,
+          files: discovery.discovered.length,
+          unique_names: discovery.skills.length,
+          duplicate_name_conflicts: discovery.conflicts,
+          index_files_read: discovery.index_files_read,
+          body_files_read: discovery.body_files_read,
+        },
+        context: {
+          items: context.items,
+          unresolved: context.unresolved,
+          files_read: context.files_read,
+          similar_implementations_read: context.similar_implementations_read,
+          indexed_files: context.indexed_files,
+          skill_body_files_read: discovery.body_files_read,
+          search_expansions: context.search_expansions,
+          stop_reason: context.stop_reason,
+          limits: {
+            max_file_bytes: MAX_FILE_BYTES,
+            max_context_files_read: MAX_CONTEXT_FILES_READ,
+            max_similar_implementations: MAX_SIMILAR_IMPLEMENTATIONS,
+            max_indexed_files: MAX_INDEXED_FILES,
+            max_retrieval_entries: MAX_RETRIEVAL_ENTRIES,
+          },
+          search_suggestions: searchSuggestions,
+        },
+        flags: understanding.flags,
+        performance: {
+          case_type: understanding.multiImageUi
+            ? "multi_image"
+            : understanding.evidence.length || understanding.typedEvidence.length ? "standard" : "simple",
+          total_processing_ms: 0,
+          files_read: context.files_read.length,
+          skill_body_files_read: discovery.body_files_read,
+          search_expansions: context.search_expansions,
+          early_stop_reason: context.stop_reason,
+        },
+      }
+    : null;
+  const result = buildResult(
+    understanding,
+    ranking,
+    context,
+    searchSuggestions,
+    debug,
+    discovery.root,
+  );
+  if (result._debug) result._debug.performance.total_processing_ms = performance.now() - startedAt;
+  return result;
 }
 
 export async function main(argv = process.argv.slice(2)) {
@@ -94,11 +221,17 @@ export async function main(argv = process.argv.slice(2)) {
       return;
     }
     if (args.previousContractPath) {
-      const source = await readFile(path.resolve(args.previousContractPath), "utf8");
+      const source = await readFile(
+        path.resolve(args.previousContractPath),
+        "utf8",
+      );
       args.previousContract = JSON.parse(source);
     }
     const result = await routeCompanySkills(args);
-    const output = args.format === "json" ? JSON.stringify(result, null, 2) : result.execution_prompt;
+    const output =
+      args.format === "json"
+        ? JSON.stringify(result, null, 2)
+        : result.execution_prompt;
     process.stdout.write(`${output}\n`);
   } catch (error) {
     process.stderr.write(`${error.message}\n`);
@@ -106,4 +239,5 @@ export async function main(argv = process.argv.slice(2)) {
   }
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) await main();
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href)
+  await main();

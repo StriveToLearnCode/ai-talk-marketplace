@@ -2,6 +2,10 @@ import { CONFUSION_GROUPS, SKILL_ROUTES } from "./rules.mjs";
 
 const OUTPUT_TO_SKILL = Object.fromEntries(Object.entries(SKILL_ROUTES).map(([name, rule]) => [rule.desiredOutput, name]));
 
+export function expectedSkillFor(classification) {
+  return OUTPUT_TO_SKILL[classification.intent.desired_output] || "";
+}
+
 function normalize(value) {
   return String(value || "").toLowerCase().replace(/[_/.-]+/g, " ").replace(/\s+/g, " ").trim();
 }
@@ -30,7 +34,7 @@ function selectionReason(skill, classification, expected) {
 }
 
 export function rankSkills(skills, classification, limit = 3) {
-  const expected = OUTPUT_TO_SKILL[classification.intent.desired_output];
+  const expected = expectedSkillFor(classification);
   const ranked = skills.map((skill) => {
     const route = SKILL_ROUTES[skill.name.toLowerCase()];
     const exactOutput = route?.desiredOutput === classification.intent.desired_output;

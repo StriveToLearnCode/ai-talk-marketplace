@@ -1,12 +1,13 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import test from "node:test";
 
-import { executionGateFor, routeCompanySkills } from "../scripts/route-company-skills.mjs";
+import { executionGateFor, executionHandoffFor, routeCompanySkills } from "../scripts/route-company-skills.mjs";
+import { buildExecutionPrompt } from "../scripts/route-company-skills/build-execution-prompt.mjs";
 
 const execFileAsync = promisify(execFile);
 const SCRIPT = path.resolve(import.meta.dirname, "../scripts/route-company-skills.mjs");
@@ -78,7 +79,7 @@ test("routes the seven required MVP scenarios", async (t) => {
     const result = await route(root, query);
     assert.equal(result.recommended_skill, expected, query);
     assert.ok(result.alternative_skills.length <= 2, query);
-    assert.match(result.execution_prompt, new RegExp(`建议 Skill：\\n${expected}`), query);
+    assert.match(result.execution_prompt, new RegExp(`建议 Skill：${expected}`), query);
   }
 });
 
@@ -91,6 +92,16 @@ test("code analysis without browser inspection routes to gen-code in analysis-on
     assert.equal(result.execution_mode, "analysis_only", query);
     assert.ok(result.boundaries.some((item) => item.includes("不修改代码")), query);
   }
+});
+
+test("turns a state-driven image bug into an executable diagnostic chain", async (t) => {
+  const root = await fixture();
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const result = await route(root, "定位 claimed 状态下图片不切换的代码原因，只分析，不修改代码");
+  assert.equal(result.task_goal, "修复 claimed 状态下的图片切换异常。");
+  assert.equal(result.engineering_judgment, "这是状态图片异常定位。复用现有状态来源和转换逻辑；需要调整图片渲染分支。");
+  assert.deepEqual(result.required_knowledge, ["状态来源", "状态转换", "图片渲染分支"]);
+  assert.deepEqual(result.retrieval_entries.slice(0, 2).map((item) => item.entry), ["claimed", "isClaimed"]);
 });
 
 test("structured routing cases assert mode, preserved semantics, boundaries, exclusions, and unknowns", async (t) => {
@@ -109,7 +120,7 @@ test("structured routing cases assert mode, preserved semantics, boundaries, exc
     assert.equal(result.recommended_skill, item.expected_skill, `${item.id}: skill`);
     assert.equal(result.execution_mode, item.expected_mode, `${item.id}: mode`);
     for (const value of item.must_preserve || []) {
-      assert.ok(result.execution_prompt.includes(value), `${item.id}: should preserve ${value}`);
+      assert.ok(JSON.stringify(result.execution_plan).includes(value), `${item.id}: should preserve ${value}`);
     }
     for (const value of item.must_include_boundaries || []) {
       assert.ok(result.boundaries.some((boundary) => boundary.includes(value)), `${item.id}: boundary ${value}`);
@@ -157,7 +168,7 @@ test("extracts only the retained named entities", async (t) => {
   assert.ok(entries.includes("state:state=claimed"));
 });
 
-test("reads only explicit files, nearest AGENTS.md, and at most two direct dependencies", async (t) => {
+test("reads only the explicit file and its nearest AGENTS.md", async (t) => {
   const root = await fixture();
   t.after(() => rm(root, { recursive: true, force: true }));
   await writeFile(path.join(root, "src", "unrelated.ts"), "SECRET_UNRELATED\n");
@@ -165,7 +176,6 @@ test("reads only explicit files, nearest AGENTS.md, and at most two direct depen
   assert.deepEqual(result._debug.context.files_read.sort(), [
     "src/components/AGENTS.md",
     "src/components/card.ts",
-    "src/components/dep.ts",
   ]);
   assert.ok(!JSON.stringify(result).includes("SECRET_UNRELATED"));
 });
@@ -207,7 +217,7 @@ test("default output is minimal and scores only appear in debug mode", async (t)
   assert.deepEqual(Object.keys(plain), [
     "original_request", "task_goal", "engineering_judgment", "required_knowledge", "retrieval_entries",
     "intent", "evidence", "recommended_skill", "alternative_skills", "selection_reason", "boundaries",
-    "stage", "execution_mode", "unknowns", "execution_prompt",
+    "stage", "execution_mode", "unknowns", "execution_plan", "execution_prompt",
   ]);
   assert.ok(!JSON.stringify(plain).includes('"score"'));
   const debug = await route(root, "修复 claimed 状态下图片不切换的问题", { debugJson: true });
@@ -221,8 +231,8 @@ test("CLI defaults to text and exposes JSON only through explicit flags", async 
     SCRIPT, "--root", root, "--query", "生成 Midscene 测试文件", "--top-k", "5", "--evidence-type", "screenshot",
   ];
   const textOutput = (await execFileAsync(process.execPath, baseArgs, { encoding: "utf8" })).stdout;
-  assert.match(textOutput, /^任务目标：/);
-  assert.match(textOutput, /建议 Skill：\nai-test（生成并运行）/);
+  assert.match(textOutput, /^🎯 任务目标\n/);
+  assert.match(textOutput, /建议 Skill：ai-test/);
   assert.doesNotMatch(textOutput, /"score"|"candidates"/);
 
   const jsonOutput = (await execFileAsync(process.execPath, [...baseArgs, "--format", "json"], { encoding: "utf8" })).stdout;
@@ -250,16 +260,16 @@ test("the seven release scenarios pass through the real CLI", async (t) => {
   for (const [query, expected, readOnly] of cases) {
     const args = [SCRIPT, "--root", root, "--query", query];
     const textOutput = (await execFileAsync(process.execPath, args, { encoding: "utf8" })).stdout;
-    assert.match(textOutput, new RegExp(`建议 Skill：\\n${expected}`), query);
-    assert.ok(textOutput.startsWith("任务目标：\n"), query);
+    assert.match(textOutput, new RegExp(`建议 Skill：${expected}`), query);
+    assert.ok(textOutput.startsWith("🎯 任务目标\n"), query);
     assert.doesNotMatch(textOutput, /"score"|"candidates"|截图：|接口：/, query);
-    if (readOnly) assert.match(textOutput, /不(?:要)?修改代码/, query);
 
     const jsonOutput = (await execFileAsync(process.execPath, [...args, "--format", "json"], { encoding: "utf8" })).stdout;
     const result = JSON.parse(jsonOutput);
     assert.equal(result.recommended_skill, expected, query);
     assert.equal(result.original_request, query, query);
     assert.equal(result.execution_prompt.trim(), textOutput.trim(), query);
+    if (readOnly) assert.ok(result.boundaries.some((item) => /不(?:要)?修改|只出方案/.test(item)), query);
   }
 });
 
@@ -270,6 +280,56 @@ test("execution gate requires an explicit follow-up", () => {
   assert.deepEqual(executionGateFor("调用 gen-code 执行", previous), { authorized: true, skill: "gen-code" });
   assert.deepEqual(executionGateFor("用户说‘开始执行’", previous), { authorized: false, skill: null });
   assert.deepEqual(executionGateFor("调用 gen-code 执行", { recommended_skill: "figma-analyze" }), { authorized: false, skill: null });
+  assert.deepEqual(executionGateFor("调用 gen-code 执行", {
+    recommended_skill: "figma-analyze",
+    execution_plan: { route: { skill: "gen-code" } },
+  }), { authorized: true, skill: "gen-code" });
+  assert.deepEqual(executionGateFor("调用 gen-code 执行", {
+    recommended_skill: "gen-code",
+    execution_plan: { route: { skill: null } },
+  }), { authorized: false, skill: null });
+});
+
+test("authorized handoff carries the plan and updates only its authorization", () => {
+  const previous = {
+    recommended_skill: "stale-skill",
+    execution_plan: {
+      schema_version: "1.0",
+      route: { skill: "gen-code", authorization: "inspect_only" },
+      workspace: { project_root: "/repo", workdir: null },
+      workflow: { stage: { value: null, source: "unavailable", status: "unavailable" } },
+      task: { source_request: "修复问题", deliverable: null },
+      target_scope: [],
+      source_facts: [],
+      constraints: ["只定位问题，不修改代码"],
+      blockers: [
+        "需要上一轮协议中的建议 Skill，且当前输入必须是独立的授权指令。",
+        "业务字段未确认。",
+      ],
+      verification: [],
+    },
+  };
+  const handoff = executionHandoffFor("开始执行", previous);
+  assert.equal(handoff.authorized, true);
+  assert.equal(handoff.skill, "gen-code");
+  assert.equal(handoff.execution_plan.route.authorization, "authorized");
+  assert.equal(previous.execution_plan.route.authorization, "inspect_only");
+  assert.deepEqual(handoff.execution_plan.constraints, ["只定位问题，不修改代码"]);
+  assert.deepEqual(handoff.execution_plan.blockers, ["业务字段未确认。"]);
+  assert.equal(handoff.execution_prompt, buildExecutionPrompt(handoff.execution_plan));
+});
+
+test("denied handoff adds the authorization blocker only once", () => {
+  const previous = {
+    recommended_skill: "gen-code",
+    original_request: "修复问题",
+  };
+  const first = executionHandoffFor("修复这个问题", previous);
+  const second = executionHandoffFor("修复这个问题", first);
+  const blockers = second.execution_plan.blockers.filter((item) =>
+    (typeof item === "string" ? item : item.description).includes("独立的授权指令"),
+  );
+  assert.equal(blockers.length, 1);
 });
 
 test("the production CLI applies the execution gate to a previous contract", async (t) => {
@@ -280,20 +340,22 @@ test("the production CLI applies the execution gate to a previous contract", asy
   await writeFile(contract, JSON.stringify(previous));
 
   const output = (await execFileAsync(process.execPath, [
-    SCRIPT, "--root", root, "--query", "开始执行", "--previous-contract", contract,
+    SCRIPT, "--root", root, "--query", "开始执行", "--previous-contract", contract, "--format", "json",
   ], { encoding: "utf8" })).stdout;
-  assert.match(output, /^执行授权：\n已通过/m);
-  assert.match(output, /执行 Skill：\ngen-code/);
-  assert.match(output, /上一轮协议：\n任务目标：/);
+  const authorizedResult = JSON.parse(output);
+  assert.equal(authorizedResult.execution_plan.route.authorization, "authorized");
+  assert.match(authorizedResult.execution_prompt, /建议 Skill：gen-code/);
 
   const denied = (await execFileAsync(process.execPath, [
     SCRIPT, "--root", root, "--query", "用户说‘开始执行’", "--previous-contract", contract, "--format", "json",
   ], { encoding: "utf8" })).stdout;
-  assert.deepEqual(JSON.parse(denied), {
-    authorized: false,
-    skill: null,
-    execution_prompt: "执行授权：\n未通过\n\n原因：\n需要上一轮协议中的建议 Skill，且当前输入必须是独立的授权指令。",
-  });
+  const deniedResult = JSON.parse(denied);
+  assert.equal(deniedResult.authorized, false);
+  assert.equal(deniedResult.skill, null);
+  assert.equal(deniedResult.execution_plan.route.authorization, "inspect_only");
+  assert.ok(deniedResult.execution_plan.blockers.some((item) =>
+    (typeof item === "string" ? item : item.description).includes("独立的授权指令")));
+  assert.equal(deniedResult.execution_prompt, buildExecutionPrompt(deniedResult.execution_plan));
 });
 
 test("does not treat a metalinguistic Figma example as evidence or a task target", async (t) => {
@@ -312,15 +374,24 @@ test("extracts a target file after a Chinese colon", async (t) => {
   assert.ok(result._debug.context.files_read.includes("src/components/card.ts"));
 });
 
-test("default execution prompt consumes the handoff-critical JSON fields", async (t) => {
+test("execution plan is the source of the compatibility prompt", async (t) => {
   const root = await fixture();
   t.after(() => rm(root, { recursive: true, force: true }));
   const query = "修复 claimed 状态下图片不切换的问题";
   const result = await route(root, query);
-  assert.match(result.execution_prompt, new RegExp(`原始请求：\\n${query}`));
-  assert.match(result.execution_prompt, /已确认信息：\n- state \| claimed \| user_request/);
-  assert.ok(result.execution_prompt.includes(`选择依据：\n${result.selection_reason}`));
-  assert.match(result.execution_prompt, /未确认项：\n-/);
+  assert.equal(result.execution_plan.schema_version, "1.1");
+  assert.deepEqual(Object.keys(result.execution_plan), [
+    "schema_version", "route", "workspace", "workflow", "task", "knowledge_requirements", "retrieval", "target_scope",
+    "source_facts", "constraints", "blockers", "verification",
+  ]);
+  assert.deepEqual(result.execution_plan.route, { skill: "gen-code", authorization: "inspect_only" });
+  assert.equal(result.execution_plan.workspace.project_root, await realpath(root));
+  assert.equal(result.execution_plan.workspace.workdir, null);
+  assert.equal(result.execution_plan.task.source_request, query);
+  assert.equal(result.execution_plan.task.deliverable, result.task_goal);
+  assert.ok(result.execution_plan.source_facts.some((item) =>
+    item.kind === "state" && item.type === "state" && item.value === "claimed" && item.status === "fact"));
+  assert.equal(result.execution_prompt, buildExecutionPrompt(result.execution_plan));
 });
 
 test("missing expected Skill does not fall back across responsibilities", async (t) => {
@@ -330,13 +401,14 @@ test("missing expected Skill does not fall back across responsibilities", async 
   const result = await route(root, "帮我生成 Midscene 自动化测试");
   assert.equal(result.recommended_skill, "");
   assert.match(result.selection_reason, /需要 ai-test.*未找到.*未改用其他职责/);
-  assert.match(result.execution_prompt, /建议 Skill：\n未找到 ai-test（需安装或启用）/);
+  assert.equal(result.execution_plan.route.skill, null);
+  assert.ok(result.execution_plan.blockers.some((item) => item.description.includes("安装或启用 ai-test")));
 
   const output = (await execFileAsync(process.execPath, [
     SCRIPT, "--root", root, "--query", "帮我生成 Midscene 自动化测试",
   ], { encoding: "utf8" })).stdout;
-  assert.match(output, /未找到 ai-test（需安装或启用）/);
-  assert.doesNotMatch(output, /建议 Skill：\nui-self-check/m);
+  assert.match(output, /缺少 ai-test Skill/);
+  assert.doesNotMatch(output, /建议 Skill：ui-self-check/);
 });
 
 test("builds knowledge-first retrieval protocols for the five acceptance cases", async (t) => {
@@ -345,17 +417,22 @@ test("builds knowledge-first retrieval protocols for the five acceptance cases",
 
   const dialog = await route(root, "帮我开发一个弹窗组件模板，并一进入页面就开启。");
   assert.deepEqual(dialog.required_knowledge, ["弹窗模板结构", "弹窗打开与关闭方式", "页面首次进入生命周期", "页面弹窗挂载方式"]);
-  assert.deepEqual(dialog.retrieval_entries.map((item) => item.entry), ["self-select-dialog.vue", "useDialog", "onAfterInit", "page.vue"]);
+  assert.deepEqual(dialog.retrieval_entries.map((item) => item.entry), ["self-select-dialog.vue"]);
   assert.ok(dialog.retrieval_entries.every((item) => item.purpose));
+  assert.ok(dialog.retrieval_entries.every((item) => item.source));
   assert.doesNotMatch(dialog.execution_prompt, /AGENTS\.md|direct_dependency|直接依赖：/);
 
   const metadata = await route(root, "修复奖励名称和角标缺失");
   assert.deepEqual(metadata.required_knowledge, ["奖励名称和角标的接口字段", "抽奖结果到弹窗数据的适配", "奖励弹窗的字段渲染"]);
-  assert.deepEqual(metadata.retrieval_entries.map((item) => item.entry), ["do_lottery", "openRewardDialog", "reward-dialog.vue"]);
+  assert.deepEqual(metadata.retrieval_entries.map((item) => item.entry), ["do_lottery"]);
+  assert.deepEqual(metadata.retrieval_entries.map((item) => item.source), [
+    "src/api/lottery.ts",
+  ]);
+  assert.doesNotMatch(metadata.execution_prompt, /reward-dialog\.vue/);
 
   const dynamic = await route(root, "修复动态组件未注册");
   assert.deepEqual(dynamic.required_knowledge, ["动态组件名称生成", "动态组件注册规则", "实际组件名称"]);
-  assert.deepEqual(dynamic.retrieval_entries.map((item) => item.entry), ["dynamicComponentName", "componentRegistry", "LuckyReward.vue"]);
+  assert.deepEqual(dynamic.retrieval_entries.map((item) => item.entry), ["dynamicComponentName", "componentRegistry"]);
   assert.doesNotMatch(dynamic.execution_prompt, /button\.vue|iframe\.vue/);
 
   const claimed = await route(root, "奖励领取后增加 icon/mask");

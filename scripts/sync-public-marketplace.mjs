@@ -12,6 +12,7 @@ const IGNORED = new Set([".DS_Store", "__pycache__"]);
 const MAPPINGS = [
   ["README.md", "README.md"],
   ["USAGE.md", "USAGE.md"],
+  ["docs/AI_TALK_V1_SPEC.md", "docs/AI_TALK_V1_SPEC.md"],
   ["plugins/ai-talk", "plugins/ai-talk"],
 ];
 

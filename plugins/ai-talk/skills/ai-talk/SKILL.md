@@ -1,166 +1,146 @@
 ---
 name: ai-talk
-description: 在用户显式调用 $ai-talk 时，将自然语言、截图、文件和代码上下文整理为知识优先的研发任务协议：先判断完成任务所需的知识，再映射到真实项目或 Skill 检索入口，并推荐职责匹配且已安装的 Skill。解析轮不得修改项目或调用下游 Skill；只有用户后续明确授权才允许执行。
+description: 在用户显式调用 $ai-talk 时，将自然语言、截图、设计稿、接口信息、文件和代码上下文整理为下一步 AI 可直接执行的 Task Handoff，并推荐职责匹配且已安装的 Skill。解析轮不得修改项目或调用下游 Skill；只有用户后续明确授权才允许执行。
 ---
 
-# AI Talk 研发执行协议生成器
+# AI Talk Task Handoff
 
-把研发输入转换为可核对、可执行、可交接的协议。不要只改写用户的话；先保留原意，再提供用户没有必要亲自补齐的研发信息。
+AI Talk 将开发者的自然语言、截图、设计稿、接口信息和项目资料，整理成下一步 AI 可直接执行的任务协议。用户应在 5 秒内知道要完成什么，AI 应在 10 秒内知道先去哪里找答案。
+
+它不替代公司的 Skill，也不直接负责写代码。
+
+AI Talk 负责给出工程判断、必要知识、真实检索入口和下一 Skill，不生成研发分析报告。
+
+不得改写、扩展或重新定义以上定位。
 
 ## 工作流
 
-1. 移除 `$ai-talk` 调用标记，将用户输入整理成一句任务目标，不丢失限定条件和技术标识。
-2. 输出一句任务专属的 AI 工程判断，不写通用规范、具体代码方案或未确认的业务字段。
-3. 识别完成任务必须理解的知识类别，最多 4 项；知识类别不得包含路径，也不得使用“项目规范、同类实现、当前项目代码、公司 Docs、相关 Skill”等泛化名称。
-4. 在项目和真实 Skill 索引中受限只读，为每类知识选择 1 个最佳检索入口；只有确有互补价值时才保留第 2 个，同类最多 2 个、总计最多 5 个。
-5. 按“直接对应的现有实现、公共组件或 Composable、目标页面入口、专门 Docs 或 Skill”的顺序裁剪。普通依赖和通用规范仅用于内部判断，不在前台展示。
-6. 输出边界、当前阶段、执行模式和高置信建议 Skill 后立即停止。不要修改文件、调用下游 Skill、自动 handoff 或开始实施。
+1. 移除 `$ai-talk` 调用标记，将用户输入归纳为一句最终结果，不复述原话。
+2. 在内部分析全部真实输入；截图、资源、约束和验收事实保留在 `execution_plan`，不直接展开到 Formatter。
+3. 输出一句任务专属工程判断，不写总结、翻译、截图描述、通用规范、具体代码方案、虚构字段或业务枚举。
+4. 识别完成任务必须理解的知识对象；只保留有真实文件、符号、组件、文档或用户指定入口的对象，优先检索最多 3 项。
+5. 生成唯一事实源 `execution_plan`，再单向渲染 `execution_prompt`。旧顶层兼容字段只能从 plan 投影。
+6. 只输出固定 Task Handoff 模块后立即停止。不得修改文件、调用下游 Skill、自动 handoff 或开始实施。
 
 ```bash
 node scripts/route-company-skills.mjs \
   --root '<项目根目录>' \
   --query '<用户原始输入>' \
-  [--evidence-type 'visual=<附件摘要>']
+  [--evidence-type 'visual=<附件摘要>'] \
+  [--evidence-json '<typed entry>']
 ```
 
-附件按实际角色重复传入：
+保留重复的 `--evidence-type` 作为粗粒度兼容入口：`visual`、`interaction`、`api`、`screenshot`、`selected_code`。截图研发信息使用重复的 `--evidence-json` 传入，每个参数只能包含一个 JSON 对象。附件使用 `attachment_N` 稳定标识。
 
-- `visual=<附件摘要>`：视觉稿或设计稿。
-- `interaction=<附件摘要>`：交互图或流程图。
-- `api=<附件摘要>`：接口资料。
-- `screenshot=<附件摘要>`：真实截图。
-- `selected_code=<选中内容摘要>`：编辑器明确提供的选中代码。
+## 截图提取协议
 
-默认输出文本。机器调用使用 `--format json`；只有调试和测试可以增加 `--debug-json`，该参数会输出 JSON 并附加 `_debug`。旧 `--profile-json` 协议保持禁用。后续独立授权轮必须把上一轮 JSON 协议保存为文件，并通过 `--previous-contract <json-file>` 交回同一 CLI；CLI 会先执行授权门禁，再输出可执行交接。
+按以下顺序提取，不得只输出“某图是目标 UI”：
 
-## 输出协议
+1. 附件关系：用 `attachment_reference` 和 `role: target | reference | comparison` 保留用户指定关系。
+2. 可见 UI：用 `ui_element`、`ui_structure` 记录直接可见元素和结构。
+3. 交互与语义：用户明确的点击、跳转、条件、状态变化使用 `interaction`；明确的进度含义使用 `progress_semantics`。
+4. 数据需求：只写开发需要的数据，用 `data_requirement` 和 `status: unknown` 表达，不生成字段名。
+5. 复用资源：用 `resource_reference` 或 `resource_reuse_candidate` 记录资源、provider、附件来源和可复用性；未确认的 key 单独写成 `resource_key` unknown。
+6. 验收目标：从已确认的 UI、交互、状态语义和复用要求生成 `ui_assertion`、`interaction_assertion`、`state_assertion`、`resource_assertion`，不伪造命令。
 
-- `original_request` 保留用户原话，只移除显式 `$ai-talk` 调用标记；`task_goal` 用一句话表达交付结果。
-- `intent` 只判断动作、关注对象和目标产物，不输出未经验证的根因或代码方案。
-- 每个 `retrieval_entries` 项必须对应一个 `required_knowledge`，包含真实入口和具体检索用途。
-- 所需知识最多 4 条，推荐检索最多 5 条，边界最多 2 条；只读请求必须明确写出不修改代码。
+### 证据状态
 
-### 项目上下文
+- `fact`：用户明确说明的内容，或截图中直接可见的内容。截图可见只证明页面表现。
+- `inference`：基于图片关系、风格或项目上下文得出的结论；必须保留来源并填写 `confidence: high | medium | low`。
+- `unknown`：页面路径、组件名、接口字段、真实数据源、资源 key 等尚未定位的信息；只能进入 blocker kind，不得进入 `source_facts`。
 
-可读取以下范围以生成内部候选：
+所有 typed entry 必须包含 `kind` 和 `source`。事实与推断必须包含合法 `status`；blocker 必须使用 `status: unknown`。不得因为截图中的视觉状态猜接口字段、状态枚举、资源 key 或具体实现。
 
-- 用户或编辑器明确指出的目标文件、目标目录和资料。
-- 目标文件最近的 `AGENTS.md`。
-- 显式目标文件的一层相对本地导入。
-- 项目根内受总文件数和总字节数限制的源码符号索引。
-- 真实附件、选中代码、资源标识和接口标识。
+## TaskHandoff 1.1
 
-对所有路径执行 `realpath` 校验，确保位于 `--root` 内。禁止读取 `node_modules` 和仓库外符号链接；不读取无关兄弟模块或递归目录。直接依赖总计最多 2 个，单文件最多 128 KiB。不存在、不可读、越界或超限时停止扩展，把原因写入未确认项。
-
-这些上下文不直接平铺到协议。只有与某项所需知识匹配并通过优先级裁剪的文件、符号、组件、资源或文档才进入推荐检索。文件名、变量名、接口名、资源路径和 Skill 名称不得翻译或改写。
-
-### 建议 Skill
-
-建议 Skill 不构成执行授权。普通文本不要输出评分、候选 Skill、索引统计或其他调试信息。
-
-## JSON 输出
-
-`--format json` 输出当前最小结果对象：
+保持以下顶层结构，不增加 `development_context` 等并行事实源：
 
 ```yaml
-original_request: 用户原始输入
-task_goal: 一句话任务目标
-engineering_judgment: 一句任务专属工程判断
-required_knowledge: 最多 4 类必需知识
-retrieval_entries: 最多 5 个带知识映射和用途的真实入口
-intent: { action, target, desired_output }
-evidence: 带 type、value、source 的证据
-recommended_skill: 已匹配 Skill，未找到时为空字符串
-alternative_skills: 最多 2 个同类候选
-selection_reason: 选择或缺失原因
-boundaries: 执行边界
-stage: 当前阶段
-execution_mode: modify | analysis_only | inspect_only | inspect_fix_verify | plan_only
-unknowns: 待确认项和缺失 Skill 的下一步
-execution_prompt: 可直接交给后续 Codex 的完整文本
+schema_version: "1.1"
+route: { skill, authorization }
+workspace: { project_root, workdir }
+workflow: { stage: { value, source, status } }
+task: { source_request, deliverable, reasoning }
+knowledge_requirements: []
+retrieval: []
+target_scope: []
+source_facts: []
+constraints: []
+blockers: []
+verification: []
 ```
 
-`--debug-json` 保留以上字段，并增加 `_debug`。候选评分、索引详情和读取明细只出现在 `_debug`，不进入普通文本或 `--format json` 输出。
+- `source_facts` 只保存 fact/inference typed entries 和旧 evidence 的 fact 规范化结果。
+- `task.reasoning` 保存工程判断；`knowledge_requirements` 只保存知识名；`retrieval` 每项固定为知识、真实实现入口、检索原因和来源。
+- `blockers` 新条目使用 `{ kind, description, status: unknown, resolution, blocking }`；`search_resolvable` 默认 `blocking: false`。renderer 和授权 handoff 仍须读取旧字符串 blocker。
+- `verification` 保存行为级 assertion；不得用不可靠的 lint、test 或 e2e 命令填充。
+- 截图任务默认约束不得猜接口字段或业务枚举；有 Page Center 事实时优先复用；页面和组件未确认前不得扩大修改范围。
+- 解析轮的 `route.authorization` 固定为 `inspect_only`。建议 Skill 不构成执行授权。
 
-## 默认中文输出
+### 字段稳定性
 
-默认 CLI 输出就是 `execution_prompt`，按以下顺序输出：
+Stable：
 
-```text
-任务目标：
-<一句话>
+- `schema_version`
+- `route.skill`
+- `route.authorization`
+- `task.source_request`
+- `task.reasoning`
+- `knowledge_requirements`
+- `retrieval`
+- `target_scope`
+- `source_facts`
+- `constraints`
+- `blockers`
+- `verification`
+- `execution_prompt` renderer
 
-原始请求：
-<只移除调用标记的用户输入>
+Experimental：`development_context`、`ui_requirements`、`interaction_requirements`、`data_requirements`、`reusable_resources`、`acceptance_assertions` 目前只表示 typed entry 的研发维度，不得新增为顶层字段。
 
-AI 判断：
-<一句任务专属工程判断>
+Reserved：`planned_changes`、write scope enforcement、source precedence engine、resolved plan lifecycle、automatic skill invocation。当前没有生产消费者，不得写入协议或假装生效。
 
-已确认信息：
-- <type | value | source>
+## 阶段隔离
 
-所需知识：
-- <最多 4 项，不含路径>
+- 理解只消费用户输入与 typed evidence，并产出任务语义和知识对象。
+- 检索只消费理解阶段生成的 RetrievalRequest 和 Skill `name/description` 索引，并产出带证据的真实入口。
+- Formatter 只消费已校验的 TaskHandoff，不得读取原始输入、项目文件、Skill 或旧兼容字段。
+- 三阶段只能单向传递；不得解析 `execution_prompt` 回填事实。
 
-推荐检索：
-- <真实文件、符号、组件、资源或文档>：<对应知识的检索用途>
+## 默认输出
 
-边界：
-- <最多 2 条>
+默认 CLI 输出由 `execution_plan` 单向渲染，模块顺序固定且禁止新增：`🎯 任务目标`、`🧠 AI 判断`、`🔍 优先检索`、`⚠️ 待确认`、`▶ 下一步`。
 
-当前阶段：
-<定位问题 / 修改代码 / 页面检查 / 方案设计 / 自动化测试>
+`🧠 AI 判断` 只写 1～2 句，明确任务属于已有能力扩展、异常定位还是新增功能，并分别说明复用能力与新增/调整内容。不得使用只有通用意义的工程规则填充。
 
-执行模式：
-<modify / analysis_only / inspect_only / inspect_fix_verify / plan_only>
+`⚠️ 待确认` 只在存在 `blocking: true` 的硬阻塞时展示，最多 2 条。`search_resolvable` 不展示。优先检索固定使用“知识对象 → 真实入口（为什么检索）”，最多 3 项；没有已证实入口的知识对象不展示。默认删除截图、资源、页面、目录、组件扫描、依赖扫描、Docs、AGENTS、约束、验收和执行授权的展示。普通输出不得包含候选评分、索引统计或调试字段；不得反向解析 `execution_prompt` 形成执行事实。
 
-建议 Skill：
-<高置信 Skill + 执行模式>
+`--format json` 输出 `execution_plan`、`execution_prompt` 和旧顶层兼容投影。`--debug-json` 才能增加 `_debug`。
 
-选择依据：
-<目标产物与 Skill 职责的匹配依据>
+## 项目与检索边界
 
-未确认项：
-- <影响执行的待确认项；没有时为“无”>
-```
-
-普通输出不得包含候选评分、索引统计或调试字段。整个文本可直接交给后续 Codex，但仍不构成本轮执行授权。
-
-## 事实边界
-
-- 截图只证明页面表现，不复述 OCR，不得直接当作接口数据、状态含义或代码实现事实。
-- `state=0` 不能直接解释为已领取或未领取，也不能直接判定为接口问题。
-- 附件、代码、接口或文档冲突时，不得直接判定哪一方正确。
-- `icon/mask` 等资源标识属于资源，不能因为包含 `/` 就识别为目录。
-- “第三个奖励”只确认第 3 个奖励节点，不得无依据补出 `rewardList[2]` 或领取状态。
-- 中文研发语义使用奖励状态映射、奖励展示条件、积分阶段任务关联、进度展示逻辑和当前项目同类实现等自然短语；不要输出英文 ontology。
-
-## Skill 路由
-
-只索引运行时 `.agents/skills/**/SKILL.md`、显式批准的公司 Skill 根和插件自带 `ui-self-check`。只读取 frontmatter、description 和明确的适用场景短段；不索引 `plugins/ai-talk/docs/skills/`，不读取 references、脚本、知识库或普通正文。
-
-建议 Skill 必须存在于运行时索引中，并与明确的目标产物一致。目标 Skill 不存在时，`recommended_skill` 保持空字符串，文本和 JSON 都要说明缺失原因与安装、启用或 `--source-root` 的下一步；禁止改选其他职责的 Skill。
+- 单文件正文最多 128 KiB；项目上下文正文默认最多读取 5 个文件；候选文件元数据最多索引 240 项。
+- 多图 UI 固定快速路径只读取用户原话和附件、一个用户明确目标文件、目标文件就近一份 `AGENTS.md`、最多一个目标文件真实引用的同类实现，以及最多一个真实资源或 Page Center 来源。无明确目标文件时不得全仓兜底。
+- 已确认目标图、目标文件、2～3 个可靠入口、当前阶段和高置信 Skill 后立即停止扩展。
+- 禁止递归读取依赖树、扫描所有 `AGENTS.md`、遍历 Docs、读取普通直接依赖或为增加候选持续扩大范围。Skill 只使用 name/description 索引；确定命中后才由后续执行轮读取正文。
+- 对路径执行 `realpath` 校验；拒绝 `node_modules`、仓库外符号链接、超大文件和无关目录扩展。
+- 推荐入口必须有以下至少一项证据：目标真实引用、目标 UI 结构一致、同类页面真实使用、明确组件文档或 Skill 索引、用户明确指定。文件名只用于限量初筛，不构成推荐证据。
+- 文件名、变量名、接口名、资源路径和 Skill 名称不得翻译或改写。
+- 目标 Skill 不存在时保持空值并给出安装、启用或 `--source-root` 的下一步，不改选其他职责 Skill。
 
 ## 执行授权门禁
 
-- 解析轮只允许上述受限只读；禁止修改文件；禁止调用任何下游工具或 Skill；禁止自动 handoff。
-- 只有上一轮已生成协议，且用户在后续独立一轮明确输入 `开始执行`、`直接修改`、`使用这个协议继续` 或 `调用 gen-code 执行`，才允许进入执行。
-- 引用、转述或列举授权表达不算授权。门禁通过后才可调用上一轮结果中的 `recommended_skill`。
-- CLI 生产链路使用 `--query '<本轮输入>' --previous-contract <上一轮 JSON 文件>` 调用同一个门禁；指定 Skill 的授权语句必须与上一轮 `recommended_skill` 一致。
+- 解析轮只允许受限只读；禁止修改文件、调用下游工具或 Skill、自动 handoff。
+- 只有用户在后续独立一轮输入 `开始执行`、`直接修改`、`使用这个协议继续` 或匹配计划 Skill 的 `调用 <skill> 执行`，才把 handoff 的授权更新为 `authorized`。
+- 引用、转述或列举授权表达不算授权。门禁优先读取 `execution_plan.route.skill`，旧协议才回退到 `recommended_skill`。
+- handoff 必须保留 typed entries、constraints、blockers 和 verification；授权只改变授权状态并移除授权 blocker。
 
 ## 必测场景
 
-- 半屏 H5 需要完整链接时，定位为已有跳转逻辑调整，检索 `openH5`、URL 构建和同类实现，不要求使用 `new URL()`。
-- 奖励领取后增加 `icon/mask` 时，定位为已有奖励节点领取态视觉修改，检索状态判断、资源引用和同类实现，不猜状态字段。
-- 第三个奖励未显示时，定位为单节点展示异常，检索节点数据、状态和渲染条件，不猜 `rewardList[2]`。
-- 开发弹窗并首次进入打开时，所需知识必须覆盖模板结构、开关方式、首次进入生命周期和页面挂载方式。
-- 用户明确要求使用 `new URL()` 时，才将它作为实现边界。
-- 显式目标存在时，读取目标、沿路径 `AGENTS.md` 和一层相对依赖；不读取无关兄弟文件。
-- 仓库外符号链接、`node_modules`、超大文件和缺失文件进入待确认，不泄漏文件内容。
-- “不要复用现有实现，可以全局重构”抑制冲突默认规则，不增加相反边界。
-- 目标 Skill 不存在时明确说明原因和下一步，不得改选其他职责的 Skill。
-- `state=0 页面却显示已领取`保留接口事实和页面表现，不猜状态业务含义。
-- 奖励名称和角标缺失时，推荐入口分别覆盖 `do_lottery`、`openRewardDialog` 和奖励弹窗组件。
-- 动态组件未注册时，知识覆盖名称生成、注册规则和实际组件名称，不展示无关 button、iframe 依赖。
-- 奖励领取后增加 `icon/mask` 时，将 `icon/mask` 识别为资源，知识覆盖领取状态、资源引用和奖励节点渲染。
-- 明确文件的文案修改只生成单项或极短知识清单，不扩展依赖和规范。
+- 用户指定某张截图为目标时保留附件引用，多图区分 target/reference/comparison。
+- 用户明确的点击、跳转和进度业务含义进入协议，不生成字段或枚举。
+- Page Center 资源保留候选、provider 和真实附件来源；具体 key 未确认时进入 search-resolvable unknown。
+- Page Center 具体 key 只有真实配置或附件明确存在时才能展示；否则使用“图 N 的 Page Center 配置”。
+- 性能回归记录总处理时间、读取文件数、Skill 正文读取数、搜索扩展次数和早停原因；简单、标准、多图预算分别为 15、45、60 秒，多图默认最多读取 5 个文件且 Skill 正文为 0。
+- inference 不进入 fact，unknown 不渲染成已确认，verification 包含行为验收目标，但这些内部事实不展开到 Formatter。
+- execution prompt 只从 execution plan 渲染；输出只能出现固定五个模块，非阻塞 unknown 必须隐藏。
+- 继续覆盖状态含义保护、资源/路径区分、受限项目读取、职责匹配路由和显式执行授权。

@@ -1,7 +1,7 @@
 interface:
   display_name: "AI Talk"
-  short_description: "提炼用户目标并分离任务定位、检索目标与实现边界"
-  default_prompt: "使用 $ai-talk 提炼任务目标和 AI 工程判断，识别完成任务所需的知识，并映射到带用途的真实检索入口、边界、阶段和可选 Skill。"
+  short_description: "将研发输入整理为下一步 AI 可直接执行的 Task Handoff"
+  default_prompt: "使用 $ai-talk 将自然语言、截图和项目资料整理为包含任务目标、AI 判断、有证据的优先检索和下一 Skill 的精简任务协议。"
 
 policy:
   allow_implicit_invocation: false

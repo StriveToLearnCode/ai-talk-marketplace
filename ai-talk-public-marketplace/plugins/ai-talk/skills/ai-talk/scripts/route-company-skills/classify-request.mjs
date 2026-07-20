@@ -16,6 +16,87 @@ function unique(items, key = (item) => item) {
   });
 }
 
+const SOURCE_FACT_KINDS = new Set([
+  "attachment_reference",
+  "ui_element",
+  "ui_structure",
+  "interaction",
+  "progress_semantics",
+  "resource_reference",
+  "resource_reuse_candidate",
+]);
+const BLOCKER_KINDS = new Set([
+  "data_requirement",
+  "target_locator",
+  "component_locator",
+  "resource_key",
+]);
+const ASSERTION_KINDS = new Set([
+  "ui_assertion",
+  "interaction_assertion",
+  "state_assertion",
+  "resource_assertion",
+]);
+const EVIDENCE_STATUSES = new Set(["fact", "inference", "unknown"]);
+const ATTACHMENT_ROLES = new Set(["target", "reference", "comparison"]);
+const CONFIDENCE_LEVELS = new Set(["high", "medium", "low"]);
+
+function requiredString(entry, field, index) {
+  const value = entry[field];
+  if (typeof value !== "string" || !value.trim()) {
+    throw new Error(`--evidence-json entry ${index + 1} requires non-empty ${field}.`);
+  }
+  return value.trim();
+}
+
+function normalizeTypedEvidence(entries) {
+  return unique(entries.map((raw, index) => {
+    const entry = structuredClone(raw);
+    entry.kind = requiredString(entry, "kind", index);
+    entry.source = requiredString(entry, "source", index);
+    const knownKind = SOURCE_FACT_KINDS.has(entry.kind)
+      || BLOCKER_KINDS.has(entry.kind)
+      || ASSERTION_KINDS.has(entry.kind);
+    if (!knownKind) throw new Error(`--evidence-json entry ${index + 1} has unknown kind: ${entry.kind}.`);
+
+    if (ASSERTION_KINDS.has(entry.kind)) {
+      entry.description = requiredString(entry, "description", index);
+      delete entry.status;
+      return entry;
+    }
+
+    entry.status = requiredString(entry, "status", index);
+    if (!EVIDENCE_STATUSES.has(entry.status)) {
+      throw new Error(`--evidence-json entry ${index + 1} has unknown status: ${entry.status}.`);
+    }
+    if (SOURCE_FACT_KINDS.has(entry.kind) && entry.status === "unknown") {
+      throw new Error(`--evidence-json entry ${index + 1} must route unknown information through a blocker kind.`);
+    }
+    if (BLOCKER_KINDS.has(entry.kind) && entry.status !== "unknown") {
+      throw new Error(`--evidence-json entry ${index + 1} must use status=unknown for blocker kind ${entry.kind}.`);
+    }
+    if (entry.status === "inference") {
+      entry.confidence = requiredString(entry, "confidence", index);
+      if (!CONFIDENCE_LEVELS.has(entry.confidence)) {
+        throw new Error(`--evidence-json entry ${index + 1} has unknown confidence: ${entry.confidence}.`);
+      }
+    } else {
+      delete entry.confidence;
+    }
+    if (entry.kind === "attachment_reference") {
+      entry.attachment = requiredString(entry, "attachment", index);
+      entry.role = requiredString(entry, "role", index);
+      if (!/^attachment_[1-9]\d*$/.test(entry.attachment)) {
+        throw new Error(`--evidence-json entry ${index + 1} attachment must use attachment_N.`);
+      }
+      if (!ATTACHMENT_ROLES.has(entry.role)) {
+        throw new Error(`--evidence-json entry ${index + 1} has unknown attachment role: ${entry.role}.`);
+      }
+    }
+    return entry;
+  }), (item) => JSON.stringify(item));
+}
+
 function suppliedEvidence(values) {
   return values.map((raw, index) => {
     const match = String(raw).match(/^([^:=]+)[:=](.+)$/);
@@ -128,14 +209,17 @@ function executionModeFor(intent, flags) {
 function targetPageFor(query) {
   const match = query.match(/([\p{Script=Han}A-Za-z0-9_-]{2,40})\s*(?:页面|页)/u)
     || query.match(/([A-Za-z0-9_-]{2,40})\s*tab\d*\b/i);
-  const value = match?.[1]?.replace(/^(?:(?:请|帮我|修复|修改|开发|实现|检查|打开|看看|分析|根据|这个|目标|当前|已有))+/, "") || null;
-  return ["打开", "看看", "检查", "这个", "目标", "当前", "已有"].includes(value) ? null : value;
+  const value = match?.[1]?.replace(/^(?:(?:请|帮我|先|给|为|把|用浏览器|现场|修复|修改|开发|实现|检查|打开|看看|分析|根据|这个|目标|当前|已有))+/, "") || null;
+  return ["打开", "看看", "检查", "这个", "把这个", "目标", "当前", "已有"].includes(value) ? null : value;
 }
 
 function taskTypeFor(query, evidence) {
   const text = query.toLowerCase();
   const hasTargetFile = evidence.some((item) => item.type === "target_file");
   if (hasTargetFile && /(?:文案|文字|copy|标题|提示语)/i.test(query)) return "copy_change";
+  if (/\b(?:claimed|unclaimed|completed|incomplete|locked|disabled)\b/i.test(query)
+    && /(?:图片|图标|蒙层|image|icon|mask)/i.test(query)
+    && /(?:未切换|不切换|没有切换|未更新|没有更新|异常)/i.test(query)) return "state_visual_mismatch";
   if (/(?:动态组件|dynamic component)/i.test(query) && /(?:未注册|没有注册|找不到|unknown|not registered|failed to resolve)/i.test(query)) {
     return "dynamic_component_registration";
   }
@@ -151,30 +235,75 @@ function taskTypeFor(query, evidence) {
   return "generic";
 }
 
-function taskGoalFor(query, taskType) {
+function taskGoalFor(query, taskType, intent, evidence, executionMode) {
   if (taskType === "dialog_auto_open") return "新增一个弹窗组件模板，并在首次进入页面时自动打开。";
   if (taskType === "reward_metadata_missing") return "修复奖励名称和角标缺失的问题。";
   if (taskType === "dynamic_component_registration") return "修复动态组件未注册的问题。";
   if (taskType === "reward_claim_visual") return "在奖励领取后增加 icon/mask 蒙层。";
-  if (taskType === "copy_change") {
-    const cleaned = query.replace(/^(?:请|麻烦)?(?:帮我)?\s*/u, "").replace(/[。！!]+$/g, "").trim();
-    return `${cleaned}。`;
+  if (taskType === "state_visual_mismatch") {
+    const state = extractStates(query)[0] || "目标";
+    return `修复 ${state} 状态下的图片切换异常。`;
   }
-  const cleaned = query.replace(/^(?:请|麻烦)?(?:帮我)?\s*/u, "").replace(/[。！!]+$/g, "").trim();
-  return `${cleaned || query.trim()}。`;
+  if (taskType === "copy_change") {
+    const file = evidence.find((item) => item.type === "target_file")?.value || "目标文件";
+    const copy = query.match(/(?:文案|文字|标题|提示语)(?:修改|改)?为[“"']?([^，。；;”"']+)/u)?.[1]?.trim();
+    return copy ? `将 ${file} 的目标文案改为“${copy}”。` : `完成 ${file} 的文案修改。`;
+  }
+  const page = evidence.find((item) => item.type === "target_page")?.value;
+  const component = evidence.find((item) => item.type === "component")?.value;
+  const file = evidence.find((item) => item.type === "target_file")?.value;
+  const target = page
+    ? (/^[A-Za-z0-9]/.test(page) ? `${page} 页面` : `${page}页面`)
+    : component || file || "目标页面";
+  const namedTarget = /^[A-Za-z0-9./@_-]/.test(target) ? ` ${target}` : target;
+  if (intent.desired_output === "automated_test") return `新增${namedTarget}的自动化测试。`;
+  if (intent.desired_output === "implementation_plan") return `输出${namedTarget}的前端实施方案。`;
+  if (intent.desired_output === "figma_analysis_document") return "输出 Figma 页面分析方案。";
+  if (intent.desired_output === "live_page_findings") {
+    return executionMode === "inspect_fix_verify"
+      ? `完成${namedTarget}的页面检查并修复发现的问题。`
+      : `完成${namedTarget}的页面检查。`;
+  }
+  if (intent.desired_output === "code_changes") {
+    if (/(?:领取|奖励).{0,8}(?:逻辑|能力)/u.test(query)) return `完成${namedTarget}的奖励领取能力。`;
+    if (intent.flags.bug) return `修复${namedTarget}的目标异常。`;
+    return `完成${namedTarget}的开发。`;
+  }
+  return "明确当前任务的最终交付物。";
 }
 
-function requiredKnowledgeFor(taskType, evidence) {
+function typedKnowledge(entries) {
+  const text = entries.map((item) => [
+    item.name, item.description, item.subject, item.meaning, item.trigger, item.effect, item.resource,
+  ].filter(Boolean).join(" ")).join(" ");
+  const result = [];
+  if (/(?:积分|进度|阶段)/u.test(text)) result.push("积分阶段");
+  if (/(?:奖励|奖品)/u.test(text)) result.push("奖励展示");
+  if (entries.some((item) =>
+    ["resource_reference", "resource_reuse_candidate"].includes(item.kind)
+    && item.status === "fact"
+    && item.provider === "Page Center")) result.push("页面资源");
+  if (/(?:领取|claimed|奖励状态)/iu.test(text)) result.push("奖励状态");
+  if (/(?:半屏|h5|openH5)/iu.test(text)) result.push("半屏 H5");
+  if (/(?:rtl|从右到左)/iu.test(text)) result.push("RTL 布局");
+  if (entries.some((item) => item.kind === "interaction")) result.push("页面交互");
+  return unique(result).slice(0, 4);
+}
+
+function requiredKnowledgeFor(taskType, evidence, typedEvidence, intent) {
   const known = {
     dialog_auto_open: ["弹窗模板结构", "弹窗打开与关闭方式", "页面首次进入生命周期", "页面弹窗挂载方式"],
     dialog_change: ["弹窗模板结构", "弹窗打开与关闭方式", "目标页面弹窗挂载方式"],
     reward_metadata_missing: ["奖励名称和角标的接口字段", "抽奖结果到弹窗数据的适配", "奖励弹窗的字段渲染"],
     dynamic_component_registration: ["动态组件名称生成", "动态组件注册规则", "实际组件名称"],
     reward_claim_visual: ["奖励领取状态判断", "icon/mask 资源引用", "奖励节点渲染"],
+    state_visual_mismatch: ["状态来源", "状态转换", "图片渲染分支"],
     copy_change: ["目标文案位置"],
     generic: null,
   }[taskType];
   if (known) return known;
+  const fromTypedEvidence = typedKnowledge(typedEvidence);
+  if (fromTypedEvidence.length) return fromTypedEvidence;
   const result = [];
   for (const item of evidence) {
     if (item.type === "api_name") result.push(`${item.value} 接口响应`);
@@ -182,10 +311,17 @@ function requiredKnowledgeFor(taskType, evidence) {
     if (item.type === "component") result.push(`${item.value} 渲染逻辑`);
     if (item.type === "target_file") result.push(`${path.basename(item.value)} 中的目标行为`);
   }
-  return unique(result).slice(0, 4);
+  if (result.length) return unique(result).slice(0, 4);
+  return {
+    automated_test: ["目标流程", "关键断言", "测试运行约定"],
+    implementation_plan: ["页面结构", "数据流", "交互边界"],
+    figma_analysis_document: ["页面结构", "交互状态", "组件边界"],
+    live_page_findings: ["目标页面行为", "交互状态", "响应式表现"],
+    code_changes: ["目标行为", "数据流", "渲染状态"],
+  }[intent.desired_output] || [];
 }
 
-export function classifyRequest(query, evidenceTypes = []) {
+export function classifyRequest(query, evidenceTypes = [], evidenceEntries = []) {
   const original = String(query || "").replace(/^\s*\$ai-talk(?::ai-talk)?\s*/i, "").trim();
   const intent = classifyIntent(original);
   const evidence = inferEvidence(original, suppliedEvidence(evidenceTypes));
@@ -193,17 +329,39 @@ export function classifyRequest(query, evidenceTypes = []) {
   if (page) evidence.push({ type: "target_page", value: page, source: "user_request" });
   const normalizedEvidence = unique(evidence, (item) => `${item.type}:${item.value}`);
   const taskType = taskTypeFor(original, normalizedEvidence);
+  const typedEvidence = normalizeTypedEvidence(evidenceEntries);
+  const executionMode = executionModeFor(intent, intent.flags);
+  const attachmentCount = typedEvidence.filter((item) => item.kind === "attachment_reference").length;
+  const figureCount = new Set([...original.matchAll(/图\s*([1-9]\d*)/gu)].map((match) => match[1])).size;
+  const multiImageUi = intent.desired_output === "code_changes"
+    && (attachmentCount >= 2 || figureCount >= 2);
 
   return {
     originalRequest: original,
     intent: { action: intent.action, target: intent.target, desired_output: intent.desired_output },
     evidence: normalizedEvidence,
+    typedEvidence,
     flags: intent.flags,
-    executionMode: executionModeFor(intent, intent.flags),
+    executionMode,
+    multiImageUi,
     taskType,
-    taskGoal: taskGoalFor(original, taskType),
-    requiredKnowledge: requiredKnowledgeFor(taskType, normalizedEvidence),
+    taskGoal: taskGoalFor(original, taskType, intent, normalizedEvidence, executionMode),
+    requiredKnowledge: requiredKnowledgeFor(taskType, normalizedEvidence, typedEvidence, intent),
   };
+}
+
+export function buildRetrievalRequest(understanding) {
+  return Object.freeze({
+    originalRequest: understanding.originalRequest,
+    intent: structuredClone(understanding.intent),
+    evidence: structuredClone(understanding.evidence),
+    typedEvidence: structuredClone(understanding.typedEvidence),
+    flags: structuredClone(understanding.flags),
+    executionMode: understanding.executionMode,
+    multiImageUi: understanding.multiImageUi,
+    taskType: understanding.taskType,
+    requiredKnowledge: [...understanding.requiredKnowledge],
+  });
 }
 
 export function explicitTargetFiles(classification) {

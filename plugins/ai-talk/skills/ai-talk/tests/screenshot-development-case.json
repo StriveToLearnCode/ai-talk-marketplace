@@ -1,0 +1,26 @@
+{
+  "query": "帮我开发这个图，3 是目标 UI。",
+  "evidence_entries": [
+    { "kind": "attachment_reference", "attachment": "attachment_1", "role": "comparison", "label": "图1", "source": "user", "status": "fact" },
+    { "kind": "attachment_reference", "attachment": "attachment_2", "role": "reference", "label": "图2", "source": "user", "status": "fact" },
+    { "kind": "attachment_reference", "attachment": "attachment_3", "role": "target", "label": "图3", "source": "user", "status": "fact" },
+    { "kind": "attachment_reference", "attachment": "attachment_4", "role": "reference", "label": "图4", "source": "user", "status": "fact" },
+    { "kind": "ui_element", "name": "积分奖励入口", "source": "attachment_3", "status": "fact" },
+    { "kind": "ui_element", "name": "积分进度条", "source": "attachment_3", "status": "fact" },
+    { "kind": "ui_element", "name": "当前积分位置", "source": "attachment_3", "status": "fact" },
+    { "kind": "ui_structure", "name": "多阶段奖励节点", "source": "attachment_3", "status": "fact" },
+    { "kind": "ui_structure", "name": "守护者区域", "source": "attachment_3", "status": "fact" },
+    { "kind": "ui_structure", "name": "RTL 从右到左布局", "source": "attachment_3", "status": "fact" },
+    { "kind": "interaction", "trigger": "点击积分奖励", "effect": "通过 openH5 打开半屏活动奖品", "source": "user", "status": "fact" },
+    { "kind": "progress_semantics", "subject": "积分进度条", "meaning": "当前积分距离下一奖励阶段的进度", "source": "user", "status": "fact" },
+    { "kind": "resource_reference", "resource": "Banner", "provider": "Page Center", "attachment": "attachment_4", "reusable": true, "source": "user", "status": "fact" },
+    { "kind": "resource_reference", "resource": "Playground", "provider": "Page Center", "attachment": "attachment_4", "reusable": true, "source": "user", "status": "fact" },
+    { "kind": "data_requirement", "name": "当前积分", "description": "当前积分来源未定位", "source": "derived", "status": "unknown" },
+    { "kind": "data_requirement", "name": "奖励阶段配置", "description": "奖励阶段配置未定位", "source": "derived", "status": "unknown" },
+    { "kind": "resource_key", "name": "Page Center Banner / Playground key", "description": "Page Center Banner / Playground 的具体 key 未定位", "source": "derived", "status": "unknown" },
+    { "kind": "ui_assertion", "description": "第三张目标 UI 的奖励进度结构被实现", "source": "user_request" },
+    { "kind": "interaction_assertion", "description": "点击积分奖励可跳转到活动奖品", "source": "user_request" },
+    { "kind": "state_assertion", "description": "进度条能反映当前积分距离下一奖励阶段的进度", "source": "user_request" },
+    { "kind": "resource_assertion", "description": "Banner 和 Playground 优先复用现有 Page Center 资源", "source": "user_request" }
+  ]
+}

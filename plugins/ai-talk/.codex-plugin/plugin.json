@@ -1,6 +1,6 @@
 {
   "name": "ai-talk",
-  "version": "0.4.0+codex.20260719155223",
+  "version": "0.4.0+codex.20260720023129",
   "description": "AI Talk turns development requests into bounded task positioning, verified project context, high-signal retrieval targets, and optional Skill recommendations.",
   "author": {
     "name": "sf"
@@ -21,9 +21,13 @@
       "Lossless execution goal generation",
       "Sourced development default rules",
       "Bounded explicit-target project reads",
-      "One-hop local dependency context",
+      "Four-file context read budget",
+      "Evidence-based retrieval early stopping",
       "Project AGENTS.md provenance",
       "Attachment role normalization",
+      "Typed screenshot development context",
+      "Fact inference and unknown separation",
+      "Behavioral acceptance assertion extraction",
       "Real project Skill recommendation",
       "Bounded applicability metadata reads",
       "Always-on Skill Handoff generation",
