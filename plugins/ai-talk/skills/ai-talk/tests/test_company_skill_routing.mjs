@@ -47,6 +47,14 @@ async function fixture() {
   await writeFile(path.join(root, "src", "components", "iframe.vue"), "<template><iframe /></template>\n");
   await writeFile(path.join(root, "src", "components", "reward-item.vue"), "<template><div class=\"icon/mask\" /></template>\n<script setup>const isClaimed = true;</script>\n");
   await writeFile(path.join(root, "src", "components", "copy-card.vue"), "<template><p>旧文案</p></template>\n");
+  await writeFile(path.join(root, "src", "pages", "mod3.vue"), [
+    "<template><img :src=\"PageCenter.medalImage\" /></template>",
+    "<script setup>",
+    "const medalRewards = [];",
+    "const Rewards = medalRewards;",
+    "function getNodeDisplayReward(index) { return medalRewards[index]; }",
+    "</script>",
+  ].join("\n"));
   return root;
 }
 
@@ -98,7 +106,7 @@ test("turns a state-driven image bug into an executable diagnostic chain", async
   const root = await fixture();
   t.after(() => rm(root, { recursive: true, force: true }));
   const result = await route(root, "定位 claimed 状态下图片不切换的代码原因，只分析，不修改代码");
-  assert.equal(result.task_goal, "修复 claimed 状态下的图片切换异常。");
+  assert.equal(result.task_goal, "定位 claimed 状态下图片不切换的代码原因，只分析，不修改代码");
   assert.equal(result.engineering_judgment, "这是状态图片异常定位。复用现有状态来源和转换逻辑；需要调整图片渲染分支。");
   assert.deepEqual(result.required_knowledge, ["状态来源", "状态转换", "图片渲染分支"]);
   assert.deepEqual(result.retrieval_entries.slice(0, 2).map((item) => item.entry), ["claimed", "isClaimed"]);
@@ -217,7 +225,7 @@ test("default output is minimal and scores only appear in debug mode", async (t)
   assert.deepEqual(Object.keys(plain), [
     "original_request", "task_goal", "engineering_judgment", "required_knowledge", "retrieval_entries",
     "intent", "evidence", "recommended_skill", "alternative_skills", "selection_reason", "boundaries",
-    "stage", "execution_mode", "unknowns", "execution_plan", "execution_prompt",
+    "stage", "execution_mode", "unknowns", "added_context", "skipEnhancement", "execution_plan", "execution_prompt",
   ]);
   assert.ok(!JSON.stringify(plain).includes('"score"'));
   const debug = await route(root, "修复 claimed 状态下图片不切换的问题", { debugJson: true });
@@ -231,7 +239,8 @@ test("CLI defaults to text and exposes JSON only through explicit flags", async 
     SCRIPT, "--root", root, "--query", "生成 Midscene 测试文件", "--top-k", "5", "--evidence-type", "screenshot",
   ];
   const textOutput = (await execFileAsync(process.execPath, baseArgs, { encoding: "utf8" })).stdout;
-  assert.match(textOutput, /^🎯 任务目标\n/);
+  assert.match(textOutput, /^(?:当前需求已经明确，无需额外增强。|🧩 已补充上下文|🔍 公司检索入口|⚠️ 需要确认)/);
+  assert.doesNotMatch(textOutput, /🎯 任务目标|🧠 AI 判断|🔍 优先检索/);
   assert.match(textOutput, /建议 Skill：ai-test/);
   assert.doesNotMatch(textOutput, /"score"|"candidates"/);
 
@@ -261,7 +270,7 @@ test("the seven release scenarios pass through the real CLI", async (t) => {
     const args = [SCRIPT, "--root", root, "--query", query];
     const textOutput = (await execFileAsync(process.execPath, args, { encoding: "utf8" })).stdout;
     assert.match(textOutput, new RegExp(`建议 Skill：${expected}`), query);
-    assert.ok(textOutput.startsWith("🎯 任务目标\n"), query);
+    assert.doesNotMatch(textOutput, /🎯 任务目标|🔍 优先检索/, query);
     assert.doesNotMatch(textOutput, /"score"|"candidates"|截图：|接口：/, query);
 
     const jsonOutput = (await execFileAsync(process.execPath, [...args, "--format", "json"], { encoding: "utf8" })).stdout;
@@ -424,9 +433,10 @@ test("builds knowledge-first retrieval protocols for the five acceptance cases",
 
   const metadata = await route(root, "修复奖励名称和角标缺失");
   assert.deepEqual(metadata.required_knowledge, ["奖励名称和角标的接口字段", "抽奖结果到弹窗数据的适配", "奖励弹窗的字段渲染"]);
-  assert.deepEqual(metadata.retrieval_entries.map((item) => item.entry), ["do_lottery"]);
+  assert.deepEqual(metadata.retrieval_entries.map((item) => item.entry), ["do_lottery", "openRewardDialog"]);
   assert.deepEqual(metadata.retrieval_entries.map((item) => item.source), [
     "src/api/lottery.ts",
+    "src/stores/reward.ts",
   ]);
   assert.doesNotMatch(metadata.execution_prompt, /reward-dialog\.vue/);
 
@@ -444,6 +454,112 @@ test("builds knowledge-first retrieval protocols for the five acceptance cases",
   assert.deepEqual(copy.required_knowledge, ["目标文案位置"]);
   assert.deepEqual(copy.retrieval_entries.map((item) => item.entry), ["src/components/copy-card.vue"]);
   assert.ok(copy.boundaries.length <= 2);
+});
+
+test("clear intermittent reward bug keeps the original request and only adds context", async (t) => {
+  const root = await fixture();
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const query = "最后一个奖励会一会展示、一会不展示。";
+  const result = await route(root, query, { debugJson: true });
+
+  assert.equal(result.original_request, query);
+  assert.equal(result.skipEnhancement, false);
+  assert.deepEqual(result.added_context, [
+    "现象：末项奖励随轮播周期在正常图片与空白之间切换",
+    "范围：只有末项异常，其他奖励正常展示",
+  ]);
+  assert.deepEqual(result.retrieval_entries.map((item) => [item.knowledge, item.entry]), [
+    ["轮播切换", "mod3.vue / getNodeDisplayReward"],
+    ["奖励数据", "medalRewards / Rewards"],
+    ["图片配置", "对应 PageCenter 奖励配置"],
+  ]);
+  assert.match(result.execution_prompt, /^🧩 已补充上下文\n/);
+  assert.match(result.execution_prompt, /🧠 AI 判断\n异常与轮播周期同步/);
+  assert.match(result.execution_prompt, /🔍 公司检索入口/);
+  assert.match(result.execution_prompt, /🔄 轮播切换\n→ mod3\.vue \/ getNodeDisplayReward（确认末项切换时的索引与取值）/);
+  assert.match(result.execution_prompt, /🎁 奖励数据\n→ medalRewards \/ Rewards（确认末项奖励字段是否完整）/);
+  assert.match(result.execution_prompt, /🖼️ 图片配置\n→ 对应 PageCenter 奖励配置（确认末项图片资源是否存在）/);
+  assert.match(result.execution_prompt, /当前阶段：定位问题\n建议 Skill：gen-code（只分析）/);
+  assert.doesNotMatch(result.execution_prompt, /定位末项奖励|🎯 任务目标|重点对象/);
+  assert.doesNotMatch(result.execution_prompt, /根因(?:是|为)|可以确定/);
+  assert.ok(result.execution_prompt.length < 1_000);
+  assert.ok(result._debug.performance.total_processing_ms < 45_000);
+  assert.ok(result._debug.context.files_read.length <= 4);
+  assert.ok(result._debug.context.search_expansions <= 2);
+});
+
+test("standard bug continues past one generic entry until two layers are covered", async (t) => {
+  const root = await fixture();
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await writeFile(path.join(root, "src", "pages", "mod3.vue"), "export const Rewards = [];\n");
+  await writeFile(path.join(root, "src", "pages", "pagecenter-reward.ts"), "export const PageCenter = { rewardImage: 'asset' };\n");
+
+  const result = await route(root, "最后一个奖励会一会展示、一会不展示。", { debugJson: true });
+  assert.deepEqual(result.retrieval_entries.map((item) => item.knowledge), ["奖励数据", "图片配置"]);
+  assert.ok(result._debug.context.files_read.length >= 2);
+  assert.equal(result._debug.context.stop_reason, "reliable_entry_threshold");
+});
+
+test("explicit bug target follows bounded references until two layers are covered", async (t) => {
+  const root = await fixture();
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await writeFile(path.join(root, "src", "pages", "bug-reward.ts"), [
+    "import './reward-data';",
+    "import './reward-image';",
+  ].join("\n"));
+  await writeFile(path.join(root, "src", "pages", "reward-data.ts"), "export const Rewards = [];\n");
+  await writeFile(path.join(root, "src", "pages", "reward-image.ts"), "export const PageCenter = { rewardImage: 'asset' };\n");
+
+  const result = await route(root, "最后一个奖励一会显示、一会不显示，定位 src/pages/bug-reward.ts", { debugJson: true });
+  assert.deepEqual(result.retrieval_entries.slice(0, 2).map((item) => item.knowledge), ["奖励数据", "图片配置"]);
+  assert.doesNotMatch(result.execution_prompt, /bug-reward\.ts（定位轮播切换/);
+  assert.equal(result._debug.context.files_read.length, 4);
+  assert.equal(result._debug.context.stop_reason, "fast_path_retrieval_resolved");
+});
+
+test("explicit copy change skips enhancement", async (t) => {
+  const root = await fixture();
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const result = await route(root, "修改 src/components/copy-card.vue 的文案为领取成功");
+  assert.equal(result.skipEnhancement, true);
+  assert.deepEqual(result.added_context, []);
+  assert.match(result.execution_prompt, /^当前需求已经明确，无需额外增强。\n\n▶ 下一步/);
+  assert.doesNotMatch(result.execution_prompt, /已补充上下文|公司检索入口|任务目标/);
+});
+
+test("multi-image task only adds the target and reference relationship", async (t) => {
+  const root = await fixture();
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const result = await route(root, "根据图3实现奖励区域，图1和图4作为参考。", {
+    evidenceEntries: [
+      { kind: "attachment_reference", attachment: "attachment_1", label: "图1", role: "reference", source: "user", status: "fact" },
+      { kind: "attachment_reference", attachment: "attachment_3", label: "图3", role: "target", source: "user", status: "fact" },
+      { kind: "attachment_reference", attachment: "attachment_4", label: "图4", role: "reference", source: "user", status: "fact" },
+    ],
+  });
+  assert.deepEqual(result.added_context, ["图片关系：图 3为目标图；图 1、图 4为参考图"]);
+  assert.doesNotMatch(result.execution_prompt, /截图理解|UI 结构|验收标准|完整描述/);
+});
+
+test("API and page mismatch adds only the conflict relationship", async (t) => {
+  const root = await fixture();
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const result = await route(root, "接口返回已领取，但页面显示未领取");
+  assert.deepEqual(result.added_context, ["冲突关系：接口返回与页面展示不一致"]);
+  assert.match(result.execution_prompt, /🧩 已补充上下文\n- 冲突关系：接口返回与页面展示不一致/);
+  assert.match(result.execution_prompt, /当前阶段：定位问题\n建议 Skill：gen-code（只分析）/);
+  assert.doesNotMatch(result.execution_prompt, /需要确认/);
+  assert.doesNotMatch(result.execution_prompt, /任务目标/);
+});
+
+test("ambiguous change asks exactly one question", async (t) => {
+  const root = await fixture();
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const result = await route(root, "帮我改一下这个。");
+  const section = result.execution_prompt.split("⚠️ 需要确认\n")[1].split("\n\n▶ 下一步")[0];
+  assert.equal(result.skipEnhancement, false);
+  assert.equal(section.split("\n").length, 1);
+  assert.equal(section, "- 你希望修改视觉样式，还是修复功能异常？");
 });
 
 test("fixture content is ordinary UTF-8", async (t) => {

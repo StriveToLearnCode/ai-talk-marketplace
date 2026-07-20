@@ -214,6 +214,8 @@ function engineeringJudgment(classification, retrievalEntries) {
     dynamic_component_registration: "这是动态组件异常定位。复用现有名称生成和注册映射；需要调整真实组件名与映射不一致的位置。",
     reward_claim_visual: "这是现有奖励展示的领取态扩展。复用领取状态判断和奖励节点；新增内容是 icon/mask 蒙层及其状态分支。",
     state_visual_mismatch: "这是状态图片异常定位。复用现有状态来源和转换逻辑；需要调整图片渲染分支。",
+    intermittent_reward_display: "异常与轮播周期同步，更可能集中在末项奖励的轮播取值、数据映射或图片配置，不像整个奖励模块随机失效。应先确认空白出现时实际命中的奖励数据。",
+    api_page_conflict: "接口返回与页面展示冲突，排查应集中在响应适配、视图状态转换和渲染分支，但不能据此判断接口或页面单侧有误。应先对照同一请求下的原始响应与页面消费值。",
     copy_change: "这是现有页面文案调整。复用目标文件的渲染位置；只需新增或替换指定文案。",
   };
   if (judgments[classification.taskType]) return judgments[classification.taskType];
@@ -284,29 +286,7 @@ function targetScopeFor(classification) {
 }
 
 function deliverableFor(classification) {
-  if (!hasScreenshotProtocol(classification)) {
-    return classification.intent.desired_output === "unknown" ? null : classification.taskGoal;
-  }
-  const facts = classification.typedEvidence.filter((item) => item.status === "fact");
-  const target = facts.find((item) => item.kind === "attachment_reference" && item.role === "target");
-  const ui = facts
-    .filter((item) => ["ui_element", "ui_structure"].includes(item.kind))
-    .map((item) => item.name)
-    .filter(Boolean);
-  if (!target || !ui.length) return classification.taskGoal;
-  const uiText = ui.join(" ");
-  const subject = /(?:积分|进度|阶段)/u.test(uiText) && /(?:奖励|奖品)/u.test(uiText)
-    ? "积分奖励阶段 UI"
-    : "目标 UI";
-  const figureLabel = (value) => String(value || "").replace(/^图\s*/u, "图 ");
-  const referenceNumbers = facts
-    .filter((item) => item.kind === "attachment_reference" && item !== target)
-    .map((item) => String(item.label || item.attachment).match(/^图\s*(.+)$/u)?.[1])
-    .filter(Boolean);
-  const referenceText = referenceNumbers.length ? `；图 ${referenceNumbers.join("、")} 仅作参考` : "";
-  const namedModule = classification.originalRequest.match(/(?:实现|开发|完成)\s*([^，。；;\n]{2,40}?(?:模块|组件))/u)?.[1]?.trim();
-  if (namedModule) return `以${figureLabel(target.label || target.attachment)} 为目标，实现${namedModule}。`;
-  return `以${figureLabel(target.label || target.attachment)} 为目标，实现${subject}${referenceText}。`;
+  return classification.intent.desired_output === "unknown" ? null : classification.originalRequest;
 }
 
 function pageCenterEntry(classification, resource) {
@@ -467,59 +447,107 @@ export const buildExecutionPlan = buildTaskHandoff;
 
 function addSection(lines, title, items, format = (item) => String(item)) {
   if (!items.length) return;
-  lines.push("", title, ...items.map((item) => `- ${format(item)}`));
-}
-
-function knowledgeIcon(knowledge) {
-  if (/(?:积分|进度|阶段)/u.test(knowledge)) return "📈";
-  if (/(?:奖励|奖品)/u.test(knowledge)) return "🎁";
-  if (/(?:h5|链接|跳转)/iu.test(knowledge)) return "🔗";
-  if (/(?:rtl|从右到左)/iu.test(knowledge)) return "↔️";
-  if (knowledge === "页面资源" || /(?:状态|样式|布局|视觉)/u.test(knowledge)) return "🎨";
-  if (/(?:数据|接口|适配)/u.test(knowledge)) return "🔄";
-  return "•";
+  if (lines.length) lines.push("");
+  lines.push(title, ...items.map((item) => `- ${format(item)}`));
 }
 
 function knowledgeLabel(knowledge) {
-  return knowledge === "积分阶段" ? "积分进度" : knowledge;
+  const label = knowledge === "积分阶段" ? "积分进度" : knowledge;
+  if (/(?:轮播|切换|控制|行为)/u.test(label)) return `🔄 ${label}`;
+  if (/(?:奖励|奖品|数据|状态)/u.test(label)) return `🎁 ${label}`;
+  if (/(?:图片|资源|配置|渲染)/u.test(label)) return `🖼️ ${label}`;
+  return label;
 }
 
 function blockingLine(item) {
   if (item?.kind === "skill_availability" && item.skill) return `缺少 ${item.skill} Skill，需先安装或启用`;
+  if (item?.kind === "deliverable") return "你希望修改视觉样式，还是修复功能异常？";
   return blockerDescription(item);
+}
+
+function attachmentLabel(item) {
+  return String(item?.label || item?.attachment || "").replace(/^图\s*/u, "图 ");
+}
+
+export function addedContextFor(executionPlan) {
+  const source = executionPlan.task?.source_request || "";
+  const result = [];
+  if (/(?:奖励|奖品|reward|prize)/iu.test(source)
+    && /(?:最后(?:一个|一项)|末项|末尾)/u.test(source)
+    && /(?:一会(?:儿)?(?:展示|显示).{0,4}一会(?:儿)?不(?:展示|显示)|时有时无|忽隐忽现)/u.test(source)) {
+    result.push("现象：末项奖励随轮播周期在正常图片与空白之间切换");
+    result.push("范围：只有末项异常，其他奖励正常展示");
+  }
+
+  const attachments = (executionPlan.source_facts || [])
+    .filter((item) => item.kind === "attachment_reference" && item.status === "fact");
+  const targets = attachments.filter((item) => item.role === "target").map(attachmentLabel).filter(Boolean);
+  const references = attachments.filter((item) => ["reference", "comparison"].includes(item.role))
+    .map(attachmentLabel).filter(Boolean);
+  if (targets.length) {
+    const relation = [`${targets.join("、")}为目标图`];
+    if (references.length) relation.push(`${references.join("、")}为参考图`);
+    result.push(`图片关系：${relation.join("；")}`);
+  }
+
+  if (/(?:接口|api)/iu.test(source)
+    && /(?:页面|界面|ui|展示|显示)/iu.test(source)
+    && /(?:冲突|不一致|但|却)/u.test(source)) {
+    result.push("冲突关系：接口返回与页面展示不一致");
+  }
+  return uniqueStrings(result).slice(0, 2);
+}
+
+function visibleRetrievalFor(executionPlan) {
+  const targets = new Set((executionPlan.target_scope || []).map((item) => item.value).filter(Boolean));
+  return (executionPlan.retrieval || []).filter((item) => {
+    if (!item?.entry) return false;
+    if (item.evidence === "user_specified" && (targets.has(item.entry) || item.source === "user_request")) return false;
+    return true;
+  }).slice(0, 3);
+}
+
+export function skipEnhancementFor(executionPlan) {
+  const blocking = (executionPlan.blockers || []).some((item) => item?.blocking === true);
+  const diagnosticJudgment = executionPlan.workflow?.stage?.value === "定位问题" && executionPlan.task?.reasoning;
+  return !blocking && !diagnosticJudgment
+    && addedContextFor(executionPlan).length === 0 && visibleRetrievalFor(executionPlan).length === 0;
 }
 
 export function buildExecutionPrompt(executionPlan) {
   validateTaskHandoff(executionPlan);
-  const retrieval = (executionPlan.retrieval || []).slice(0, 3);
-  const blocking = (executionPlan.blockers || []).filter((item) => item?.blocking === true).slice(0, 2);
+  const addedContext = addedContextFor(executionPlan);
+  const retrieval = visibleRetrievalFor(executionPlan);
+  const blocking = (executionPlan.blockers || []).filter((item) => item?.blocking === true).slice(0, 1);
   const stage = executionPlan.workflow?.stage;
-  const lines = [
-    "🎯 任务目标",
-    executionPlan.task?.deliverable || "尚未明确",
-    "",
-    "🧠 AI 判断",
-    executionPlan.task?.reasoning || "这是新增功能需求。当前没有可复用入口证据，需要先明确实际交付物。",
-    "",
-    "🔍 优先检索",
-  ];
+  const lines = [];
+  if (skipEnhancementFor(executionPlan)) {
+    lines.push("当前需求已经明确，无需额外增强。");
+  } else {
+    addSection(lines, "🧩 已补充上下文", addedContext);
+    if (executionPlan.task?.reasoning) {
+      if (lines.length) lines.push("");
+      lines.push("🧠 AI 判断", executionPlan.task.reasoning);
+    }
+  }
   if (retrieval.length) {
+    lines.push(lines.length ? "" : null, "🔍 公司检索入口");
     for (const item of retrieval) {
-      lines.push(`${knowledgeIcon(item.knowledge)} ${knowledgeLabel(item.knowledge)}`);
+      lines.push(`${knowledgeLabel(item.knowledge)}`);
       lines.push(`→ ${item.entry}（${item.purpose}）`);
     }
-  } else {
-    lines.push("暂无已证实的检索入口");
   }
-  addSection(lines, "⚠️ 待确认", blocking, blockingLine);
+  addSection(lines, "⚠️ 需要确认", blocking, blockingLine);
   const unavailableSkill = blocking.find((item) => item?.kind === "skill_availability")?.skill;
   lines.push(
     "",
     "▶ 下一步",
     `当前阶段：${stage?.status === "available" && stage.value ? stage.value : "方案设计"}`,
-    `建议 Skill：${executionPlan.route?.skill || (unavailableSkill ? `${unavailableSkill}（需安装或启用）` : "暂不建议 Skill")}`,
+    `建议 Skill：${executionPlan.route?.skill
+      ? `${executionPlan.route.skill}${stage?.value === "定位问题" ? "（只分析）" : ""}`
+      : (unavailableSkill ? `${unavailableSkill}（需安装或启用）` : "暂不建议 Skill")}`,
   );
-  return lines.join("\n");
+  return lines.filter((line) => line !== null).join("\n");
 }
 
 export function buildResult(classification, ranking, context, searchSuggestions, debug = null, projectRoot = null) {
@@ -541,6 +569,8 @@ export function buildResult(classification, ranking, context, searchSuggestions,
     stage: executionPlan.workflow.stage.value,
     execution_mode: classification.executionMode,
     unknowns: executionPlan.blockers.map(blockerDescription),
+    added_context: addedContextFor(executionPlan),
+    skipEnhancement: skipEnhancementFor(executionPlan),
     execution_plan: executionPlan,
     execution_prompt: "",
   };

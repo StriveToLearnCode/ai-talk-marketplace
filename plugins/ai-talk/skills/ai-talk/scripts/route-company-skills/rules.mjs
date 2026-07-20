@@ -1,10 +1,12 @@
 export const MAX_FILE_BYTES = 128 * 1024;
-export const MAX_CONTEXT_FILES_READ = 5;
+export const MAX_CONTEXT_FILES_READ = 4;
 export const MAX_INDEXED_FILES = 240;
-export const MAX_SIMILAR_IMPLEMENTATIONS = 1;
+export const MAX_SIMILAR_IMPLEMENTATIONS = 3;
 export const MAX_RETRIEVAL_ENTRIES = 3;
 export const EARLY_STOP_RETRIEVAL_ENTRIES = 3;
 export const MAX_SKILL_METADATA_BYTES = 16 * 1024;
+export const MAX_SEARCH_EXPANSIONS = 2;
+export const TARGET_PROCESSING_MS = 45_000;
 
 export const SKILL_ROUTES = {
   "ui-self-check": {
@@ -45,7 +47,7 @@ export const KEYWORDS = {
   plan: ["实施方案", "实施计划", "前端方案", "前端计划", "只出方案", "docs/plan"],
   noCode: ["不修改代码", "不要修改代码", "不要改代码", "不生成代码", "只出方案"],
   code: ["实现", "开发", "修改", "修复", "写代码", "生成代码", "生成页面代码", "改造", "新增", "增加", "做出来", "做页面", "做组件"],
-  bug: ["有问题", "异常", "报错", "错误", "缺失", "未注册", "不生效", "没显示", "没有显示", "不显示", "未切换", "不切换", "没有更新", "定位并修复"],
+  bug: ["有问题", "异常", "报错", "错误", "冲突", "不一致", "缺失", "未注册", "不生效", "没显示", "没有显示", "不显示", "未切换", "不切换", "没有更新", "时有时无", "一会展示、一会不展示", "一会显示、一会不显示", "定位并修复"],
   inspect: ["打开页面", "看看页面", "浏览器", "控制台", "网络请求", "截图对比"],
   figma: ["figma"],
   analyze: ["分析", "梳理", "检查", "看一下"],
