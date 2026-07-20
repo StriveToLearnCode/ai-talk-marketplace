@@ -13,6 +13,12 @@ function uniqueEntries(values, key) {
 }
 
 export const TASK_HANDOFF_SCHEMA_VERSION = "1.1";
+export const TASK_EXECUTION_MODES = Object.freeze([
+  "modify_and_verify",
+  "inspect_only",
+  "plan_then_execute",
+  "plan_only",
+]);
 export const TASK_HANDOFF_KEYS = Object.freeze([
   "schema_version",
   "route",
@@ -35,6 +41,9 @@ function array(value) {
 export function normalizeTaskHandoff(value = {}) {
   const stage = value.workflow?.stage || {};
   const authorization = value.route?.authorization === "authorized" ? "authorized" : "inspect_only";
+  const requestedMode = value.workflow?.execution_mode
+    || (authorization === "authorized" ? "modify_and_verify" : "inspect_only");
+  const executionMode = TASK_EXECUTION_MODES.includes(requestedMode) ? requestedMode : "inspect_only";
   return {
     schema_version: TASK_HANDOFF_SCHEMA_VERSION,
     route: {
@@ -46,6 +55,8 @@ export function normalizeTaskHandoff(value = {}) {
       workdir: value.workspace?.workdir || null,
     },
     workflow: {
+      execution_mode: executionMode,
+      next_skill: value.workflow?.next_skill || null,
       stage: {
         value: stage.value || null,
         source: stage.source || "unavailable",
@@ -79,6 +90,9 @@ export function validateTaskHandoff(value) {
   }
   if (!["inspect_only", "authorized"].includes(value.route?.authorization)) {
     throw new Error("TaskHandoff route.authorization is invalid.");
+  }
+  if (!TASK_EXECUTION_MODES.includes(value.workflow?.execution_mode)) {
+    throw new Error("TaskHandoff workflow.execution_mode is invalid.");
   }
   for (const field of TASK_HANDOFF_KEYS.slice(5)) {
     if (!Array.isArray(value[field])) throw new Error(`TaskHandoff ${field} must be an array.`);
@@ -126,12 +140,16 @@ function requestBoundaries(classification, context) {
       "不在未确认页面和组件前扩大修改范围",
     ]).slice(0, 6);
   }
-  if (classification.executionMode === "analysis_only") return uniqueStrings(["只定位问题，不修改代码", ...explicit]).slice(0, 2);
+  if (classification.executionMode === "inspect_only" && classification.intent.desired_output === "code_changes") {
+    return uniqueStrings(["只定位问题，不修改代码", ...explicit]).slice(0, 2);
+  }
   if (explicit.length) return uniqueStrings(explicit).slice(0, 2);
 
   const targets = context.items.filter((item) => item.type === "target_file").map((item) => item.value);
   if (classification.intent.desired_output === "implementation_plan") return ["只输出方案，不修改代码"];
-  if (classification.executionMode === "inspect_fix_verify") return ["按浏览器检查、修复、复验三个阶段执行"];
+  if (classification.executionMode === "modify_and_verify" && classification.intent.desired_output === "live_page_findings") {
+    return ["按浏览器检查、修复、复验三个阶段执行"];
+  }
   if (classification.executionMode === "inspect_only") return ["只做浏览器现场检查，不修改代码或生成自动化测试"];
 
   const defaults = {
@@ -258,8 +276,8 @@ function stageFor(classification) {
   const output = classification.intent.desired_output;
   if (output === "automated_test") return "自动化测试";
   if (output === "implementation_plan" || output === "figma_analysis_document") return "方案设计";
-  if (output === "live_page_findings") return "页面检查";
-  if (output === "code_changes") return classification.executionMode === "analysis_only" ? "定位问题" : "修改代码";
+  if (output === "live_page_findings") return classification.executionMode === "modify_and_verify" ? "修改代码" : "页面检查";
+  if (output === "code_changes") return classification.executionMode === "modify_and_verify" ? "修改代码" : "定位问题";
   return classification.flags.bug ? "定位问题" : "方案设计";
 }
 
@@ -415,13 +433,17 @@ export function buildTaskHandoff({ classification, ranking, boundaries, blockers
     schema_version: TASK_HANDOFF_SCHEMA_VERSION,
     route: {
       skill: ranking.recommendedSkill || null,
-      authorization: "inspect_only",
+      authorization: classification.executionMode === "modify_and_verify" ? "authorized" : "inspect_only",
     },
     workspace: {
       project_root: projectRoot,
       workdir: null,
     },
     workflow: {
+      execution_mode: classification.executionMode,
+      next_skill: classification.executionMode === "plan_then_execute"
+        ? ranking.executionSkill || ranking.recommendedSkill || null
+        : null,
       stage: {
         value: stage,
         source: "derived",
@@ -461,7 +483,7 @@ function knowledgeLabel(knowledge) {
 
 function blockingLine(item) {
   if (item?.kind === "skill_availability" && item.skill) return `缺少 ${item.skill} Skill，需先安装或启用`;
-  if (item?.kind === "deliverable") return "你希望修改视觉样式，还是修复功能异常？";
+  if (item?.kind === "deliverable") return "你希望只定位问题，还是允许修改并验证？";
   return blockerDescription(item);
 }
 
@@ -520,6 +542,7 @@ export function buildExecutionPrompt(executionPlan) {
   const retrieval = visibleRetrievalFor(executionPlan);
   const blocking = (executionPlan.blockers || []).filter((item) => item?.blocking === true).slice(0, 1);
   const stage = executionPlan.workflow?.stage;
+  const executionMode = executionPlan.workflow?.execution_mode || "inspect_only";
   const lines = [];
   if (skipEnhancementFor(executionPlan)) {
     lines.push("当前需求已经明确，无需额外增强。");
@@ -544,7 +567,10 @@ export function buildExecutionPrompt(executionPlan) {
     "▶ 下一步",
     `当前阶段：${stage?.status === "available" && stage.value ? stage.value : "方案设计"}`,
     `建议 Skill：${executionPlan.route?.skill
-      ? `${executionPlan.route.skill}${stage?.value === "定位问题" ? "（只分析）" : ""}`
+      ? `${executionPlan.route.skill}${executionMode === "modify_and_verify"
+        ? "（修改并验证）"
+        : executionMode === "plan_then_execute" ? "（方案完成后确认执行）"
+          : stage?.value === "定位问题" ? "（只分析，不修改）" : ""}`
       : (unavailableSkill ? `${unavailableSkill}（需安装或启用）` : "暂不建议 Skill")}`,
   );
   return lines.filter((line) => line !== null).join("\n");

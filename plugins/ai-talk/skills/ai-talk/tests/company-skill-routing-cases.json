@@ -4,7 +4,7 @@
     "clarity": "clear",
     "prompt": "用浏览器检查 recharge Tab2 的视觉、交互和响应式，发现问题直接修复并复验",
     "expected_skill": "ui-self-check",
-    "expected_mode": "inspect_fix_verify",
+    "expected_mode": "modify_and_verify",
     "must_preserve": ["recharge Tab2", "视觉", "交互", "响应式", "修复", "复验"],
     "must_include_boundaries": ["浏览器检查、修复、复验"],
     "must_not_include": ["只检查并报告"],
@@ -102,7 +102,7 @@
     "clarity": "clear",
     "prompt": "根据现有 docs/plan 直接生成页面代码并完成验证",
     "expected_skill": "gen-code",
-    "expected_mode": "modify",
+    "expected_mode": "modify_and_verify",
     "must_preserve": ["docs/plan", "生成页面代码", "完成验证"],
     "must_not_include": ["analysis_only"]
   },
@@ -111,7 +111,7 @@
     "clarity": "clear",
     "prompt": "给 recharge 页面加上领取奖励逻辑，实际修改代码",
     "expected_skill": "gen-code",
-    "expected_mode": "modify",
+    "expected_mode": "modify_and_verify",
     "must_preserve": ["recharge", "领取奖励逻辑", "实际修改代码"],
     "must_not_include": ["analysis_only"],
     "expected_unknowns": []
@@ -121,7 +121,7 @@
     "clarity": "clear",
     "prompt": "把这个活动页做出来，包含 UI 和业务逻辑",
     "expected_skill": "gen-code",
-    "expected_mode": "modify",
+    "expected_mode": "modify_and_verify",
     "must_preserve": ["活动页", "UI", "业务逻辑"],
     "must_not_include": ["analysis_only"]
   },
@@ -139,7 +139,7 @@
     "clarity": "clear",
     "prompt": "参考这个 Figma 直接做页面，不要单独分析 Figma",
     "expected_skill": "gen-code",
-    "expected_mode": "modify",
+    "expected_mode": "modify_and_verify",
     "must_preserve": ["参考这个 Figma", "直接做页面", "不要单独分析 Figma"],
     "must_include_boundaries": ["不要单独分析 Figma"],
     "must_not_include": ["analysis_only"]
@@ -158,7 +158,7 @@
     "evidence_types": [
       "screenshot"
     ],
-    "expected_mode": "modify",
+    "expected_mode": "modify_and_verify",
     "must_preserve": ["截图", "Vue 活动页面", "修改代码"],
     "must_not_include": ["ui-self-check（"]
   },
@@ -248,7 +248,7 @@
     "clarity": "clear",
     "prompt": "定位 claimed 状态下图片不切换的代码原因，只分析，不修改代码",
     "expected_skill": "gen-code",
-    "expected_mode": "analysis_only",
+    "expected_mode": "inspect_only",
     "must_preserve": ["claimed", "图片不切换", "代码原因", "只分析", "不修改代码"],
     "must_include_boundaries": ["只定位问题，不修改代码"],
     "must_not_include": ["ui-self-check（", "修改并验证"],
@@ -259,7 +259,7 @@
     "clarity": "clear",
     "prompt": "定位 RewardDialog 视觉样式代码为什么异常，只排查原因，不修复",
     "expected_skill": "gen-code",
-    "expected_mode": "analysis_only",
+    "expected_mode": "inspect_only",
     "must_preserve": ["RewardDialog", "视觉样式代码", "只排查原因", "不修复"],
     "must_include_boundaries": ["只定位问题，不修改代码"],
     "must_not_include": ["ui-self-check（", "修改并验证"],
@@ -270,7 +270,7 @@
     "clarity": "clear",
     "prompt": "检查 recharge 页面代码为什么没有更新状态，只定位原因，不修改代码",
     "expected_skill": "gen-code",
-    "expected_mode": "analysis_only",
+    "expected_mode": "inspect_only",
     "must_preserve": ["recharge", "页面代码", "没有更新状态", "只定位原因", "不修改代码"],
     "must_include_boundaries": ["只定位问题，不修改代码"],
     "must_not_include": ["ui-self-check（", "修改并验证"],

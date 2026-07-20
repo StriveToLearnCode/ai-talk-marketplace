@@ -38,7 +38,7 @@ const PLUGIN_ROOT = path.resolve(import.meta.dirname, "..", "..", "..");
 const PLUGIN_SKILLS_ROOT = path.join(PLUGIN_ROOT, "skills");
 const COMPARISON_ROOT = path.join(PLUGIN_ROOT, "docs", "skills");
 const AUTHORIZATION_BLOCKER =
-  "需要上一轮协议中的建议 Skill，且当前输入必须是独立的授权指令。";
+  "方案完成后需要一次执行确认。";
 
 function blockerDescription(blocker) {
   return typeof blocker === "string" ? blocker : blocker?.description || blocker?.name || "";
@@ -86,13 +86,15 @@ function executionPlanFrom(previousContract) {
     schema_version: "1.1",
     route: {
       skill: previousContract?.recommended_skill || null,
-      authorization: "inspect_only",
+      authorization: previousContract?.execution_mode === "modify_and_verify" ? "authorized" : "inspect_only",
     },
     workspace: {
       project_root: null,
       workdir: null,
     },
     workflow: {
+      execution_mode: previousContract?.execution_mode || "inspect_only",
+      next_skill: null,
       stage: {
         value: stage,
         source: stage ? "legacy_contract" : "unavailable",
@@ -117,10 +119,13 @@ function executionPlanFrom(previousContract) {
 export function executionHandoffFor(currentInput, previousContract) {
   const gate = executionGateFor(currentInput, previousContract);
   const executionPlan = executionPlanFrom(previousContract);
-  executionPlan.route.authorization = gate.authorized
-    ? "authorized"
-    : "inspect_only";
-  if (gate.authorized) {
+  const authorized = executionPlan.route.authorization === "authorized" || gate.authorized;
+  executionPlan.route.authorization = authorized ? "authorized" : "inspect_only";
+  if (authorized) {
+    if (executionPlan.workflow.next_skill) executionPlan.route.skill = executionPlan.workflow.next_skill;
+    executionPlan.workflow.execution_mode = "modify_and_verify";
+    executionPlan.workflow.next_skill = null;
+    executionPlan.workflow.stage = { value: "修改代码", source: "derived", status: "available" };
     executionPlan.blockers = executionPlan.blockers.filter(
       (blocker) => blockerDescription(blocker) !== AUTHORIZATION_BLOCKER,
     );
@@ -131,7 +136,9 @@ export function executionHandoffFor(currentInput, previousContract) {
     ];
   }
   return {
-    ...gate,
+    authorized,
+    skill: authorized ? executionPlan.route.skill : null,
+    execution_mode: executionPlan.workflow.execution_mode,
     added_context: addedContextFor(executionPlan),
     skipEnhancement: skipEnhancementFor(executionPlan),
     execution_plan: executionPlan,

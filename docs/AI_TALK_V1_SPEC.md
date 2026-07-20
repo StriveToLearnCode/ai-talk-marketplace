@@ -10,7 +10,7 @@
 
 AI Talk 仅负责保持用户原话，并补充公司 Skill、组件、Docs 和仓库检索所需的增量上下文，同时推荐职责匹配且已安装的 Skill。
 
-解析轮必须保持只读，`route.authorization` 固定为 `inspect_only`。解析轮不得修改项目、调用或自动执行下游 Skill、自动 handoff，或开始实现。只有用户在后续独立一轮给出受支持的明确授权表达，才允许把既有 TaskHandoff 的授权更新为 `authorized`；授权只改变授权状态并移除授权 blocker。
+路由脚本保持只读，但必须从用户原话直接确定 execution mode。明确修改意图使用 `modify_and_verify` 并将 `route.authorization` 设为 `authorized`；明确诊断意图使用 `inspect_only`；明确要求先分析或给方案、确认后再改时使用 `plan_then_execute`。只有真正无法判断是否允许修改时才询问一次。
 
 V1 不包含 `planned_changes`、写范围强制、来源优先级引擎、resolved lifecycle、自动 Skill 调用，以及任何新的顶层研发事实源。
 
@@ -36,7 +36,7 @@ V1 不包含 `planned_changes`、写范围强制、来源优先级引擎、resol
 schema_version: "1.1"
 route: { skill, authorization }
 workspace: { project_root, workdir }
-workflow: { stage: { value, source, status } }
+workflow: { execution_mode, next_skill, stage: { value, source, status } }
 task: { source_request, deliverable, reasoning }
 knowledge_requirements: []
 retrieval: []
@@ -50,6 +50,8 @@ verification: []
 约束：
 
 - `route.authorization` 只能是 `inspect_only` 或 `authorized`。
+- `workflow.execution_mode` 使用 `modify_and_verify`、`inspect_only`、`plan_then_execute`；兼容的纯方案任务可保留 `plan_only`。
+- `workflow.next_skill` 仅供 `plan_then_execute` 保存已安装的实施 Skill；确认后将其移动到 `route.skill` 并清空。
 - `knowledge_requirements` 最多 4 项，`retrieval` 最多 3 项。
 - `source_facts` 只保存 `fact` 或带置信度的 `inference`；`unknown` 必须进入 `blockers`。
 - 新 blocker 固定包含 `kind`、`description`、`status: unknown`、`resolution` 和 `blocking`；必须继续读取旧字符串 blocker。
@@ -85,14 +87,14 @@ typed evidence 必须包含 `kind` 和 `source`。事实与推断必须包含合
 
 附件使用稳定的 `attachment_N`，并保留 `target | reference | comparison` 角色。截图只证明直接可见表现，不得据此猜接口字段、业务枚举、资源 key、页面路径或组件名。用户明确的交互和进度语义可作为 fact；未定位的数据、页面、组件和资源 key 进入非阻塞的 search-resolvable blocker。Page Center 资源只在有事实时保留 provider、附件来源和复用关系。
 
-## 7. Skill 路由与授权
+## 7. Skill 路由与执行
 
-Skill 推荐只基于已安装索引中的职责匹配。目标 Skill 不存在时保持空值，并生成安装、启用或 `--source-root` 的硬阻塞；不得改选其他职责 Skill。推荐不构成授权。
+Skill 推荐只基于已安装索引中的职责匹配。目标 Skill 不存在时保持空值，并生成安装、启用或 `--source-root` 的硬阻塞；不得改选其他职责 Skill。
 
-授权门禁优先读取 `execution_plan.route.skill`，仅旧协议回退到 `recommended_skill`。引用、转述、列举授权语句，或请求与计划不一致的 Skill，均不得通过。
+明确修改动作在首轮完成授权，并直接 handoff 到 `execution_plan.route.skill`。宿主支持下游调用时同轮继续；不支持时 Formatter 只显示一个建议 Skill 入口，不输出授权口令或重复按钮。`plan_then_execute` 完成方案后只确认一次，确认只更新 mode、阶段和授权状态。
 
 ## 8. V1 黄金用例
 
 V1 固定 8 个黄金用例，覆盖：新增弹窗首次进入打开、奖励元数据缺失、动态组件未注册、奖励领取态蒙层、状态图片异常、明确文件文案修改、浏览器只读检查、只输出实施方案。
 
-黄金回归必须走真实路由链，逐项校验 TaskHandoff 顶层结构、最终 Formatter 文本、建议 Skill，并记录总处理时间、读取文件数、Skill 正文读取数、搜索扩展次数和早停原因。简单任务不超过 15 秒，标准任务不超过 45 秒，多图任务不超过 60 秒；多图任务默认读取文件不超过 5 个，Skill 正文默认读取 0 个。解析轮不得执行下游 Skill。
+黄金回归必须走真实路由链，逐项校验 TaskHandoff 顶层结构、最终 Formatter 文本、建议 Skill，并记录总处理时间、读取文件数、Skill 正文读取数、搜索扩展次数和早停原因。简单任务不超过 15 秒，标准任务不超过 45 秒，多图任务不超过 60 秒；多图任务默认读取文件不超过 5 个，Skill 正文默认读取 0 个。CLI 路由测试不得修改被分析项目。

@@ -23,7 +23,7 @@ function selectionReason(skill, classification, expected) {
   if (output === "live_page_findings") return "用户明确要求浏览器现场检查页面视觉、交互或运行状态，不是代码静态定位或自动化测试文件。";
   if (output === "automated_test") return "用户明确要求 Midscene、自动化测试、测试文件或运行测试。";
   if (output === "implementation_plan") return "最终产物是实施方案或计划，不进入代码修改。";
-  if (output === "code_changes" && classification.executionMode === "analysis_only") {
+  if (output === "code_changes" && classification.executionMode === "inspect_only") {
     return "用户要求定位代码问题但明确不修改代码，因此由 gen-code 按只分析模式执行。";
   }
   if (output === "code_changes") return classification.flags.figma
@@ -35,6 +35,10 @@ function selectionReason(skill, classification, expected) {
 
 export function rankSkills(skills, classification, limit = 3) {
   const expected = expectedSkillFor(classification);
+  const executionSkill = classification.executionMode === "plan_then_execute"
+    && classification.intent.desired_output === "implementation_plan"
+    ? skills.find((skill) => skill.name.toLowerCase() === "gen-code")?.name || ""
+    : "";
   const ranked = skills.map((skill) => {
     const route = SKILL_ROUTES[skill.name.toLowerCase()];
     const exactOutput = route?.desiredOutput === classification.intent.desired_output;
@@ -55,6 +59,7 @@ export function rankSkills(skills, classification, limit = 3) {
   return {
     recommendedSkill: primary?.skill.name || "",
     expectedSkill: expected || "",
+    executionSkill,
     alternatives,
     reason: selectionReason(primary?.skill, classification, expected),
     debug: ranked.map((item) => ({

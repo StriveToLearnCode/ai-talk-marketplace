@@ -1,6 +1,6 @@
 ---
 name: ai-talk
-description: 在用户显式调用 $ai-talk 时，保持用户原话不变，补充高价值事实、任务专属工程判断，以及公司 Skill、组件、Docs 和仓库的真实检索入口，并推荐职责匹配且已安装的下一 Skill。表达真正歧义时最多询问一个问题；解析轮不得修改项目或调用下游 Skill。
+description: 在用户显式调用 $ai-talk 时，保持用户原话不变，补充高价值事实、任务专属工程判断，以及公司 Skill、组件、Docs 和仓库的真实检索入口，并推荐职责匹配且已安装的下一 Skill。根据用户原话直接确定执行模式；表达真正歧义时最多询问一个问题。
 ---
 
 # AI Talk 增量上下文增强
@@ -20,7 +20,8 @@ AI Talk 负责给出最多 2 条高价值增量事实、一条任务专属工程
 3. 只提取附件、代码或原话中真正新增的高价值事实，最多 2 条。同义改写和泛化关键词不算增量。
 4. 生成一条 1～2 句的任务专属工程判断：用现象缩小范围，解释优先排查层，但不得把可能原因写成已确认根因。
 5. 检索公司代码、组件、Docs 或 Skill 索引；只保留真实命中的文件、符号、配置或 Skill，最多 3 项。标准 Bug 优先覆盖控制、数据、配置/渲染中的至少两个不同层次。
-6. 生成唯一事实源 `execution_plan`，再单向投影 `added_context`、`skipEnhancement` 和 `execution_prompt`。只输出允许的前台模块后立即停止。
+6. 根据原话中的动作意图确定 execution mode；明确修改意图不得降级为只读或再次询问授权。
+7. 生成唯一事实源 `execution_plan`，再单向投影 `added_context`、`skipEnhancement` 和 `execution_prompt`。若 mode 为 `modify_and_verify`，宿主支持 Skill handoff 时在同一轮直接进入建议 Skill；宿主不支持时只保留 `▶ 下一步` 中的唯一 Skill 入口。
 
 ```bash
 node scripts/route-company-skills.mjs \
@@ -59,7 +60,7 @@ node scripts/route-company-skills.mjs \
 schema_version: "1.1"
 route: { skill, authorization }
 workspace: { project_root, workdir }
-workflow: { stage: { value, source, status } }
+workflow: { execution_mode, next_skill, stage: { value, source, status } }
 task: { source_request, deliverable, reasoning }
 knowledge_requirements: []
 retrieval: []
@@ -75,7 +76,8 @@ verification: []
 - `blockers` 新条目使用 `{ kind, description, status: unknown, resolution, blocking }`；`search_resolvable` 默认 `blocking: false`。renderer 和授权 handoff 仍须读取旧字符串 blocker。
 - `verification` 保存行为级 assertion；不得用不可靠的 lint、test 或 e2e 命令填充。
 - 截图任务默认约束不得猜接口字段或业务枚举；有 Page Center 事实时优先复用；页面和组件未确认前不得扩大修改范围。
-- 解析轮的 `route.authorization` 固定为 `inspect_only`。建议 Skill 不构成执行授权。
+- `modify_and_verify` 直接对应 `route.authorization: authorized`；其他 mode 保持 `inspect_only`。
+- `plan_then_execute` 若当前 Skill 只负责方案，使用 `workflow.next_skill` 保存已安装的实施 Skill，确认后切换 `route.skill`。
 
 ### 字段稳定性
 
@@ -97,7 +99,7 @@ Stable：
 
 Experimental：`development_context`、`ui_requirements`、`interaction_requirements`、`data_requirements`、`reusable_resources`、`acceptance_assertions` 目前只表示 typed entry 的研发维度，不得新增为顶层字段。
 
-Reserved：`planned_changes`、write scope enforcement、source precedence engine、resolved plan lifecycle、automatic skill invocation。当前没有生产消费者，不得写入协议或假装生效。
+Reserved：`planned_changes`、write scope enforcement、source precedence engine、resolved plan lifecycle。当前没有生产消费者，不得写入协议或假装生效。
 
 ## 阶段隔离
 
@@ -135,12 +137,14 @@ Reserved：`planned_changes`、write scope enforcement、source precedence engin
 - 文件名、变量名、接口名、资源路径和 Skill 名称不得翻译或改写。
 - 目标 Skill 不存在时保持空值并给出安装、启用或 `--source-root` 的下一步，不改选其他职责 Skill。
 
-## 执行授权门禁
+## 执行模式与 handoff
 
-- 解析轮只允许受限只读；禁止修改文件、调用下游工具或 Skill、自动 handoff。
-- 只有用户在后续独立一轮输入 `开始执行`、`直接修改`、`使用这个协议继续` 或匹配计划 Skill 的 `调用 <skill> 执行`，才把 handoff 的授权更新为 `authorized`。
-- 引用、转述或列举授权表达不算授权。门禁优先读取 `execution_plan.route.skill`，旧协议才回退到 `recommended_skill`。
-- handoff 必须保留 typed entries、constraints、blockers 和 verification；授权只改变授权状态并移除授权 blocker。
+- `开发`、`实现`、`新增`、`接入`、`修改`、`修复`、`直接改` 等明确动作词设置 `modify_and_verify`、阶段 `修改代码` 和 `route.authorization: authorized`，不得再次询问。
+- `排查`、`为什么`、`分析`、`定位原因`、`只看看` 等诊断表达设置 `inspect_only`、阶段 `定位问题`，不得修改代码。
+- `先给方案，确认后再改`、`先分析原因，确认后再改` 等分阶段表达设置 `plan_then_execute`；方案或分析完成后只确认一次。
+- `帮我看看`、`处理一下` 等无法判断是否允许修改的表达保持 `inspect_only`，最多询问一次“只定位还是修改并验证”。
+- 明确修改意图的 handoff 直接消费 `execution_plan.route.skill`。宿主支持下游 Skill 调用时同轮继续；不支持时只显示一个建议 Skill 入口，不输出授权口令、重复按钮或门禁说明。
+- handoff 必须保留 typed entries、constraints、blockers 和 verification；`plan_then_execute` 的一次确认只更新 mode、阶段和授权状态。
 
 ## 必测场景
 
@@ -152,4 +156,4 @@ Reserved：`planned_changes`、write scope enforcement、source precedence engin
 - inference 不进入 fact，unknown 不渲染成已确认，verification 包含行为验收目标，但这些内部事实不展开到 Formatter。
 - execution prompt 只从 execution plan 渲染；输出只能出现允许的五个模块，非阻塞 unknown 必须隐藏。
 - 清晰 Bug 只补上下文且不改写原话；明确文案修改设置 `skipEnhancement: true`；多图只补图片关系；接口和页面冲突只补冲突关系；“帮我改一下这个”只询问一个问题。
-- 继续覆盖状态含义保护、资源/路径区分、受限项目读取、职责匹配路由和显式执行授权。
+- 继续覆盖状态含义保护、资源/路径区分、受限项目读取、职责匹配路由和基于原始意图的执行模式。

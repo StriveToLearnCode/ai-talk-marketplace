@@ -10,7 +10,7 @@
       ],
       "recommended_skill": "gen-code",
       "stage": "修改代码",
-      "execution_prompt": "🧠 AI 判断\n这是新增弹窗功能。复用现有弹窗结构和打开能力；新增内容是首次进入时的触发与页面挂载。\n\n🔍 公司检索入口\n弹窗模板结构\n→ self-select-dialog.vue（复用弹窗结构）\n\n▶ 下一步\n当前阶段：修改代码\n建议 Skill：gen-code"
+      "execution_prompt": "🧠 AI 判断\n这是新增弹窗功能。复用现有弹窗结构和打开能力；新增内容是首次进入时的触发与页面挂载。\n\n🔍 公司检索入口\n弹窗模板结构\n→ self-select-dialog.vue（复用弹窗结构）\n\n▶ 下一步\n当前阶段：修改代码\n建议 Skill：gen-code（修改并验证）"
     },
     "expected_stop_reason": "similar_implementation_limit"
   },
@@ -26,7 +26,7 @@
       ],
       "recommended_skill": "gen-code",
       "stage": "修改代码",
-      "execution_prompt": "🧠 AI 判断\n这是奖励展示异常定位。复用现有抽奖接口和奖励数据适配；需要调整名称、角标到渲染层的字段链路。\n\n🔍 公司检索入口\n🎁 奖励名称和角标的接口字段\n→ do_lottery（定位奖励名称和角标字段）\n🎁 抽奖结果到弹窗数据的适配\n→ openRewardDialog（复用抽奖结果的数据适配）\n\n▶ 下一步\n当前阶段：修改代码\n建议 Skill：gen-code"
+      "execution_prompt": "🧠 AI 判断\n这是奖励展示异常定位。复用现有抽奖接口和奖励数据适配；需要调整名称、角标到渲染层的字段链路。\n\n🔍 公司检索入口\n🎁 奖励名称和角标的接口字段\n→ do_lottery（定位奖励名称和角标字段）\n🎁 抽奖结果到弹窗数据的适配\n→ openRewardDialog（复用抽奖结果的数据适配）\n\n▶ 下一步\n当前阶段：修改代码\n建议 Skill：gen-code（修改并验证）"
     }
   },
   {
@@ -41,7 +41,7 @@
       ],
       "recommended_skill": "gen-code",
       "stage": "修改代码",
-      "execution_prompt": "🧠 AI 判断\n这是动态组件异常定位。复用现有名称生成和注册映射；需要调整真实组件名与映射不一致的位置。\n\n🔍 公司检索入口\n动态组件名称生成\n→ dynamicComponentName（复用动态组件名称生成方式）\n动态组件注册规则\n→ componentRegistry（复用动态组件注册规则）\n\n▶ 下一步\n当前阶段：修改代码\n建议 Skill：gen-code"
+      "execution_prompt": "🧠 AI 判断\n这是动态组件异常定位。复用现有名称生成和注册映射；需要调整真实组件名与映射不一致的位置。\n\n🔍 公司检索入口\n动态组件名称生成\n→ dynamicComponentName（复用动态组件名称生成方式）\n动态组件注册规则\n→ componentRegistry（复用动态组件注册规则）\n\n▶ 下一步\n当前阶段：修改代码\n建议 Skill：gen-code（修改并验证）"
     },
     "expected_stop_reason": "reliable_entry_threshold"
   },
@@ -58,7 +58,7 @@
       ],
       "recommended_skill": "gen-code",
       "stage": "修改代码",
-      "execution_prompt": "🧠 AI 判断\n这是现有奖励展示的领取态扩展。复用领取状态判断和奖励节点；新增内容是 icon/mask 蒙层及其状态分支。\n\n🔍 公司检索入口\n🎁 奖励领取状态判断\n→ isClaimed（复用奖励领取态判断）\n🎁 奖励节点渲染\n→ reward-item.vue（复用奖励节点的领取态挂载位置）\n\n▶ 下一步\n当前阶段：修改代码\n建议 Skill：gen-code"
+      "execution_prompt": "🧠 AI 判断\n这是现有奖励展示的领取态扩展。复用领取状态判断和奖励节点；新增内容是 icon/mask 蒙层及其状态分支。\n\n🔍 公司检索入口\n🎁 奖励领取状态判断\n→ isClaimed（复用奖励领取态判断）\n🎁 奖励节点渲染\n→ reward-item.vue（复用奖励节点的领取态挂载位置）\n\n▶ 下一步\n当前阶段：修改代码\n建议 Skill：gen-code（修改并验证）"
     },
     "expected_stop_reason": "all_knowledge_resolved"
   },
@@ -75,7 +75,7 @@
       ],
       "recommended_skill": "gen-code",
       "stage": "修改代码",
-      "execution_prompt": "🧠 AI 判断\n这是状态图片异常定位。复用现有状态来源和转换逻辑；需要调整图片渲染分支。\n\n🔍 公司检索入口\n🎁 状态转换\n→ isClaimed（复用接口状态到视图状态的转换）\n🖼️ 图片渲染分支\n→ reward-item.vue（定位状态对应的图片渲染条件）\n\n▶ 下一步\n当前阶段：修改代码\n建议 Skill：gen-code"
+      "execution_prompt": "🧠 AI 判断\n这是状态图片异常定位。复用现有状态来源和转换逻辑；需要调整图片渲染分支。\n\n🔍 公司检索入口\n🎁 状态转换\n→ isClaimed（复用接口状态到视图状态的转换）\n🖼️ 图片渲染分支\n→ reward-item.vue（定位状态对应的图片渲染条件）\n\n▶ 下一步\n当前阶段：修改代码\n建议 Skill：gen-code（修改并验证）"
     },
     "expected_stop_reason": "all_knowledge_resolved"
   },
@@ -90,7 +90,7 @@
       ],
       "recommended_skill": "gen-code",
       "stage": "修改代码",
-      "execution_prompt": "当前需求已经明确，无需额外增强。\n\n▶ 下一步\n当前阶段：修改代码\n建议 Skill：gen-code"
+      "execution_prompt": "当前需求已经明确，无需额外增强。\n\n▶ 下一步\n当前阶段：修改代码\n建议 Skill：gen-code（修改并验证）"
     }
   },
   {
