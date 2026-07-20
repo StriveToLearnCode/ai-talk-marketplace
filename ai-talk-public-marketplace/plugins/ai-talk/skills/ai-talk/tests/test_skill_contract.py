@@ -15,16 +15,18 @@ class Contract(unittest.TestCase):
         self.assertTrue(manifest["name"])
         skill = (SKILL / "SKILL.md").read_text()
         self.assertIn("name: ai-talk", skill)
-        self.assertIn("下一步 AI 可直接执行的 Task Handoff", skill)
-        for heading in ("🎯 任务目标", "🧠 AI 判断", "🔍 优先检索", "⚠️ 待确认", "▶ 下一步"):
+        self.assertIn("AI Talk 增量上下文增强", skill)
+        for heading in ("🧩 已补充上下文", "🧠 AI 判断", "🔍 公司检索入口", "⚠️ 需要确认", "▶ 下一步"):
             self.assertIn(heading, skill)
+        for removed_heading in ("🎯 任务目标", "🔍 优先检索", "⚠️ 待确认"):
+            self.assertNotIn(removed_heading, skill)
         self.assertNotIn("📚 需要理解", skill)
         self.assertIn("--evidence-json", skill)
         self.assertIn("Stable", skill)
         self.assertIn("Reserved", skill)
         self.assertIn("TaskHandoff 1.1", skill)
-        self.assertIn("项目上下文正文默认最多读取 5 个文件", skill)
-        self.assertIn("Skill 正文为 0", skill)
+        self.assertIn("项目上下文正文最多读取 4 个文件", skill)
+        self.assertIn("Skill 正文读取数默认为 0", skill)
         spec = SPEC.read_text()
         self.assertIn("唯一的产品与实现标准", spec)
         self.assertIn("处理链固定为单向三阶段", spec)
@@ -47,7 +49,7 @@ class Contract(unittest.TestCase):
             "original_request", "task_goal", "engineering_judgment",
             "required_knowledge", "retrieval_entries", "intent", "evidence", "recommended_skill",
             "alternative_skills", "selection_reason", "boundaries", "unknowns",
-            "stage", "execution_mode", "execution_plan", "execution_prompt",
+            "stage", "execution_mode", "added_context", "skipEnhancement", "execution_plan", "execution_prompt",
         ):
             self.assertIn(field, source)
         for removed in (

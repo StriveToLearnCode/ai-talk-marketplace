@@ -141,7 +141,7 @@ test("V1 normalizes legacy plans into the fixed TaskHandoff model", () => {
   assert.throws(() => buildExecutionPrompt({ ...handoff, experimental_field: true }), /invalid V1 top-level structure/);
 });
 
-test("V1 stops reading explicit context at the five-file limit", async (t) => {
+test("V1 stops reading explicit context at the four-file limit", async (t) => {
   const root = await fixture();
   t.after(() => rm(root, { recursive: true, force: true }));
   for (const name of ["one", "two", "three"]) {
@@ -151,7 +151,7 @@ test("V1 stops reading explicit context at the five-file limit", async (t) => {
   const result = await route(root, "修改 targets/one/target.ts targets/two/target.ts targets/three/target.ts");
   assert.equal(result._debug.context.files_read.length, MAX_CONTEXT_FILES_READ);
   assert.equal(result._debug.context.stop_reason, "context_file_limit");
-  assert.ok(result.execution_plan.blockers.some((item) => item.description.includes("上下文读取已达到 5 个文件上限")));
+  assert.ok(result.execution_plan.blockers.some((item) => item.description.includes("上下文读取已达到 4 个文件上限")));
 });
 
 test("V1 stops before indexing when supplied evidence resolves all knowledge", async (t) => {

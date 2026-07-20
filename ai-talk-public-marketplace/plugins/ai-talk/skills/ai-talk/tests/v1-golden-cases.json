@@ -3,14 +3,14 @@
     "id": "dialog-auto-open",
     "query": "帮我开发一个弹窗组件模板，并一进入页面就开启。",
     "expected": {
-      "task_goal": "新增一个弹窗组件模板，并在首次进入页面时自动打开。",
+      "task_goal": "帮我开发一个弹窗组件模板，并一进入页面就开启。",
       "engineering_judgment": "这是新增弹窗功能。复用现有弹窗结构和打开能力；新增内容是首次进入时的触发与页面挂载。",
       "retrieval_entries": [
         { "knowledge": "弹窗模板结构", "entry": "self-select-dialog.vue", "purpose": "复用弹窗结构" }
       ],
       "recommended_skill": "gen-code",
       "stage": "修改代码",
-      "execution_prompt": "🎯 任务目标\n新增一个弹窗组件模板，并在首次进入页面时自动打开。\n\n🧠 AI 判断\n这是新增弹窗功能。复用现有弹窗结构和打开能力；新增内容是首次进入时的触发与页面挂载。\n\n🔍 优先检索\n• 弹窗模板结构\n→ self-select-dialog.vue（复用弹窗结构）\n\n▶ 下一步\n当前阶段：修改代码\n建议 Skill：gen-code"
+      "execution_prompt": "🧠 AI 判断\n这是新增弹窗功能。复用现有弹窗结构和打开能力；新增内容是首次进入时的触发与页面挂载。\n\n🔍 公司检索入口\n弹窗模板结构\n→ self-select-dialog.vue（复用弹窗结构）\n\n▶ 下一步\n当前阶段：修改代码\n建议 Skill：gen-code"
     },
     "expected_stop_reason": "similar_implementation_limit"
   },
@@ -18,21 +18,22 @@
     "id": "reward-metadata",
     "query": "修复奖励名称和角标缺失",
     "expected": {
-      "task_goal": "修复奖励名称和角标缺失的问题。",
+      "task_goal": "修复奖励名称和角标缺失",
       "engineering_judgment": "这是奖励展示异常定位。复用现有抽奖接口和奖励数据适配；需要调整名称、角标到渲染层的字段链路。",
       "retrieval_entries": [
-        { "knowledge": "奖励名称和角标的接口字段", "entry": "do_lottery", "purpose": "定位奖励名称和角标字段" }
+        { "knowledge": "奖励名称和角标的接口字段", "entry": "do_lottery", "purpose": "定位奖励名称和角标字段" },
+        { "knowledge": "抽奖结果到弹窗数据的适配", "entry": "openRewardDialog", "purpose": "复用抽奖结果的数据适配" }
       ],
       "recommended_skill": "gen-code",
       "stage": "修改代码",
-      "execution_prompt": "🎯 任务目标\n修复奖励名称和角标缺失的问题。\n\n🧠 AI 判断\n这是奖励展示异常定位。复用现有抽奖接口和奖励数据适配；需要调整名称、角标到渲染层的字段链路。\n\n🔍 优先检索\n🎁 奖励名称和角标的接口字段\n→ do_lottery（定位奖励名称和角标字段）\n\n▶ 下一步\n当前阶段：修改代码\n建议 Skill：gen-code"
+      "execution_prompt": "🧠 AI 判断\n这是奖励展示异常定位。复用现有抽奖接口和奖励数据适配；需要调整名称、角标到渲染层的字段链路。\n\n🔍 公司检索入口\n🎁 奖励名称和角标的接口字段\n→ do_lottery（定位奖励名称和角标字段）\n🎁 抽奖结果到弹窗数据的适配\n→ openRewardDialog（复用抽奖结果的数据适配）\n\n▶ 下一步\n当前阶段：修改代码\n建议 Skill：gen-code"
     }
   },
   {
     "id": "dynamic-component",
     "query": "修复动态组件未注册",
     "expected": {
-      "task_goal": "修复动态组件未注册的问题。",
+      "task_goal": "修复动态组件未注册",
       "engineering_judgment": "这是动态组件异常定位。复用现有名称生成和注册映射；需要调整真实组件名与映射不一致的位置。",
       "retrieval_entries": [
         { "knowledge": "动态组件名称生成", "entry": "dynamicComponentName", "purpose": "复用动态组件名称生成方式" },
@@ -40,15 +41,15 @@
       ],
       "recommended_skill": "gen-code",
       "stage": "修改代码",
-      "execution_prompt": "🎯 任务目标\n修复动态组件未注册的问题。\n\n🧠 AI 判断\n这是动态组件异常定位。复用现有名称生成和注册映射；需要调整真实组件名与映射不一致的位置。\n\n🔍 优先检索\n• 动态组件名称生成\n→ dynamicComponentName（复用动态组件名称生成方式）\n• 动态组件注册规则\n→ componentRegistry（复用动态组件注册规则）\n\n▶ 下一步\n当前阶段：修改代码\n建议 Skill：gen-code"
+      "execution_prompt": "🧠 AI 判断\n这是动态组件异常定位。复用现有名称生成和注册映射；需要调整真实组件名与映射不一致的位置。\n\n🔍 公司检索入口\n动态组件名称生成\n→ dynamicComponentName（复用动态组件名称生成方式）\n动态组件注册规则\n→ componentRegistry（复用动态组件注册规则）\n\n▶ 下一步\n当前阶段：修改代码\n建议 Skill：gen-code"
     },
-    "expected_stop_reason": "similar_implementation_limit"
+    "expected_stop_reason": "reliable_entry_threshold"
   },
   {
     "id": "reward-claim-mask",
     "query": "奖励领取后增加 icon/mask",
     "expected": {
-      "task_goal": "在奖励领取后增加 icon/mask 蒙层。",
+      "task_goal": "奖励领取后增加 icon/mask",
       "engineering_judgment": "这是现有奖励展示的领取态扩展。复用领取状态判断和奖励节点；新增内容是 icon/mask 蒙层及其状态分支。",
       "retrieval_entries": [
         { "knowledge": "奖励领取状态判断", "entry": "isClaimed", "purpose": "复用奖励领取态判断" },
@@ -57,7 +58,7 @@
       ],
       "recommended_skill": "gen-code",
       "stage": "修改代码",
-      "execution_prompt": "🎯 任务目标\n在奖励领取后增加 icon/mask 蒙层。\n\n🧠 AI 判断\n这是现有奖励展示的领取态扩展。复用领取状态判断和奖励节点；新增内容是 icon/mask 蒙层及其状态分支。\n\n🔍 优先检索\n🎁 奖励领取状态判断\n→ isClaimed（复用奖励领取态判断）\n• icon/mask 资源引用\n→ icon/mask（复用用户指定的领取态资源）\n🎁 奖励节点渲染\n→ reward-item.vue（复用奖励节点的领取态挂载位置）\n\n▶ 下一步\n当前阶段：修改代码\n建议 Skill：gen-code"
+      "execution_prompt": "🧠 AI 判断\n这是现有奖励展示的领取态扩展。复用领取状态判断和奖励节点；新增内容是 icon/mask 蒙层及其状态分支。\n\n🔍 公司检索入口\n🎁 奖励领取状态判断\n→ isClaimed（复用奖励领取态判断）\n🎁 奖励节点渲染\n→ reward-item.vue（复用奖励节点的领取态挂载位置）\n\n▶ 下一步\n当前阶段：修改代码\n建议 Skill：gen-code"
     },
     "expected_stop_reason": "all_knowledge_resolved"
   },
@@ -65,7 +66,7 @@
     "id": "state-image",
     "query": "修复 claimed 状态下图片不切换的问题",
     "expected": {
-      "task_goal": "修复 claimed 状态下的图片切换异常。",
+      "task_goal": "修复 claimed 状态下图片不切换的问题",
       "engineering_judgment": "这是状态图片异常定位。复用现有状态来源和转换逻辑；需要调整图片渲染分支。",
       "retrieval_entries": [
         { "knowledge": "状态来源", "entry": "claimed", "purpose": "从状态标识追踪数据来源" },
@@ -74,7 +75,7 @@
       ],
       "recommended_skill": "gen-code",
       "stage": "修改代码",
-      "execution_prompt": "🎯 任务目标\n修复 claimed 状态下的图片切换异常。\n\n🧠 AI 判断\n这是状态图片异常定位。复用现有状态来源和转换逻辑；需要调整图片渲染分支。\n\n🔍 优先检索\n🎨 状态来源\n→ claimed（从状态标识追踪数据来源）\n🎨 状态转换\n→ isClaimed（复用接口状态到视图状态的转换）\n• 图片渲染分支\n→ reward-item.vue（定位状态对应的图片渲染条件）\n\n▶ 下一步\n当前阶段：修改代码\n建议 Skill：gen-code"
+      "execution_prompt": "🧠 AI 判断\n这是状态图片异常定位。复用现有状态来源和转换逻辑；需要调整图片渲染分支。\n\n🔍 公司检索入口\n🎁 状态转换\n→ isClaimed（复用接口状态到视图状态的转换）\n🖼️ 图片渲染分支\n→ reward-item.vue（定位状态对应的图片渲染条件）\n\n▶ 下一步\n当前阶段：修改代码\n建议 Skill：gen-code"
     },
     "expected_stop_reason": "all_knowledge_resolved"
   },
@@ -82,26 +83,26 @@
     "id": "copy-change",
     "query": "修改 src/components/copy-card.vue 的文案为领取成功",
     "expected": {
-      "task_goal": "将 src/components/copy-card.vue 的目标文案改为“领取成功”。",
+      "task_goal": "修改 src/components/copy-card.vue 的文案为领取成功",
       "engineering_judgment": "这是现有页面文案调整。复用目标文件的渲染位置；只需新增或替换指定文案。",
       "retrieval_entries": [
         { "knowledge": "目标文案位置", "entry": "src/components/copy-card.vue", "purpose": "定位目标文案" }
       ],
       "recommended_skill": "gen-code",
       "stage": "修改代码",
-      "execution_prompt": "🎯 任务目标\n将 src/components/copy-card.vue 的目标文案改为“领取成功”。\n\n🧠 AI 判断\n这是现有页面文案调整。复用目标文件的渲染位置；只需新增或替换指定文案。\n\n🔍 优先检索\n• 目标文案位置\n→ src/components/copy-card.vue（定位目标文案）\n\n▶ 下一步\n当前阶段：修改代码\n建议 Skill：gen-code"
+      "execution_prompt": "当前需求已经明确，无需额外增强。\n\n▶ 下一步\n当前阶段：修改代码\n建议 Skill：gen-code"
     }
   },
   {
     "id": "live-inspect",
     "query": "用浏览器现场检查充值页的按钮点击和布局，只检查，不修改代码",
     "expected": {
-      "task_goal": "完成充值页面的页面检查。",
+      "task_goal": "用浏览器现场检查充值页的按钮点击和布局，只检查，不修改代码",
       "engineering_judgment": "这是现有页面异常定位。复用目标页面行为；需要补充视觉、交互和响应式问题证据。",
       "retrieval_entries": [],
       "recommended_skill": "ui-self-check",
       "stage": "页面检查",
-      "execution_prompt": "🎯 任务目标\n完成充值页面的页面检查。\n\n🧠 AI 判断\n这是现有页面异常定位。复用目标页面行为；需要补充视觉、交互和响应式问题证据。\n\n🔍 优先检索\n暂无已证实的检索入口\n\n▶ 下一步\n当前阶段：页面检查\n建议 Skill：ui-self-check"
+      "execution_prompt": "当前需求已经明确，无需额外增强。\n\n▶ 下一步\n当前阶段：页面检查\n建议 Skill：ui-self-check"
     },
     "expected_stop_reason": "no_evidence_backed_retrieval"
   },
@@ -109,12 +110,12 @@
     "id": "plan-only",
     "query": "先给充值页出前端方案文档，只出方案，不生成代码",
     "expected": {
-      "task_goal": "输出充值页面的前端实施方案。",
+      "task_goal": "先给充值页出前端方案文档，只出方案，不生成代码",
       "engineering_judgment": "这是新增功能的方案设计。复用已定位的页面结构和数据流；新增内容是目标交互的实施步骤。",
       "retrieval_entries": [],
       "recommended_skill": "gen-frontend-plan",
       "stage": "方案设计",
-      "execution_prompt": "🎯 任务目标\n输出充值页面的前端实施方案。\n\n🧠 AI 判断\n这是新增功能的方案设计。复用已定位的页面结构和数据流；新增内容是目标交互的实施步骤。\n\n🔍 优先检索\n暂无已证实的检索入口\n\n▶ 下一步\n当前阶段：方案设计\n建议 Skill：gen-frontend-plan"
+      "execution_prompt": "当前需求已经明确，无需额外增强。\n\n▶ 下一步\n当前阶段：方案设计\n建议 Skill：gen-frontend-plan"
     },
     "expected_stop_reason": "no_evidence_backed_retrieval"
   }

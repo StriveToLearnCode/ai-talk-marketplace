@@ -6,9 +6,11 @@ import { readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 
 import {
+  addedContextFor,
   buildExecutionPrompt,
   buildResult,
   normalizeTaskHandoff,
+  skipEnhancementFor,
 } from "./route-company-skills/build-execution-prompt.mjs";
 import {
   buildRetrievalRequest,
@@ -27,7 +29,9 @@ import {
   MAX_FILE_BYTES,
   MAX_INDEXED_FILES,
   MAX_RETRIEVAL_ENTRIES,
+  MAX_SEARCH_EXPANSIONS,
   MAX_SIMILAR_IMPLEMENTATIONS,
+  TARGET_PROCESSING_MS,
 } from "./route-company-skills/rules.mjs";
 
 const PLUGIN_ROOT = path.resolve(import.meta.dirname, "..", "..", "..");
@@ -128,6 +132,8 @@ export function executionHandoffFor(currentInput, previousContract) {
   }
   return {
     ...gate,
+    added_context: addedContextFor(executionPlan),
+    skipEnhancement: skipEnhancementFor(executionPlan),
     execution_plan: executionPlan,
     execution_prompt: buildExecutionPrompt(executionPlan),
   };
@@ -185,6 +191,8 @@ export async function routeCompanySkills(args) {
             max_similar_implementations: MAX_SIMILAR_IMPLEMENTATIONS,
             max_indexed_files: MAX_INDEXED_FILES,
             max_retrieval_entries: MAX_RETRIEVAL_ENTRIES,
+            max_search_expansions: MAX_SEARCH_EXPANSIONS,
+            target_processing_ms: TARGET_PROCESSING_MS,
           },
           search_suggestions: searchSuggestions,
         },

@@ -1,13 +1,13 @@
 # AI Talk Plugin
 
-AI Talk 是一个 Codex 插件，用于将开发者的自然语言、截图、设计稿、接口信息和项目资料，整理成下一步 AI 可直接执行的 Task Handoff。它不替代公司的 Skill，也不直接负责写代码。
+AI Talk 是一个 Codex 插件，用于保持开发者原话，并补充公司 Skill、组件、Docs 和仓库检索所需的增量上下文。它不替代公司的 Skill，也不直接负责写代码。
 
-它把研发输入整理为结构化执行协议：
+它把研发输入增强为结构化执行协议：
 
-1. 将用户输入整理为一句任务目标和一句任务专属工程判断。
-2. 识别完成任务必须检索的知识对象，不用泛化分类凑数。
-3. 只为有真实引用、UI 结构、同类使用、文档/Skill 索引或用户指定证据的知识对象选择入口。
-4. 固定输出任务目标、AI 判断、优先检索、硬阻塞和下一 Skill；详细事实只保留在 JSON 协议中。
+1. 保持用户原话，不生成改写后的任务目标。
+2. 最多补充 2 条高价值增量事实，并给出一条 1～2 句的任务专属工程判断。
+3. 只为真实命中的代码、组件、Docs 或 Skill 索引选择入口；标准 Bug 在预算内覆盖至少两个不同排查层，最多 3 项。
+4. 仅在硬阻塞时询问一个问题；没有增量时设置 `skipEnhancement` 并直接给出下一步。
 
 ```bash
 node skills/ai-talk/scripts/route-company-skills.mjs \
@@ -16,7 +16,7 @@ node skills/ai-talk/scripts/route-company-skills.mjs \
   --evidence-json '{"kind":"attachment_reference","attachment":"attachment_3","role":"target","source":"user","status":"fact"}'
 ```
 
-默认输出是由结构化 `execution_plan` 单向渲染的精简 Task Handoff。`待确认` 仅在真正阻塞时出现；截图描述、目录、依赖、Docs、AGENTS、约束和验收不在文本中展开。机器调用使用 `--format json`；调试时使用 `--debug-json`。
+默认输出是由结构化 `execution_plan` 单向渲染的精简增强结果。前台只允许已补充上下文、AI 判断、公司检索入口、需要确认和下一步；机器调用使用 `--format json`，调试时使用 `--debug-json`。
 
 后续独立授权轮由同一 CLI 执行真实门禁：
 
@@ -29,7 +29,7 @@ node skills/ai-talk/scripts/route-company-skills.mjs \
 
 JSON 结果包含 `execution_plan` 1.1；`task.reasoning`、`knowledge_requirements` 和 `retrieval` 驱动 Formatter，截图研发维度仍作为 `source_facts`、`blockers` 和 `verification` 中的 typed entries 保留。授权门禁优先消费 `route.skill`，handoff 保留完整计划。
 
-读取范围通过 `realpath` 限制在项目根目录内；拒绝 `node_modules` 和仓库外符号链接。单文件最多 128 KiB，上下文正文默认最多 5 个文件，同类实现正文最多 1 个。多图 UI 没有明确目标文件时不做全仓兜底；确认目标图、目标文件和 2～3 个可靠入口后早停。Skill 只读取 name/description 索引，不读取正文；不读取 Docs。建议 Skill 不构成执行授权。
+读取范围通过 `realpath` 限制在项目根目录内；拒绝 `node_modules` 和仓库外符号链接。总处理时间目标不超过 45 秒，最多搜索 2 次，单文件最多 128 KiB，上下文正文最多 4 个文件。标准 Bug 至少覆盖两个不同排查层后早停。Skill 默认只读取 name/description 索引。建议 Skill 不构成执行授权。
 
 ## 验证
 

@@ -186,6 +186,8 @@ function screeningTerms(classification) {
   if (/弹窗/u.test(knowledge)) add("dialog", "modal", "popup", "page", "index");
   if (/(?:积分|进度|阶段)/u.test(knowledge)) add("level", "point", "score", "progress", "stage");
   if (/(?:奖励|奖品)/u.test(knowledge)) add("reward", "prize", "lottery", "banner");
+  if (/(?:轮播|取值|切换)/u.test(knowledge)) add("carousel", "swiper", "reward", "prize", "mod");
+  if (/(?:图片资源|图片配置|页面资源)/u.test(knowledge)) add("pagecenter", "image", "img", "asset", "reward");
   if (/(?:状态|图片)/u.test(knowledge)) add("state", "status", "reward", "item", "node");
   if (/(?:动态组件|组件名称|注册规则)/u.test(knowledge)) add("dynamic", "component", "loader", "registry");
   if (/(?:h5|跳转)/iu.test(knowledge)) add("h5", "banner", "activity");
@@ -205,6 +207,7 @@ function screenScore(value, classification, terms, targetRecords) {
   if (/self[-_]select[-_](?:dialog|modal|popup)/i.test(basename)) score += 20;
   if (classification.taskType === "reward_metadata_missing" && /(?:^|\/)api(?:\/|$)/i.test(normalized)) score += 40;
   if (classification.taskType === "reward_metadata_missing" && /(?:^|\/)(?:store|stores)(?:\/|$)/i.test(normalized)) score += 35;
+  if (classification.taskType === "intermittent_reward_display" && /^mod\d+\.(?:vue|tsx?|jsx?)$/i.test(basename)) score += 120;
   if (classification.taskType !== "dialog_change" && classification.taskType !== "dialog_auto_open"
     && /(?:dialog|modal|popup)/i.test(basename)) score -= 100;
   if (["dialog_change", "dialog_auto_open"].includes(classification.taskType)
@@ -216,9 +219,10 @@ function screenScore(value, classification, terms, targetRecords) {
 async function similarRecords(root, classification, context) {
   if (context.stop_reason === "context_file_limit") return [];
   const reliableTarget = Math.min(
-    classification.multiImageUi ? 2 : EARLY_STOP_RETRIEVAL_ENTRIES,
+    classification.multiImageUi || classification.flags.bug ? 2 : EARLY_STOP_RETRIEVAL_ENTRIES,
     classification.requiredKnowledge.length,
   );
+  const similarImplementationLimit = classification.flags.bug ? MAX_SIMILAR_IMPLEMENTATIONS : 1;
   const resourceEntries = classification.typedEvidence.some((item) =>
     ["resource_reference", "resource_reuse_candidate"].includes(item.kind)
     && item.status === "fact");
@@ -248,18 +252,27 @@ async function similarRecords(root, classification, context) {
       }
     }
     references.sort((a, b) => b.score - a.score || relative(root, a.file).localeCompare(relative(root, b.file)));
-    for (const reference of references.slice(0, MAX_SIMILAR_IMPLEMENTATIONS)) {
+    const records = [];
+    for (const reference of references.slice(0, similarImplementationLimit)) {
+      if (context._read_files.size >= MAX_CONTEXT_FILES_READ) {
+        context.stop_reason = "context_file_limit";
+        break;
+      }
       const content = await readBounded(reference.file);
       if (content === null) continue;
       const record = recordFor(root, reference.file, content, "target_reference");
+      records.push(record);
       context._read_files.add(reference.file);
       context.similar_implementations_read.push(record.path);
       context.files_read = [...context._read_files].map((file) => relative(root, file));
-      context.stop_reason = reliableTarget > 0
-        && reliableCount([...context._records, record]) >= reliableTarget
-        ? "fast_path_retrieval_resolved"
-        : "target_reference_limit";
-      return [record];
+      if (reliableTarget > 0 && reliableCount([...context._records, ...records]) >= reliableTarget) {
+        context.stop_reason = "fast_path_retrieval_resolved";
+        break;
+      }
+    }
+    if (records.length) {
+      if (!context.stop_reason) context.stop_reason = "target_reference_limit";
+      return records;
     }
     context.stop_reason = "explicit_target_only";
     return [];
@@ -305,7 +318,7 @@ async function similarRecords(root, classification, context) {
     const referenced = records.some((record) => record.content.includes(basename) || record.content.includes(stem)) ? 220 : 0;
     return item.score + referenced;
   };
-  while (records.length < MAX_SIMILAR_IMPLEMENTATIONS
+  while (records.length < similarImplementationLimit
     && context._read_files.size < MAX_CONTEXT_FILES_READ
     && pending.length) {
     pending.sort((a, b) => totalScore(b) - totalScore(a) || a.value.localeCompare(b.value));
@@ -446,6 +459,27 @@ function codeCandidates(classification, records) {
       && /(?:claimed|rewardStatus|isClaimed)/i.test(record.content)
       && /(?:img|image|icon|mask)/i.test(record.content),
     () => 120);
+
+  addSymbols("轮播切换", "确认末项切换时的索引与取值",
+    [/\b(getNodeDisplayReward)\b/, /\b(get\w*(?:Display)?Reward)\b/i],
+    (symbol) => symbol === "getNodeDisplayReward" ? 160 : 110);
+  for (const record of records) {
+    const rewardSymbols = symbols(record, [/\b(medalRewards)\b/, /\b(Rewards)\b/, /\b(\w*Rewards)\b/]);
+    if (rewardSymbols.length) {
+      result.push(candidate("奖励数据", rewardSymbols.join(" / "), "确认末项奖励字段是否完整", 1,
+        rewardSymbols.includes("medalRewards") ? 160 : 100, record));
+    }
+    if (/Page\s*Center|PageCenter|pageCenter/u.test(record.content)) {
+      result.push(candidate("图片配置", "对应 PageCenter 奖励配置", "确认末项图片资源是否存在", 1, 140, record));
+    }
+  }
+
+  if (classification.taskType === "intermittent_reward_display") {
+    for (const item of result.filter((entry) => entry.knowledge === "轮播切换")) {
+      const record = records.find((entry) => entry.path === item.source);
+      if (record) item.entry = `${record.basename} / ${item.entry}`;
+    }
+  }
 
   addFiles("积分阶段", "复用进度与阶段状态",
     (record) => /\.vue$/i.test(record.basename)

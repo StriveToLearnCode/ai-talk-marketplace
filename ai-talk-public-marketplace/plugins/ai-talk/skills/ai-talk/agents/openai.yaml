@@ -1,7 +1,7 @@
 interface:
   display_name: "AI Talk"
-  short_description: "将研发输入整理为下一步 AI 可直接执行的 Task Handoff"
-  default_prompt: "使用 $ai-talk 将自然语言、截图和项目资料整理为包含任务目标、AI 判断、有证据的优先检索和下一 Skill 的精简任务协议。"
+  short_description: "保持用户原话，补充高价值事实、工程判断和真实入口"
+  default_prompt: "使用 $ai-talk 保留用户原话，补充高价值增量事实、一条任务专属工程判断，以及真实命中的公司代码、组件、Docs 或 Skill 入口。"
 
 policy:
   allow_implicit_invocation: false

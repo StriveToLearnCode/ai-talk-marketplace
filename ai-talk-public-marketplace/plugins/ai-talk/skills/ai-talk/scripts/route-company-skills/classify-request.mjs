@@ -171,13 +171,17 @@ function classifyIntent(query) {
   const liveInspect = includesAny(text, KEYWORDS.inspect)
     || /(?:检查|查看|看看|测试|测一下).{0,16}(?:视觉|交互|响应式|布局|按钮点击)/i.test(text);
   const rejectsAutomatedTest = /(?:不要|不需要|无需|禁止|不)\s*(?:生成|创建|编写)?\s*(?:自动化)?测试(?:文件|用例)?/i.test(text);
+  const intermittentDisplay = /(?:一会(?:儿)?(?:展示|显示).{0,4}一会(?:儿)?不(?:展示|显示)|时有时无|忽隐忽现)/u.test(text);
+  const apiPageConflict = /(?:接口|api)/iu.test(text)
+    && /(?:页面|界面|ui|展示|显示)/iu.test(text)
+    && /(?:冲突|不一致|但|却)/u.test(text);
   const flags = {
     analysisOnly: includesAny(text, KEYWORDS.analysisOnly),
     automatedTest: includesAny(text, KEYWORDS.automatedTest) && !rejectsAutomatedTest,
     plan: includesAny(text, KEYWORDS.plan),
     noCode: includesAny(text, KEYWORDS.noCode),
     code: includesAny(text, KEYWORDS.code),
-    bug: includesAny(text, KEYWORDS.bug),
+    bug: includesAny(text, KEYWORDS.bug) || intermittentDisplay || apiPageConflict,
     inspect: liveInspect,
     figma: figmaReference,
     analyze: includesAny(text, KEYWORDS.analyze),
@@ -200,7 +204,7 @@ function executionModeFor(intent, flags) {
   if (intent.desired_output === "live_page_findings") {
     return flags.analysisOnly || !flags.code ? "inspect_only" : "inspect_fix_verify";
   }
-  if (intent.desired_output === "code_changes") return flags.analysisOnly ? "analysis_only" : "modify";
+  if (intent.desired_output === "code_changes") return flags.analysisOnly || (flags.bug && !flags.code) ? "analysis_only" : "modify";
   if (["implementation_plan", "figma_analysis_document"].includes(intent.desired_output)) return "plan_only";
   if (intent.desired_output === "automated_test") return "modify";
   return "plan_only";
@@ -217,6 +221,14 @@ function taskTypeFor(query, evidence) {
   const text = query.toLowerCase();
   const hasTargetFile = evidence.some((item) => item.type === "target_file");
   if (hasTargetFile && /(?:文案|文字|copy|标题|提示语)/i.test(query)) return "copy_change";
+  if (/(?:接口|api)/iu.test(query)
+    && /(?:页面|界面|ui|展示|显示)/iu.test(query)
+    && /(?:冲突|不一致|但|却)/u.test(query)) return "api_page_conflict";
+  if (/(?:奖励|奖品|reward|prize)/iu.test(query)
+    && /(?:最后(?:一个|一项)|末项|末尾)/u.test(query)
+    && /(?:一会(?:儿)?(?:展示|显示).{0,4}一会(?:儿)?不(?:展示|显示)|时有时无|忽隐忽现)/u.test(query)) {
+    return "intermittent_reward_display";
+  }
   if (/\b(?:claimed|unclaimed|completed|incomplete|locked|disabled)\b/i.test(query)
     && /(?:图片|图标|蒙层|image|icon|mask)/i.test(query)
     && /(?:未切换|不切换|没有切换|未更新|没有更新|异常)/i.test(query)) return "state_visual_mismatch";
@@ -233,43 +245,6 @@ function taskTypeFor(query, evidence) {
   }
   if (/(?:弹窗|dialog|modal|popup)/i.test(text)) return "dialog_change";
   return "generic";
-}
-
-function taskGoalFor(query, taskType, intent, evidence, executionMode) {
-  if (taskType === "dialog_auto_open") return "新增一个弹窗组件模板，并在首次进入页面时自动打开。";
-  if (taskType === "reward_metadata_missing") return "修复奖励名称和角标缺失的问题。";
-  if (taskType === "dynamic_component_registration") return "修复动态组件未注册的问题。";
-  if (taskType === "reward_claim_visual") return "在奖励领取后增加 icon/mask 蒙层。";
-  if (taskType === "state_visual_mismatch") {
-    const state = extractStates(query)[0] || "目标";
-    return `修复 ${state} 状态下的图片切换异常。`;
-  }
-  if (taskType === "copy_change") {
-    const file = evidence.find((item) => item.type === "target_file")?.value || "目标文件";
-    const copy = query.match(/(?:文案|文字|标题|提示语)(?:修改|改)?为[“"']?([^，。；;”"']+)/u)?.[1]?.trim();
-    return copy ? `将 ${file} 的目标文案改为“${copy}”。` : `完成 ${file} 的文案修改。`;
-  }
-  const page = evidence.find((item) => item.type === "target_page")?.value;
-  const component = evidence.find((item) => item.type === "component")?.value;
-  const file = evidence.find((item) => item.type === "target_file")?.value;
-  const target = page
-    ? (/^[A-Za-z0-9]/.test(page) ? `${page} 页面` : `${page}页面`)
-    : component || file || "目标页面";
-  const namedTarget = /^[A-Za-z0-9./@_-]/.test(target) ? ` ${target}` : target;
-  if (intent.desired_output === "automated_test") return `新增${namedTarget}的自动化测试。`;
-  if (intent.desired_output === "implementation_plan") return `输出${namedTarget}的前端实施方案。`;
-  if (intent.desired_output === "figma_analysis_document") return "输出 Figma 页面分析方案。";
-  if (intent.desired_output === "live_page_findings") {
-    return executionMode === "inspect_fix_verify"
-      ? `完成${namedTarget}的页面检查并修复发现的问题。`
-      : `完成${namedTarget}的页面检查。`;
-  }
-  if (intent.desired_output === "code_changes") {
-    if (/(?:领取|奖励).{0,8}(?:逻辑|能力)/u.test(query)) return `完成${namedTarget}的奖励领取能力。`;
-    if (intent.flags.bug) return `修复${namedTarget}的目标异常。`;
-    return `完成${namedTarget}的开发。`;
-  }
-  return "明确当前任务的最终交付物。";
 }
 
 function typedKnowledge(entries) {
@@ -298,6 +273,8 @@ function requiredKnowledgeFor(taskType, evidence, typedEvidence, intent) {
     dynamic_component_registration: ["动态组件名称生成", "动态组件注册规则", "实际组件名称"],
     reward_claim_visual: ["奖励领取状态判断", "icon/mask 资源引用", "奖励节点渲染"],
     state_visual_mismatch: ["状态来源", "状态转换", "图片渲染分支"],
+    intermittent_reward_display: ["轮播切换", "奖励数据", "图片配置"],
+    api_page_conflict: ["接口返回", "页面展示"],
     copy_change: ["目标文案位置"],
     generic: null,
   }[taskType];
@@ -345,7 +322,7 @@ export function classifyRequest(query, evidenceTypes = [], evidenceEntries = [])
     executionMode,
     multiImageUi,
     taskType,
-    taskGoal: taskGoalFor(original, taskType, intent, normalizedEvidence, executionMode),
+    taskGoal: intent.desired_output === "unknown" ? null : original,
     requiredKnowledge: requiredKnowledgeFor(taskType, normalizedEvidence, typedEvidence, intent),
   };
 }

@@ -71,7 +71,7 @@ test("builds the complete screenshot development protocol", async (t) => {
   ]);
   assert.equal(plan.schema_version, "1.1");
   assert.deepEqual(plan.route, { skill: "gen-code", authorization: "inspect_only" });
-  assert.equal(plan.task.deliverable, "以图 3 为目标，实现积分奖励阶段 UI；图 1、2、4 仅作参考。");
+  assert.equal(plan.task.deliverable, CURRENT_CASE.query);
   assert.equal(plan.task.reasoning, "这是现有奖励横幅的积分阶段扩展。优先复用进度、奖励展示和跳转能力；新增重点是图 3 的守护者区域及 RTL 布局。");
   assert.deepEqual(plan.knowledge_requirements, ["积分阶段", "奖励展示", "页面资源", "半屏 H5"]);
   assert.deepEqual(plan.retrieval.map((item) => item.entry), ["图 4 的 Page Center 配置"]);
@@ -100,9 +100,9 @@ test("builds the complete screenshot development protocol", async (t) => {
     "ui_assertion", "interaction_assertion", "state_assertion", "resource_assertion",
   ]);
   assert.equal(result.execution_prompt, buildExecutionPrompt(plan));
-  assert.match(result.execution_prompt, /^🎯 任务目标\n/);
-  assert.match(result.execution_prompt, /🧠 AI 判断/);
-  assert.match(result.execution_prompt, /🎨 页面资源\n→ 图 4 的 Page Center 配置（确认目标模块资源）/);
+  assert.match(result.execution_prompt, /^🧩 已补充上下文\n/);
+  assert.match(result.execution_prompt, /图片关系：图 3为目标图；图 1、图 2、图 4为参考图/);
+  assert.match(result.execution_prompt, /页面资源\n→ 图 4 的 Page Center 配置（确认目标模块资源）/);
   assert.doesNotMatch(result.execution_prompt, /需要理解|dialog-reward|reward-dialog/);
   assert.doesNotMatch(result.execution_prompt, /截图理解|UI 结构|当前积分来源未定位|约束|验收目标|执行授权/);
   assert.ok(result.execution_prompt.length <= CURRENT_EXPECTED.execution_prompt.length * 0.4);
@@ -113,7 +113,7 @@ test("builds the complete screenshot development protocol", async (t) => {
   assert.equal(result._debug.skill_index.index_files_read, 1);
   assert.equal(result._debug.performance.search_expansions, 0);
   assert.equal(result._debug.performance.early_stop_reason, "multi_image_evidence_resolved");
-  assert.ok(result._debug.performance.total_processing_ms <= 60_000);
+  assert.ok(result._debug.performance.total_processing_ms <= 30_000);
 });
 
 test("uses the frozen multi-image fast path for a selected target file", async (t) => {
@@ -133,16 +133,16 @@ test("uses the frozen multi-image fast path for a selected target file", async (
   );
 
   assert.equal(result.execution_prompt, [
-    "🎯 任务目标",
-    "以图 2 为目标，实现龙临天域二选一送礼模块。",
+    "🧩 已补充上下文",
+    "- 图片关系：图 2为目标图；图 1为参考图",
     "",
     "🧠 AI 判断",
     "这是现有页面能力的补充开发。复用 mod4.vue 的奖励展示与选择交互，补齐目标图要求的结构、状态和资源。",
     "",
-    "🔍 优先检索",
+    "🔍 公司检索入口",
     "🎁 奖励展示",
     "→ mod4.vue（复用现有展示结构）",
-    "🎨 页面资源",
+    "🖼️ 页面资源",
     "→ 图 1 的 Page Center 配置（确认目标模块资源）",
     "",
     "▶ 下一步",
@@ -158,7 +158,7 @@ test("uses the frozen multi-image fast path for a selected target file", async (
   assert.equal(result._debug.skill_index.index_files_read, 1);
   assert.equal(result._debug.performance.search_expansions, 0);
   assert.equal(result._debug.performance.early_stop_reason, "fast_path_retrieval_resolved");
-  assert.ok(result._debug.performance.total_processing_ms <= 60_000);
+  assert.ok(result._debug.performance.total_processing_ms <= 30_000);
 });
 
 test("keeps inference out of fact sections and unknowns out of confirmed output", async (t) => {
@@ -175,18 +175,18 @@ test("keeps inference out of fact sections and unknowns out of confirmed output"
   assert.doesNotMatch(result.execution_prompt, /活动 Banner|当前积分来源未定位|⚠️ 待确认/);
 });
 
-test("renders only the fixed handoff modules and shows at most two hard blockers", async (t) => {
+test("renders only the allowed enhancement modules and shows one hard blocker", async (t) => {
   const root = await fixture();
   t.after(() => rm(root, { recursive: true, force: true }));
   const result = await route(root);
   const headings = result.execution_prompt.split("\n").filter((line) =>
-    /^(?:🎯 任务目标|🧠 AI 判断|🔍 优先检索|⚠️ 待确认|▶ 下一步)$/.test(line));
-  assert.deepEqual(headings, ["🎯 任务目标", "🧠 AI 判断", "🔍 优先检索", "▶ 下一步"]);
+    /^(?:🧩 已补充上下文|🧠 AI 判断|🔍 公司检索入口|⚠️ 需要确认|▶ 下一步)$/.test(line));
+  assert.deepEqual(headings, ["🧩 已补充上下文", "🧠 AI 判断", "🔍 公司检索入口", "▶ 下一步"]);
 
   const blocked = await route(root, [], "修改 missing-one.ts 和 missing-two.ts");
-  assert.match(blocked.execution_prompt, /⚠️ 待确认/);
-  const section = blocked.execution_prompt.split("⚠️ 待确认\n")[1].split("\n\n▶ 下一步")[0];
-  assert.ok(section.split("\n").length <= 2);
+  assert.match(blocked.execution_prompt, /⚠️ 需要确认/);
+  const section = blocked.execution_prompt.split("⚠️ 需要确认\n")[1].split("\n\n▶ 下一步")[0];
+  assert.equal(section.split("\n").length, 1);
 });
 
 test("omits screenshot-only sections for non-screenshot requests", async (t) => {
