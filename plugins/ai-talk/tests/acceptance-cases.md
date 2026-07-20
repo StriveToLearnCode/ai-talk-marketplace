@@ -55,14 +55,14 @@
 
 - 输出职责匹配的建议 Skill；未找到目标 Skill 时在待确认中说明安装或启用方式，不改选其他职责。
 - 内部 Handoff 字段保持 schema v6 兼容，但不在简短用户输出中展开。
-- 建议 Skill 不触发自动执行，后续仍需独立一轮明确授权。
+- 明确修改意图使用 `modify_and_verify` 并首轮授权；诊断意图保持 `inspect_only`；分阶段请求使用 `plan_then_execute`。
 
 ## G. JSON 与默认交接文本
 
 - JSON 保留 `original_request`、`evidence`、`selection_reason`、`unknowns`、检索、边界和路由字段。
 - 默认 `execution_prompt` 必须由 `execution_plan` 单向渲染，不得继续直接消费并重复翻译旧顶层字段。
-- 后续轮通过 `--previous-contract` 进入真实 CLI 门禁；门禁优先读取 `execution_plan.route.skill`，引用、转述授权语句或请求不同 Skill 时不得通过。
-- handoff 必须返回 `execution_plan`；通过时 `route.authorization=authorized`，且仍受 `constraints` 约束；未通过时保持 `inspect_only` 并写入不重复的 blocker。
+- 只有 `plan_then_execute` 的一次确认通过 `--previous-contract` 更新状态；明确修改请求不得再次进入授权流程。
+- handoff 必须返回 `execution_plan`；`modify_and_verify` 首轮即为 `authorized`，且仍受 `constraints` 约束。
 - `retrieval_entries` 必须保留候选的真实 `source`，不得在公开结果映射时丢失。
 - 中文输出不暴露评分、候选、canonical ontology、内部 Query 或分析过程。
 - Formatter 只允许已补充上下文、AI 判断、公司检索入口、需要确认、下一步五个模块；需要确认无硬阻塞时隐藏。
@@ -71,7 +71,7 @@
 
 - Stable：`schema_version`、route、task、knowledge requirements、retrieval、scope、facts、constraints、blockers、verification 和 execution prompt renderer。
 - Experimental：研发维度只作为现有数组的 typed entries，不增加 `development_context` 等顶层字段。
-- Reserved：planned changes、写范围强制、来源优先级引擎、resolved lifecycle 和自动 Skill 调用不得进入生产协议。
+- Reserved：planned changes、写范围强制、来源优先级引擎和 resolved lifecycle 不得进入生产协议。
 
 ## I. 五个边界用例
 

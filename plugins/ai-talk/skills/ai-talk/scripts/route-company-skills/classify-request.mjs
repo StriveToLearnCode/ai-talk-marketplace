@@ -6,6 +6,18 @@ function includesAny(text, terms) {
   return terms.some((term) => text.includes(term));
 }
 
+function includesUnnegatedAny(text, terms) {
+  return terms.some((term) => {
+    let index = text.indexOf(term);
+    while (index !== -1) {
+      const prefix = text.slice(Math.max(0, index - 4), index);
+      if (!/(?:不|不要|无需|禁止|别)\s*$/u.test(prefix)) return true;
+      index = text.indexOf(term, index + term.length);
+    }
+    return false;
+  });
+}
+
 function unique(items, key = (item) => item) {
   const seen = new Set();
   return items.filter((item) => {
@@ -175,12 +187,15 @@ function classifyIntent(query) {
   const apiPageConflict = /(?:接口|api)/iu.test(text)
     && /(?:页面|界面|ui|展示|显示)/iu.test(text)
     && /(?:冲突|不一致|但|却)/u.test(text);
+  const planThenExecute = /先.{0,20}(?:方案|分析|原因|排查|定位).{0,24}(?:确认|同意|通过).{0,8}(?:后|再).{0,8}(?:改|修改|修复|实现|开发)/u.test(text);
   const flags = {
     analysisOnly: includesAny(text, KEYWORDS.analysisOnly),
+    diagnostic: includesAny(text, KEYWORDS.diagnostic),
+    planThenExecute,
     automatedTest: includesAny(text, KEYWORDS.automatedTest) && !rejectsAutomatedTest,
     plan: includesAny(text, KEYWORDS.plan),
     noCode: includesAny(text, KEYWORDS.noCode),
-    code: includesAny(text, KEYWORDS.code),
+    code: includesUnnegatedAny(text, KEYWORDS.code),
     bug: includesAny(text, KEYWORDS.bug) || intermittentDisplay || apiPageConflict,
     inspect: liveInspect,
     figma: figmaReference,
@@ -189,25 +204,34 @@ function classifyIntent(query) {
   };
 
   if (flags.automatedTest) return { action: "test", target: "test", desired_output: "automated_test", flags };
+  if (flags.planThenExecute) {
+    const asksForPlan = /(?:方案|计划)/u.test(text);
+    return asksForPlan
+      ? { action: "plan", target: "frontend", desired_output: "implementation_plan", flags }
+      : { action: "analyze", target: "code", desired_output: "code_changes", flags };
+  }
   if (flags.plan && (flags.noCode || !flags.code)) return { action: "plan", target: "frontend", desired_output: "implementation_plan", flags };
   if (flags.inspect) return { action: "inspect", target: "page", desired_output: "live_page_findings", flags };
-  if (!flags.analysisOnly && (flags.code || flags.bug)) return { action: "modify", target: "code", desired_output: "code_changes", flags };
+  if (!flags.analysisOnly && flags.code) return { action: "modify", target: "code", desired_output: "code_changes", flags };
   if (flags.figma && flags.analyze && (flags.document || !flags.inspect)) {
     return { action: "analyze", target: "figma", desired_output: "figma_analysis_document", flags };
   }
-  if (flags.analysisOnly) return { action: "analyze", target: "code", desired_output: "code_changes", flags };
+  if (flags.analysisOnly || flags.diagnostic || flags.bug) {
+    return { action: "analyze", target: "code", desired_output: "code_changes", flags };
+  }
   if (flags.figma) return { action: "analyze", target: "figma", desired_output: "figma_analysis_document", flags };
   return { action: "clarify", target: "unknown", desired_output: "unknown", flags };
 }
 
 function executionModeFor(intent, flags) {
+  if (flags.planThenExecute) return "plan_then_execute";
   if (intent.desired_output === "live_page_findings") {
-    return flags.analysisOnly || !flags.code ? "inspect_only" : "inspect_fix_verify";
+    return flags.analysisOnly || !flags.code ? "inspect_only" : "modify_and_verify";
   }
-  if (intent.desired_output === "code_changes") return flags.analysisOnly || (flags.bug && !flags.code) ? "analysis_only" : "modify";
+  if (intent.desired_output === "code_changes") return intent.action === "modify" ? "modify_and_verify" : "inspect_only";
   if (["implementation_plan", "figma_analysis_document"].includes(intent.desired_output)) return "plan_only";
-  if (intent.desired_output === "automated_test") return "modify";
-  return "plan_only";
+  if (intent.desired_output === "automated_test") return "modify_and_verify";
+  return "inspect_only";
 }
 
 function targetPageFor(query) {

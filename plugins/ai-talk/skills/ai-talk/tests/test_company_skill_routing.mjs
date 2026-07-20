@@ -13,7 +13,7 @@ const execFileAsync = promisify(execFile);
 const SCRIPT = path.resolve(import.meta.dirname, "../scripts/route-company-skills.mjs");
 const ROUTING_CASES = JSON.parse(await readFile(path.join(import.meta.dirname, "company-skill-routing-cases.json"), "utf8"));
 const CORE_SKILLS = ["ui-self-check", "ai-test", "gen-code", "gen-frontend-plan", "figma-analyze"];
-const EXECUTION_MODES = new Set(["modify", "analysis_only", "inspect_only", "inspect_fix_verify", "plan_only"]);
+const EXECUTION_MODES = new Set(["modify_and_verify", "inspect_only", "plan_then_execute", "plan_only"]);
 
 async function addSkill(root, name, description = `${name} description`) {
   const directory = path.join(root, ".agents", "skills", name);
@@ -91,13 +91,13 @@ test("routes the seven required MVP scenarios", async (t) => {
   }
 });
 
-test("code analysis without browser inspection routes to gen-code in analysis-only mode", async (t) => {
+test("code analysis without browser inspection routes to gen-code in inspect-only mode", async (t) => {
   const root = await fixture();
   t.after(() => rm(root, { recursive: true, force: true }));
   for (const query of ["只分析这个报错，不修改代码", "定位并检查问题，不要修改", "只排查 claimed 状态异常，不修复"]) {
     const result = await route(root, query);
     assert.equal(result.recommended_skill, "gen-code", query);
-    assert.equal(result.execution_mode, "analysis_only", query);
+    assert.equal(result.execution_mode, "inspect_only", query);
     assert.ok(result.boundaries.some((item) => item.includes("不修改代码")), query);
   }
 });
@@ -110,6 +110,38 @@ test("turns a state-driven image bug into an executable diagnostic chain", async
   assert.equal(result.engineering_judgment, "这是状态图片异常定位。复用现有状态来源和转换逻辑；需要调整图片渲染分支。");
   assert.deepEqual(result.required_knowledge, ["状态来源", "状态转换", "图片渲染分支"]);
   assert.deepEqual(result.retrieval_entries.slice(0, 2).map((item) => item.entry), ["claimed", "isClaimed"]);
+});
+
+test("derives modification permission from the original request without a second gate", async (t) => {
+  const root = await fixture();
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const cases = [
+    ["开发这个模块", "modify_and_verify", "authorized", "修改代码"],
+    ["帮我修复这个问题", "modify_and_verify", "authorized", "修改代码"],
+    ["为什么这里不显示", "inspect_only", "inspect_only", "定位问题"],
+    ["先分析原因，确认后再改", "plan_then_execute", "inspect_only", "定位问题"],
+    ["只分析，不要修改代码", "inspect_only", "inspect_only", "定位问题"],
+  ];
+
+  for (const [query, mode, authorization, stage] of cases) {
+    const result = await route(root, query);
+    assert.equal(result.execution_mode, mode, query);
+    assert.equal(result.execution_plan.workflow.execution_mode, mode, query);
+    assert.equal(result.execution_plan.route.authorization, authorization, query);
+    assert.equal(result.stage, stage, query);
+    assert.doesNotMatch(result.execution_prompt, /⚠️ 需要确认|回复直接修改|调用 gen-code 执行|执行授权门禁/, query);
+    assert.equal([...result.execution_prompt.matchAll(/▶ 下一步/g)].length, 1, query);
+    if (mode === "modify_and_verify") {
+      assert.equal(result.recommended_skill, "gen-code", query);
+      assert.match(result.execution_prompt, /当前阶段：修改代码\n建议 Skill：gen-code（修改并验证）/, query);
+    }
+  }
+
+  const ambiguous = await route(root, "帮我看看");
+  const blockers = ambiguous.execution_plan.blockers.filter((item) => item.blocking === true);
+  assert.equal(ambiguous.execution_mode, "inspect_only");
+  assert.equal(blockers.length, 1);
+  assert.match(ambiguous.execution_prompt, /⚠️ 需要确认\n- 你希望只定位问题，还是允许修改并验证？/);
 });
 
 test("structured routing cases assert mode, preserved semantics, boundaries, exclusions, and unknowns", async (t) => {
@@ -282,21 +314,30 @@ test("the seven release scenarios pass through the real CLI", async (t) => {
   }
 });
 
-test("execution gate requires an explicit follow-up", () => {
+test("follow-up execution confirmation is reserved for plan-then-execute", () => {
   const previous = { recommended_skill: "gen-code", execution_prompt: "任务目标：\n修复问题。" };
   assert.deepEqual(executionGateFor("修复这个问题", previous), { authorized: false, skill: null });
   assert.deepEqual(executionGateFor("开始执行。", previous), { authorized: true, skill: "gen-code" });
-  assert.deepEqual(executionGateFor("调用 gen-code 执行", previous), { authorized: true, skill: "gen-code" });
+  assert.deepEqual(executionGateFor("确认修改", previous), { authorized: true, skill: "gen-code" });
   assert.deepEqual(executionGateFor("用户说‘开始执行’", previous), { authorized: false, skill: null });
-  assert.deepEqual(executionGateFor("调用 gen-code 执行", { recommended_skill: "figma-analyze" }), { authorized: false, skill: null });
-  assert.deepEqual(executionGateFor("调用 gen-code 执行", {
-    recommended_skill: "figma-analyze",
-    execution_plan: { route: { skill: "gen-code" } },
-  }), { authorized: true, skill: "gen-code" });
-  assert.deepEqual(executionGateFor("调用 gen-code 执行", {
-    recommended_skill: "gen-code",
-    execution_plan: { route: { skill: null } },
-  }), { authorized: false, skill: null });
+});
+
+test("plan-then-execute hands off from the planning Skill to gen-code", async (t) => {
+  const root = await fixture();
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const plan = await route(root, "先给方案，确认后再改");
+
+  assert.equal(plan.execution_mode, "plan_then_execute");
+  assert.equal(plan.recommended_skill, "gen-frontend-plan");
+  assert.equal(plan.execution_plan.workflow.next_skill, "gen-code");
+  assert.equal(plan.execution_plan.route.authorization, "inspect_only");
+
+  const handoff = executionHandoffFor("确认执行", plan);
+  assert.equal(handoff.execution_mode, "modify_and_verify");
+  assert.equal(handoff.skill, "gen-code");
+  assert.equal(handoff.execution_plan.route.skill, "gen-code");
+  assert.equal(handoff.execution_plan.workflow.next_skill, null);
+  assert.match(handoff.execution_prompt, /当前阶段：修改代码\n建议 Skill：gen-code（修改并验证）/);
 });
 
 test("authorized handoff carries the plan and updates only its authorization", () => {
@@ -312,7 +353,7 @@ test("authorized handoff carries the plan and updates only its authorization", (
       source_facts: [],
       constraints: ["只定位问题，不修改代码"],
       blockers: [
-        "需要上一轮协议中的建议 Skill，且当前输入必须是独立的授权指令。",
+        "方案完成后需要一次执行确认。",
         "业务字段未确认。",
       ],
       verification: [],
@@ -336,7 +377,7 @@ test("denied handoff adds the authorization blocker only once", () => {
   const first = executionHandoffFor("修复这个问题", previous);
   const second = executionHandoffFor("修复这个问题", first);
   const blockers = second.execution_plan.blockers.filter((item) =>
-    (typeof item === "string" ? item : item.description).includes("独立的授权指令"),
+    (typeof item === "string" ? item : item.description).includes("一次执行确认"),
   );
   assert.equal(blockers.length, 1);
 });
@@ -344,7 +385,7 @@ test("denied handoff adds the authorization blocker only once", () => {
 test("the production CLI applies the execution gate to a previous contract", async (t) => {
   const root = await fixture();
   t.after(() => rm(root, { recursive: true, force: true }));
-  const previous = await route(root, "修复 src/components/card.ts");
+  const previous = await route(root, "先分析原因，确认后再改 src/components/card.ts");
   const contract = path.join(root, "previous-contract.json");
   await writeFile(contract, JSON.stringify(previous));
 
@@ -353,6 +394,7 @@ test("the production CLI applies the execution gate to a previous contract", asy
   ], { encoding: "utf8" })).stdout;
   const authorizedResult = JSON.parse(output);
   assert.equal(authorizedResult.execution_plan.route.authorization, "authorized");
+  assert.equal(authorizedResult.execution_mode, "modify_and_verify");
   assert.match(authorizedResult.execution_prompt, /建议 Skill：gen-code/);
 
   const denied = (await execFileAsync(process.execPath, [
@@ -363,7 +405,7 @@ test("the production CLI applies the execution gate to a previous contract", asy
   assert.equal(deniedResult.skill, null);
   assert.equal(deniedResult.execution_plan.route.authorization, "inspect_only");
   assert.ok(deniedResult.execution_plan.blockers.some((item) =>
-    (typeof item === "string" ? item : item.description).includes("独立的授权指令")));
+    (typeof item === "string" ? item : item.description).includes("一次执行确认")));
   assert.equal(deniedResult.execution_prompt, buildExecutionPrompt(deniedResult.execution_plan));
 });
 
@@ -393,7 +435,8 @@ test("execution plan is the source of the compatibility prompt", async (t) => {
     "schema_version", "route", "workspace", "workflow", "task", "knowledge_requirements", "retrieval", "target_scope",
     "source_facts", "constraints", "blockers", "verification",
   ]);
-  assert.deepEqual(result.execution_plan.route, { skill: "gen-code", authorization: "inspect_only" });
+  assert.deepEqual(result.execution_plan.route, { skill: "gen-code", authorization: "authorized" });
+  assert.equal(result.execution_plan.workflow.execution_mode, "modify_and_verify");
   assert.equal(result.execution_plan.workspace.project_root, await realpath(root));
   assert.equal(result.execution_plan.workspace.workdir, null);
   assert.equal(result.execution_plan.task.source_request, query);
@@ -479,7 +522,7 @@ test("clear intermittent reward bug keeps the original request and only adds con
   assert.match(result.execution_prompt, /🔄 轮播切换\n→ mod3\.vue \/ getNodeDisplayReward（确认末项切换时的索引与取值）/);
   assert.match(result.execution_prompt, /🎁 奖励数据\n→ medalRewards \/ Rewards（确认末项奖励字段是否完整）/);
   assert.match(result.execution_prompt, /🖼️ 图片配置\n→ 对应 PageCenter 奖励配置（确认末项图片资源是否存在）/);
-  assert.match(result.execution_prompt, /当前阶段：定位问题\n建议 Skill：gen-code（只分析）/);
+  assert.match(result.execution_prompt, /当前阶段：定位问题\n建议 Skill：gen-code（只分析，不修改）/);
   assert.doesNotMatch(result.execution_prompt, /定位末项奖励|🎯 任务目标|重点对象/);
   assert.doesNotMatch(result.execution_prompt, /根因(?:是|为)|可以确定/);
   assert.ok(result.execution_prompt.length < 1_000);
@@ -547,19 +590,19 @@ test("API and page mismatch adds only the conflict relationship", async (t) => {
   const result = await route(root, "接口返回已领取，但页面显示未领取");
   assert.deepEqual(result.added_context, ["冲突关系：接口返回与页面展示不一致"]);
   assert.match(result.execution_prompt, /🧩 已补充上下文\n- 冲突关系：接口返回与页面展示不一致/);
-  assert.match(result.execution_prompt, /当前阶段：定位问题\n建议 Skill：gen-code（只分析）/);
+  assert.match(result.execution_prompt, /当前阶段：定位问题\n建议 Skill：gen-code（只分析，不修改）/);
   assert.doesNotMatch(result.execution_prompt, /需要确认/);
   assert.doesNotMatch(result.execution_prompt, /任务目标/);
 });
 
-test("ambiguous change asks exactly one question", async (t) => {
+test("ambiguous request asks exactly one question", async (t) => {
   const root = await fixture();
   t.after(() => rm(root, { recursive: true, force: true }));
-  const result = await route(root, "帮我改一下这个。");
+  const result = await route(root, "帮我看看");
   const section = result.execution_prompt.split("⚠️ 需要确认\n")[1].split("\n\n▶ 下一步")[0];
   assert.equal(result.skipEnhancement, false);
   assert.equal(section.split("\n").length, 1);
-  assert.equal(section, "- 你希望修改视觉样式，还是修复功能异常？");
+  assert.equal(section, "- 你希望只定位问题，还是允许修改并验证？");
 });
 
 test("fixture content is ordinary UTF-8", async (t) => {

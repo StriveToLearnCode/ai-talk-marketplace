@@ -103,7 +103,8 @@ test("V1 freezes exactly eight golden TaskHandoff and Formatter results", async 
     assert.deepEqual(actual, golden.expected, golden.id);
     assert.deepEqual(Object.keys(result.execution_plan), TASK_HANDOFF_KEYS, `${golden.id}: TaskHandoff keys`);
     assert.equal(validateTaskHandoff(result.execution_plan), result.execution_plan, `${golden.id}: TaskHandoff validation`);
-    assert.equal(result.execution_plan.route.authorization, "inspect_only", `${golden.id}: authorization`);
+    const expectedAuthorization = result.execution_mode === "modify_and_verify" ? "authorized" : "inspect_only";
+    assert.equal(result.execution_plan.route.authorization, expectedAuthorization, `${golden.id}: authorization`);
     assert.equal(buildExecutionPrompt(result.execution_plan), result.execution_prompt, `${golden.id}: Formatter projection`);
     assert.ok(result._debug.context.files_read.length <= MAX_CONTEXT_FILES_READ, `${golden.id}: file budget`);
     const budgetMs = result._debug.performance.case_type === "simple" ? 15_000 : 45_000;

@@ -70,7 +70,8 @@ test("builds the complete screenshot development protocol", async (t) => {
     "source_facts", "constraints", "blockers", "verification",
   ]);
   assert.equal(plan.schema_version, "1.1");
-  assert.deepEqual(plan.route, { skill: "gen-code", authorization: "inspect_only" });
+  assert.deepEqual(plan.route, { skill: "gen-code", authorization: "authorized" });
+  assert.equal(plan.workflow.execution_mode, "modify_and_verify");
   assert.equal(plan.task.deliverable, CURRENT_CASE.query);
   assert.equal(plan.task.reasoning, "这是现有奖励横幅的积分阶段扩展。优先复用进度、奖励展示和跳转能力；新增重点是图 3 的守护者区域及 RTL 布局。");
   assert.deepEqual(plan.knowledge_requirements, ["积分阶段", "奖励展示", "页面资源", "半屏 H5"]);
@@ -147,7 +148,7 @@ test("uses the frozen multi-image fast path for a selected target file", async (
     "",
     "▶ 下一步",
     "当前阶段：修改代码",
-    "建议 Skill：gen-code",
+    "建议 Skill：gen-code（修改并验证）",
   ].join("\n"));
   assert.deepEqual(result._debug.context.files_read.sort(), [
     "src/components/AGENTS.md",

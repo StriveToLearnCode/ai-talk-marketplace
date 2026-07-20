@@ -1,7 +1,7 @@
 {
   "execution_plan": {
     "schema_version": "1.0",
-    "route": { "skill": "gen-code", "authorization": "inspect_only" },
+    "route": { "skill": "gen-code", "authorization": "authorized" },
     "workspace": { "project_root": "<project_root>", "workdir": null },
     "workflow": { "stage": { "value": "修改代码", "source": "derived", "status": "available" } },
     "task": {
