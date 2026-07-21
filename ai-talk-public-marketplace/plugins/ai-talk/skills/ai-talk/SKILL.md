@@ -142,7 +142,9 @@ Reserved：`planned_changes`、write scope enforcement、source precedence engin
 - `开发`、`实现`、`新增`、`接入`、`修改`、`修复`、`直接改` 等明确动作词设置 `modify_and_verify`、阶段 `修改代码` 和 `route.authorization: authorized`，不得再次询问。
 - `排查`、`为什么`、`分析`、`定位原因`、`只看看` 等诊断表达设置 `inspect_only`、阶段 `定位问题`，不得修改代码。
 - `先给方案，确认后再改`、`先分析原因，确认后再改` 等分阶段表达设置 `plan_then_execute`；方案或分析完成后只确认一次。
-- `帮我看看`、`处理一下` 等无法判断是否允许修改的表达保持 `inspect_only`，最多询问一次“只定位还是修改并验证”。
+- `帮我看看`、`处理一下`、`帮我改一下这个` 等缺少明确对象或无法判断是否允许修改的表达保持 `inspect_only`，最多询问一次“只定位还是修改并验证”。
+- `Unknown custom element: <name>` 和 `Failed to resolve component: <name>` 属于清晰诊断请求；保留原始组件名，优先检索名称生成、注册映射和真实组件文件，不询问修改授权。
+- 页面现场检查若只写“这个 URL”但未提供完整 URL，生成一个 URL 硬阻塞；提供真实 URL 后不得继续询问目标页面。
 - 明确修改意图的 handoff 直接消费 `execution_plan.route.skill`。宿主支持下游 Skill 调用时同轮继续；不支持时只显示一个建议 Skill 入口，不输出授权口令、重复按钮或门禁说明。
 - handoff 必须保留 typed entries、constraints、blockers 和 verification；`plan_then_execute` 的一次确认只更新 mode、阶段和授权状态。
 
@@ -155,5 +157,5 @@ Reserved：`planned_changes`、write scope enforcement、source precedence engin
 - 性能回归记录总处理时间、读取文件数、Skill 正文读取数、搜索扩展次数和早停原因；所有场景目标不超过 45 秒、2 次搜索、4 个文件，Skill 正文读取数默认为 0。
 - inference 不进入 fact，unknown 不渲染成已确认，verification 包含行为验收目标，但这些内部事实不展开到 Formatter。
 - execution prompt 只从 execution plan 渲染；输出只能出现允许的五个模块，非阻塞 unknown 必须隐藏。
-- 清晰 Bug 只补上下文且不改写原话；明确文案修改设置 `skipEnhancement: true`；多图只补图片关系；接口和页面冲突只补冲突关系；“帮我改一下这个”只询问一个问题。
+- 清晰 Bug 不合成原话或证据未支持的事实；明确文案修改设置 `skipEnhancement: true`；多图只补图片关系；接口和页面冲突只补冲突关系；“帮我改一下这个”只询问一个问题。
 - 继续覆盖状态含义保护、资源/路径区分、受限项目读取、职责匹配路由和基于原始意图的执行模式。

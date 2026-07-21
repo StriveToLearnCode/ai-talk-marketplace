@@ -144,8 +144,13 @@ function extractApiNames(query) {
 function extractComponents(query) {
   const names = [...query.matchAll(/\b[A-Z][A-Za-z0-9_$]*(?:Dialog|Modal|Popup|Page|View|Panel|Card|List|Button|Component)\b/g)]
     .map((match) => match[0]);
+  for (const match of query.matchAll(/(?:Unknown custom element|Failed to resolve component)\s*:\s*([a-z][a-z0-9-]*)/gi)) names.push(match[1]);
   for (const match of query.matchAll(/([\p{Script=Han}A-Za-z0-9_-]{2,24})(?:弹窗|组件)/gu)) names.push(`${match[1]}${match[0].endsWith("弹窗") ? "弹窗" : "组件"}`);
   return unique(names);
+}
+
+function extractUrls(query) {
+  return unique([...query.matchAll(/https?:\/\/[^\s，。；;）)]+/gi)].map((match) => match[0]));
 }
 
 function extractStates(query) {
@@ -174,6 +179,10 @@ function inferEvidence(query, provided) {
   for (const value of extractComponents(query)) add("component", value);
   for (const value of extractStates(query)) add("state", value);
   for (const value of extractResources(query)) add("resource", value);
+  for (const value of extractUrls(query)) add("target_url", value);
+  if (/点击图\s*[一二三四五六七八九\d]+.+(?:后|再).*(?:跳转|切换|定位).*(?:图\s*[一二三四五六七八九\d]+|tab\s*\d+)/iu.test(query)) {
+    add("interaction", query.replace(/[。！!]+$/g, ""));
+  }
   return unique(evidence, (item) => `${item.type}:${item.value}`);
 }
 
@@ -187,6 +196,9 @@ function classifyIntent(query) {
   const apiPageConflict = /(?:接口|api)/iu.test(text)
     && /(?:页面|界面|ui|展示|显示)/iu.test(text)
     && /(?:冲突|不一致|但|却)/u.test(text);
+  const runtimeComponentError = /(?:unknown custom element|failed to resolve component)\s*:/i.test(text);
+  const interactionChange = /点击图\s*[一二三四五六七八九\d]+.+(?:后|再).*(?:跳转|切换|定位).*(?:图\s*[一二三四五六七八九\d]+|tab\s*\d+)/iu.test(text);
+  const ambiguousModification = /^(?:请)?帮我(?:改一下|修改一下|修一下)(?:这个|它|这里)?[。！!]?$/u.test(text.trim());
   const planThenExecute = /先.{0,20}(?:方案|分析|原因|排查|定位).{0,24}(?:确认|同意|通过).{0,8}(?:后|再).{0,8}(?:改|修改|修复|实现|开发)/u.test(text);
   const flags = {
     analysisOnly: includesAny(text, KEYWORDS.analysisOnly),
@@ -195,14 +207,18 @@ function classifyIntent(query) {
     automatedTest: includesAny(text, KEYWORDS.automatedTest) && !rejectsAutomatedTest,
     plan: includesAny(text, KEYWORDS.plan),
     noCode: includesAny(text, KEYWORDS.noCode),
-    code: includesUnnegatedAny(text, KEYWORDS.code),
-    bug: includesAny(text, KEYWORDS.bug) || intermittentDisplay || apiPageConflict,
+    code: includesUnnegatedAny(text, KEYWORDS.code) || interactionChange,
+    bug: includesAny(text, KEYWORDS.bug) || intermittentDisplay || apiPageConflict || runtimeComponentError,
+    ambiguousModification,
+    interactionChange,
+    runtimeComponentError,
     inspect: liveInspect,
     figma: figmaReference,
     analyze: includesAny(text, KEYWORDS.analyze),
     document: includesAny(text, KEYWORDS.document),
   };
 
+  if (flags.ambiguousModification) return { action: "clarify", target: "unknown", desired_output: "unknown", flags };
   if (flags.automatedTest) return { action: "test", target: "test", desired_output: "automated_test", flags };
   if (flags.planThenExecute) {
     const asksForPlan = /(?:方案|计划)/u.test(text);
@@ -256,7 +272,8 @@ function taskTypeFor(query, evidence) {
   if (/\b(?:claimed|unclaimed|completed|incomplete|locked|disabled)\b/i.test(query)
     && /(?:图片|图标|蒙层|image|icon|mask)/i.test(query)
     && /(?:未切换|不切换|没有切换|未更新|没有更新|异常)/i.test(query)) return "state_visual_mismatch";
-  if (/(?:动态组件|dynamic component)/i.test(query) && /(?:未注册|没有注册|找不到|unknown|not registered|failed to resolve)/i.test(query)) {
+  if (/(?:Unknown custom element|Failed to resolve component)\s*:/i.test(query)
+    || (/(?:动态组件|dynamic component)/i.test(query) && /(?:未注册|没有注册|找不到|unknown|not registered|failed to resolve)/i.test(query))) {
     return "dynamic_component_registration";
   }
   if (/(?:奖励|reward)/i.test(query) && /(?:icon\/mask|蒙层|mask)/i.test(query) && /(?:领取|claimed|claim)/i.test(query)) {
@@ -268,6 +285,9 @@ function taskTypeFor(query, evidence) {
     return "dialog_auto_open";
   }
   if (/(?:弹窗|dialog|modal|popup)/i.test(text)) return "dialog_change";
+  if (/点击图\s*[一二三四五六七八九\d]+.+(?:后|再).*(?:跳转|切换|定位).*(?:图\s*[一二三四五六七八九\d]+|tab\s*\d+)/iu.test(query)) {
+    return "image_tab_navigation";
+  }
   return "generic";
 }
 
@@ -299,6 +319,7 @@ function requiredKnowledgeFor(taskType, evidence, typedEvidence, intent) {
     state_visual_mismatch: ["状态来源", "状态转换", "图片渲染分支"],
     intermittent_reward_display: ["轮播切换", "奖励数据", "图片配置"],
     api_page_conflict: ["接口返回", "页面展示"],
+    image_tab_navigation: ["点击入口", "Tab 跳转", "目标位置"],
     copy_change: ["目标文案位置"],
     generic: null,
   }[taskType];

@@ -103,7 +103,7 @@ export function validateTaskHandoff(value) {
   return value;
 }
 
-const TARGET_TYPES = new Set(["target_file", "target_page", "component"]);
+const TARGET_TYPES = new Set(["target_file", "target_page", "target_url", "component"]);
 const SOURCE_FACT_KINDS = new Set([
   "attachment_reference",
   "ui_element",
@@ -197,7 +197,9 @@ function blockersFor(classification, context, ranking) {
     result.push(blocker("deliverable", "期望交付物尚未明确。", "user_action_required", true));
   }
   if (["code_changes", "automated_test", "live_page_findings"].includes(output) && !hasTarget) {
-    if (hasScreenshotProtocol(classification)) {
+    if (output === "live_page_findings" && /(?:url|链接)/iu.test(classification.originalRequest)) {
+      result.push(blocker("target_url", "请提供要检查的完整 URL。", "user_action_required", true));
+    } else if (hasScreenshotProtocol(classification)) {
       result.push(blocker("target_locator", "目标页面未定位"));
       result.push(blocker("component_locator", "目标组件未定位"));
     } else {
@@ -220,6 +222,7 @@ function blockersFor(classification, context, ranking) {
 }
 
 function engineeringJudgment(classification, retrievalEntries) {
+  if (classification.intent.desired_output === "unknown") return null;
   const hasDialogSystem = retrievalEntries.some((item) => ["弹窗模板结构", "弹窗打开与关闭方式"].includes(item.knowledge));
   const judgments = {
     dialog_auto_open: hasDialogSystem
@@ -229,12 +232,13 @@ function engineeringJudgment(classification, retrievalEntries) {
       ? "这是现有弹窗能力扩展。复用弹窗结构和打开方式；调整重点是目标页面的 UI 与挂载位置。"
       : "这是现有弹窗能力扩展。需要调整弹窗 UI，并补齐目标页面的接入位置。",
     reward_metadata_missing: "这是奖励展示异常定位。复用现有抽奖接口和奖励数据适配；需要调整名称、角标到渲染层的字段链路。",
-    dynamic_component_registration: "这是动态组件异常定位。复用现有名称生成和注册映射；需要调整真实组件名与映射不一致的位置。",
+    dynamic_component_registration: "该报错指向动态组件解析链。应先核对名称生成、注册映射和实际组件名，不能仅凭报错认定组件文件缺失。",
     reward_claim_visual: "这是现有奖励展示的领取态扩展。复用领取状态判断和奖励节点；新增内容是 icon/mask 蒙层及其状态分支。",
     state_visual_mismatch: "这是状态图片异常定位。复用现有状态来源和转换逻辑；需要调整图片渲染分支。",
-    intermittent_reward_display: "异常与轮播周期同步，更可能集中在末项奖励的轮播取值、数据映射或图片配置，不像整个奖励模块随机失效。应先确认空白出现时实际命中的奖励数据。",
+    intermittent_reward_display: "现象只说明末项奖励展示不稳定，尚不能确认是否与轮播周期同步。应优先核对末项取值、奖励数据和图片配置。",
     api_page_conflict: "接口返回与页面展示冲突，排查应集中在响应适配、视图状态转换和渲染分支，但不能据此判断接口或页面单侧有误。应先对照同一请求下的原始响应与页面消费值。",
     copy_change: "这是现有页面文案调整。复用目标文件的渲染位置；只需新增或替换指定文案。",
+    image_tab_navigation: "用户已明确点击来源和跳转目标。应先定位点击处理与 tab3 激活入口，不猜测页面路径或状态字段。",
   };
   if (judgments[classification.taskType]) return judgments[classification.taskType];
   if (hasScreenshotProtocol(classification)) {
@@ -263,7 +267,7 @@ function engineeringJudgment(classification, retrievalEntries) {
     automated_test: "这是现有页面能力的自动化扩展。复用项目测试运行方式；新增关键路径和稳定断言。",
     implementation_plan: "这是新增功能的方案设计。复用已定位的页面结构和数据流；新增内容是目标交互的实施步骤。",
     figma_analysis_document: "这是新增功能的设计分析。复用现有组件边界；新增内容是目标页面的结构与交互说明。",
-    live_page_findings: "这是现有页面异常定位。复用目标页面行为；需要补充视觉、交互和响应式问题证据。",
+    live_page_findings: "这是页面现场检查任务。获得目标页面后，应从视觉、交互和响应式表现记录可复现证据。",
     code_changes: classification.flags.bug
       ? "这是现有能力异常定位。复用已定位的行为入口和数据流；需要调整导致异常的渲染或状态逻辑。"
       : "这是新增页面功能。复用已定位的同类实现；新增内容以用户目标中的 UI 和交互为准。",
@@ -494,13 +498,6 @@ function attachmentLabel(item) {
 export function addedContextFor(executionPlan) {
   const source = executionPlan.task?.source_request || "";
   const result = [];
-  if (/(?:奖励|奖品|reward|prize)/iu.test(source)
-    && /(?:最后(?:一个|一项)|末项|末尾)/u.test(source)
-    && /(?:一会(?:儿)?(?:展示|显示).{0,4}一会(?:儿)?不(?:展示|显示)|时有时无|忽隐忽现)/u.test(source)) {
-    result.push("现象：末项奖励随轮播周期在正常图片与空白之间切换");
-    result.push("范围：只有末项异常，其他奖励正常展示");
-  }
-
   const attachments = (executionPlan.source_facts || [])
     .filter((item) => item.kind === "attachment_reference" && item.status === "fact");
   const targets = attachments.filter((item) => item.role === "target").map(attachmentLabel).filter(Boolean);

@@ -499,7 +499,7 @@ test("builds knowledge-first retrieval protocols for the five acceptance cases",
   assert.ok(copy.boundaries.length <= 2);
 });
 
-test("clear intermittent reward bug keeps the original request and only adds context", async (t) => {
+test("clear intermittent reward bug keeps the original request without synthesizing facts", async (t) => {
   const root = await fixture();
   t.after(() => rm(root, { recursive: true, force: true }));
   const query = "最后一个奖励会一会展示、一会不展示。";
@@ -507,21 +507,18 @@ test("clear intermittent reward bug keeps the original request and only adds con
 
   assert.equal(result.original_request, query);
   assert.equal(result.skipEnhancement, false);
-  assert.deepEqual(result.added_context, [
-    "现象：末项奖励随轮播周期在正常图片与空白之间切换",
-    "范围：只有末项异常，其他奖励正常展示",
-  ]);
+  assert.deepEqual(result.added_context, []);
   assert.deepEqual(result.retrieval_entries.map((item) => [item.knowledge, item.entry]), [
     ["轮播切换", "mod3.vue / getNodeDisplayReward"],
     ["奖励数据", "medalRewards / Rewards"],
-    ["图片配置", "对应 PageCenter 奖励配置"],
+    ["图片配置", "mod3.vue / PageCenter"],
   ]);
-  assert.match(result.execution_prompt, /^🧩 已补充上下文\n/);
-  assert.match(result.execution_prompt, /🧠 AI 判断\n异常与轮播周期同步/);
+  assert.match(result.execution_prompt, /^🧠 AI 判断\n/);
+  assert.match(result.execution_prompt, /尚不能确认是否与轮播周期同步/);
   assert.match(result.execution_prompt, /🔍 公司检索入口/);
   assert.match(result.execution_prompt, /🔄 轮播切换\n→ mod3\.vue \/ getNodeDisplayReward（确认末项切换时的索引与取值）/);
   assert.match(result.execution_prompt, /🎁 奖励数据\n→ medalRewards \/ Rewards（确认末项奖励字段是否完整）/);
-  assert.match(result.execution_prompt, /🖼️ 图片配置\n→ 对应 PageCenter 奖励配置（确认末项图片资源是否存在）/);
+  assert.match(result.execution_prompt, /🖼️ 图片配置\n→ mod3\.vue \/ PageCenter（确认末项图片资源是否存在）/);
   assert.match(result.execution_prompt, /当前阶段：定位问题\n建议 Skill：gen-code（只分析，不修改）/);
   assert.doesNotMatch(result.execution_prompt, /定位末项奖励|🎯 任务目标|重点对象/);
   assert.doesNotMatch(result.execution_prompt, /根因(?:是|为)|可以确定/);
