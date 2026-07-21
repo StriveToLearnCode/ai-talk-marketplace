@@ -190,6 +190,7 @@ function screeningTerms(classification) {
   if (/(?:图片资源|图片配置|页面资源)/u.test(knowledge)) add("pagecenter", "image", "img", "asset", "reward");
   if (/(?:状态|图片)/u.test(knowledge)) add("state", "status", "reward", "item", "node");
   if (/(?:动态组件|组件名称|注册规则)/u.test(knowledge)) add("dynamic", "component", "loader", "registry");
+  if (/(?:接口返回|页面展示)/u.test(knowledge)) add("api", "service", "store", "state", "status", "reward", "page", "component");
   if (/(?:h5|跳转)/iu.test(knowledge)) add("h5", "banner", "activity");
   if (/rtl/iu.test(knowledge)) add("rtl", "banner", "activity");
   if (classification.evidence.some((item) => item.type === "target_file")) add("page", "index");
@@ -437,6 +438,20 @@ function codeCandidates(classification, records) {
     },
     () => 150);
 
+  for (const value of classification.evidence.filter((item) => item.type === "state").map((item) => item.value)) {
+    const [name, rawValue] = value.split("=");
+    if (!name || rawValue === undefined) continue;
+    const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const escapedValue = rawValue.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const pattern = new RegExp(`\\b${escapedName}\\s*[:=]\\s*["']?${escapedValue}["']?\\b`, "i");
+    for (const record of records.filter((item) => pattern.test(item.content))) {
+      result.push(candidate("接口返回", `${record.basename} / ${value}`, "定位接口状态值的来源", 1, 160, record));
+    }
+  }
+  addSymbols("页面展示", "定位页面领取态判断",
+    [/\b(isClaimed)\b/i, /\b(hasClaimed)\b/i, /\b(rewardStatus)\b/i, /\b(claimed)\b/i],
+    (symbol) => /^isClaimed$/i.test(symbol) ? 150 : 110);
+
   const stateEvidence = classification.evidence.filter((item) => item.type === "state").map((item) => item.value);
   for (const value of stateEvidence) result.push(candidate("奖励领取状态判断", value, "追踪领取状态的真实来源", 1, 150, null));
   for (const value of stateEvidence) result.push(candidate("状态来源", value, "从状态标识追踪数据来源", 1, 150, null));
@@ -470,7 +485,7 @@ function codeCandidates(classification, records) {
         rewardSymbols.includes("medalRewards") ? 160 : 100, record));
     }
     if (/Page\s*Center|PageCenter|pageCenter/u.test(record.content)) {
-      result.push(candidate("图片配置", "对应 PageCenter 奖励配置", "确认末项图片资源是否存在", 1, 140, record));
+      result.push(candidate("图片配置", `${record.basename} / PageCenter`, "确认末项图片资源是否存在", 1, 140, record));
     }
   }
 
