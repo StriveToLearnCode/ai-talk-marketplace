@@ -128,6 +128,24 @@
     "expected_unknowns": []
   },
   {
+    "id": "code-implicit-lottery-audio",
+    "clarity": "clear",
+    "prompt": "在中奖时播放 audio/get",
+    "expected_skill": "gen-code",
+    "expected_mode": "modify_and_verify",
+    "must_preserve": ["中奖", "播放", "audio/get"],
+    "must_not_include": ["需要确认", "只定位问题"]
+  },
+  {
+    "id": "code-animation-complete-audio",
+    "clarity": "clear",
+    "prompt": "动画完成后播放 audio/get，再打开 normalReward",
+    "expected_skill": "gen-code",
+    "expected_mode": "modify_and_verify",
+    "must_preserve": ["动画完成", "播放", "audio/get", "打开", "normalReward"],
+    "must_not_include": ["需要确认", "只定位问题"]
+  },
+  {
     "id": "code-page",
     "clarity": "clear",
     "prompt": "把这个活动页做出来，包含 UI 和业务逻辑",
