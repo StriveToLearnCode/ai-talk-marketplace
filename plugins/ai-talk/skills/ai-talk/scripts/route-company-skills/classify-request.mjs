@@ -233,12 +233,14 @@ function classifyIntent(query) {
   const ownershipQuestion = /(?:前端|客户端).{0,10}(?:还是|或).{0,10}(?:后端|服务端)|(?:后端|服务端).{0,10}(?:还是|或).{0,10}(?:前端|客户端)/u.test(text);
   const ambiguousModification = /^(?:请)?帮我(?:改一下|修改一下|修一下)(?:这个|它|这里)?[。！!]?$/u.test(text.trim());
   const planThenExecute = /先.{0,20}(?:方案|分析|原因|排查|定位).{0,24}(?:确认|同意|通过).{0,8}(?:后|再).{0,8}(?:改|修改|修复|实现|开发)/u.test(text);
+  const solutionPlan = /(?:怎么办|怎么做|如何做|如何实现|怎么实现|有什么方案|实现方案|解决方案)/u.test(text);
   const flags = {
     analysisOnly: includesAny(text, KEYWORDS.analysisOnly),
     diagnostic: includesAny(text, KEYWORDS.diagnostic) || ownershipQuestion,
     planThenExecute,
     automatedTest: includesAny(text, KEYWORDS.automatedTest) && !rejectsAutomatedTest,
-    plan: includesAny(text, KEYWORDS.plan),
+    plan: includesAny(text, KEYWORDS.plan) || solutionPlan,
+    solutionPlan,
     noCode: includesAny(text, KEYWORDS.noCode),
     code: includesUnnegatedAny(text, KEYWORDS.code) || interactionChange || behavioralCommand,
     bug: includesAny(text, KEYWORDS.bug) || intermittentDisplay || apiPageConflict || runtimeComponentError || ownershipQuestion,
@@ -261,7 +263,12 @@ function classifyIntent(query) {
       ? { action: "plan", target: "frontend", desired_output: "implementation_plan", flags }
       : { action: "analyze", target: "code", desired_output: "code_changes", flags };
   }
-  if (flags.plan && (flags.noCode || !flags.code)) return { action: "plan", target: "frontend", desired_output: "implementation_plan", flags };
+  if (flags.solutionPlan && !flags.analysisOnly && !flags.bug) {
+    return { action: "plan", target: "frontend", desired_output: "implementation_plan", flags };
+  }
+  if (flags.plan && !flags.solutionPlan && (flags.noCode || !flags.code)) {
+    return { action: "plan", target: "frontend", desired_output: "implementation_plan", flags };
+  }
   if (flags.inspect) return { action: "inspect", target: "page", desired_output: "live_page_findings", flags };
   if (!flags.analysisOnly && flags.code) return { action: "modify", target: "code", desired_output: "code_changes", flags };
   if (flags.figma && flags.analyze && (flags.document || !flags.inspect)) {
@@ -322,6 +329,9 @@ function taskTypeFor(query, evidence) {
   }
   if (/(?:奖励|reward)/i.test(query) && /(?:名称|name)/i.test(query) && /(?:角标|badge|tag)/i.test(query)
     && /(?:缺失|没有|没显示|不显示|missing)/i.test(query)) return "reward_metadata_missing";
+  if (/(?:弹窗|dialog|modal|popup)/i.test(query)
+    && /(?:奖励|奖品|reward|prize)/i.test(query)
+    && /(?:动效|动画|animation|animate|svg|svga|pag)/i.test(query)) return "reward_dialog_animation";
   if (/(?:弹窗|dialog|modal|popup)/i.test(query) && /(?:一进入|首次进入|进入页面|自动打开|自动开启|就开启|就打开)/i.test(query)) {
     return "dialog_auto_open";
   }
@@ -355,6 +365,7 @@ function requiredKnowledgeFor(taskType, evidence, typedEvidence, intent) {
     dialog_auto_open: ["弹窗模板结构", "弹窗打开与关闭方式", "页面首次进入生命周期", "页面弹窗挂载方式"],
     dialog_change: ["弹窗模板结构", "弹窗打开与关闭方式", "目标页面弹窗挂载方式"],
     reward_metadata_missing: ["奖励名称和角标的接口字段", "抽奖结果到弹窗数据的适配", "奖励弹窗的字段渲染"],
+    reward_dialog_animation: ["奖励弹窗渲染入口", "既有奖励动效组件", "动效降级行为"],
     dynamic_component_registration: ["动态组件名称生成", "动态组件注册规则", "实际组件名称"],
     reward_claim_visual: ["奖励领取状态判断", "icon/mask 资源引用", "奖励节点渲染"],
     state_visual_mismatch: ["状态来源", "状态转换", "图片渲染分支"],

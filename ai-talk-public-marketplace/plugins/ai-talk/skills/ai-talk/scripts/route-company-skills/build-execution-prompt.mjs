@@ -148,7 +148,11 @@ function requestBoundaries(classification, context) {
   if (explicit.length) return uniqueStrings(explicit).slice(0, 2);
 
   const targets = context.items.filter((item) => item.type === "target_file").map((item) => item.value);
-  if (classification.intent.desired_output === "implementation_plan") return ["只输出方案，不修改代码"];
+  if (classification.intent.desired_output === "implementation_plan") {
+    return classification.taskType === "reward_dialog_animation"
+      ? ["只输出方案，不修改代码", "先核对现有奖励渲染组件及组件文档，未确认前不新增 PAG 或 CSS 动效"]
+      : ["只输出方案，不修改代码"];
+  }
   if (classification.executionMode === "modify_and_verify" && classification.intent.desired_output === "live_page_findings") {
     return ["按浏览器检查、修复、复验三个阶段执行"];
   }
@@ -241,6 +245,7 @@ function engineeringJudgment(classification, retrievalEntries) {
       ? "这是现有弹窗能力扩展。复用弹窗结构和打开方式；调整重点是目标页面的 UI 与挂载位置。"
       : "这是现有弹窗能力扩展。需要调整弹窗 UI，并补齐目标页面的接入位置。",
     reward_metadata_missing: "这是奖励展示异常定位。复用现有抽奖接口和奖励数据适配；需要调整名称、角标到渲染层的字段链路。",
+    reward_dialog_animation: "这是现有奖励弹窗的动效方案。应先核对弹窗奖励区域的渲染入口、已有奖励组件的动效能力和静态降级；仅在现有封装无法满足时再设计自定义动效。",
     dynamic_component_registration: "该报错指向动态组件解析链。应先核对名称生成、注册映射和实际组件名，不能仅凭报错认定组件文件缺失。",
     reward_claim_visual: "这是现有奖励展示的领取态扩展。复用领取状态判断和奖励节点；新增内容是 icon/mask 蒙层及其状态分支。",
     state_visual_mismatch: "这是状态图片异常定位。复用现有状态来源和转换逻辑；需要调整图片渲染分支。",

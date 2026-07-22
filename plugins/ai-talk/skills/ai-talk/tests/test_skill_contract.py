@@ -48,6 +48,17 @@ class Contract(unittest.TestCase):
         ):
             self.assertIn(text, skill)
 
+    def test_solution_questions_preserve_intent_and_require_repository_evidence(self):
+        skill = (SKILL / "SKILL.md").read_text()
+        for text in (
+            "`怎么办`、`怎么做`、`如何实现`、`有什么方案`等表达是方案诉求",
+            "不是修改授权，也不是“只定位还是修改”的歧义",
+            "不要改问“只定位问题，还是允许修改并验证”",
+            "先检索现有包装组件、组件文档和同类用法",
+            "未核实前不得把自定义 PAG、CSS 或其他具体技术当成既定方案",
+        ):
+            self.assertIn(text, skill)
+
     def test_diagnostic_triage_contract_is_explicit(self):
         skill = (SKILL / "SKILL.md").read_text()
         for text in (

@@ -1,6 +1,6 @@
 {
   "name": "ai-talk",
-  "version": "0.4.0+codex.20260722071014",
+  "version": "0.4.0+codex.20260722082845",
   "description": "AI Talk clarifies implementation-changing ambiguities and performs bounded read-only fault triage, including live browser evidence for UI failures.",
   "author": {
     "name": "sf"

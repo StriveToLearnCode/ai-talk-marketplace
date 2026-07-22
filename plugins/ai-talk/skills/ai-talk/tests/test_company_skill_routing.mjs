@@ -315,6 +315,23 @@ test("treats event-and-effect requests as code changes without requiring an expl
   }
 });
 
+test("treats how-to questions as plan requests and requires existing component evidence", async (t) => {
+  const root = await fixture();
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const result = await route(root, "这个弹窗的奖励需要动效怎么办");
+
+  assert.equal(result.recommended_skill, "gen-frontend-plan");
+  assert.equal(result.execution_mode, "plan_only");
+  assert.deepEqual(result.required_knowledge, ["奖励弹窗渲染入口", "既有奖励动效组件", "动效降级行为"]);
+  assert.ok(result.boundaries.some((item) => item.includes("先核对现有奖励渲染组件及组件文档")));
+  assert.match(result.engineering_judgment, /已有奖励组件的动效能力和静态降级/);
+  assert.doesNotMatch(result.execution_prompt, /⚠️ 需要确认|修改并验证/);
+
+  const diagnostic = await route(root, "奖励弹窗动效不显示怎么办");
+  assert.equal(diagnostic.execution_mode, "inspect_only");
+  assert.equal(diagnostic.recommended_skill, "");
+});
+
 test("structured routing cases assert mode, preserved semantics, boundaries, exclusions, and unknowns", async (t) => {
   const root = await fixture();
   t.after(() => rm(root, { recursive: true, force: true }));
