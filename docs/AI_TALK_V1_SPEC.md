@@ -1,6 +1,6 @@
 # AI Talk V1 冻结规范
 
-> 本文是 `route-company-skills.mjs` 的 legacy CLI 兼容规范。当前 `$ai-talk` 对话行为以 `plugins/ai-talk/skills/ai-talk/SKILL.md` 为准：只做需求澄清和风险提醒，确认后退出，不检索仓库、不推荐 Skill、不介入编码。
+> 本文是 `route-company-skills.mjs` 的 legacy CLI 兼容规范。当前 `$ai-talk` 对话行为以 `plugins/ai-talk/skills/ai-talk/SKILL.md` 为准：普通需求只做澄清和风险提醒；诊断请求可执行必要的只读代码检查，UI 异常可直接执行浏览器运行态取证；始终不推荐下游 Skill、不介入编码。
 
 状态：Frozen  
 版本：V1 / TaskHandoff 1.1  

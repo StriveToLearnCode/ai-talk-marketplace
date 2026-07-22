@@ -8,12 +8,15 @@ PLUGIN = SKILL.parents[1]
 ROUTER = SKILL / "scripts/route-company-skills"
 SPEC = PLUGIN.parents[1] / "docs" / "AI_TALK_V1_SPEC.md"
 LEGACY_ROUTER = SKILL / "references" / "legacy-router.md"
+RUNTIME_UI_CASES = SKILL / "tests" / "runtime-ui-diagnosis-cases.json"
 
 
 class Contract(unittest.TestCase):
     def test_plugin_manifest_and_skill_are_valid(self):
         manifest = json.loads((PLUGIN / ".codex-plugin/plugin.json").read_text())
         self.assertTrue(manifest["name"])
+        self.assertIn("browser evidence", manifest["description"])
+        self.assertIn("Live browser evidence for UI failures", manifest["interface"]["capabilities"])
         skill = (SKILL / "SKILL.md").read_text()
         self.assertIn("name: ai-talk", skill)
         self.assertIn("AI Talk 需求澄清", skill)
@@ -59,6 +62,59 @@ class Contract(unittest.TestCase):
             "不重新判断任务、不重新大范围扫描",
         ):
             self.assertIn(text, skill)
+
+    def test_runtime_ui_evidence_contract_is_explicit(self):
+        skill = (SKILL / "SKILL.md").read_text()
+        for text in (
+            "不显示、位置异常、被遮挡、点击无效、修改后仍未生效",
+            "单纯“按截图开发”不是异常诊断，不启动浏览器",
+            "优先使用独立的应用内浏览器或新标签页",
+            "不得点击领取、提交、支付、确认",
+            "currentIndex === rewardNodes.length - 1",
+            'bg-i="btn/receive"',
+            "getBoundingClientRect()",
+            "elementFromPoint()",
+            "naturalWidth",
+            "运行态尚未验证",
+            "target_screenshot_captured",
+            "交给代码 Agent 的结论",
+        ):
+            self.assertIn(text, skill)
+        output_contract = skill.split("诊断模式输出：", 1)[1].split("纯代码或数据链诊断", 1)[0]
+        fields = ["- 页面状态：", "- 条件：", "- DOM：", "- 布局层级：", "- 资源：", "- 截图："]
+        self.assertEqual([output_contract.index(field) for field in fields], sorted(
+            output_contract.index(field) for field in fields
+        ))
+
+    def test_runtime_ui_acceptance_cases_cover_required_branches(self):
+        cases = json.loads(RUNTIME_UI_CASES.read_text())
+        by_id = {case["id"]: case for case in cases}
+        self.assertEqual(set(by_id), {
+            "last-reward-button-missing",
+            "last-reward-condition-false",
+            "button-dom-occluded",
+            "button-resource-failed",
+            "not-last-reward",
+            "browser-unavailable",
+        })
+        primary = by_id["last-reward-button-missing"]
+        self.assertEqual(primary["expected_checks"], [
+            "page_state",
+            "render_condition",
+            "dom_presence",
+            "geometry_and_occlusion",
+            "resource_load",
+            "screenshot",
+        ])
+        self.assertEqual(primary["must_not_route"], ["gen-code", "ui-self-check"])
+        self.assertEqual(
+            by_id["not-last-reward"]["expected_outcome"],
+            "precondition_not_met_not_a_defect",
+        )
+        self.assertEqual(
+            by_id["browser-unavailable"]["expected_outcome"],
+            "runtime_unverified",
+        )
 
     def test_router_is_split_by_responsibility(self):
         expected = {
