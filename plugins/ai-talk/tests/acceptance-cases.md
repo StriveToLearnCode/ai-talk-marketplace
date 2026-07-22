@@ -1,5 +1,21 @@
 # AI Talk 验收场景
 
+## 当前对话职责
+
+正常 `$ai-talk` 对话只做需求澄清和风险提醒，不读取仓库，不推荐或调用下游 Skill，也不介入具体编码。需求确认完成后必须输出“AI Talk 到此结束，交给代码 Agent 实现。”并停止。
+
+### 头像 PAG 溜光
+
+`$ai-talk 这两部分的用户头像都需要 pag/user 溜光`
+
+- 上下文未给出范围时，确认只指 `recharge`，还是 `voice` 同款区域也同步。
+- 确认 `pag/user` 是每个头像各自循环播放，还是头像列表共用一个实例。
+- 提醒 `ui-pag` 同页实例上限、PAG name 唯一性和覆盖层点击风险。
+- 不读取 `mod3.vue`，不检索 PAG 用法，不实现代码，不推荐代码 Skill。
+- 用户确认后总结结果并退出。
+
+以下章节是 `route-company-skills.mjs` 的 legacy CLI 兼容验收，不属于正常 Skill 对话行为。
+
 ## A. 原话与增量上下文
 
 `$ai-talk 在 banner-spin.vue 中，积分阶段 PROGRESS_TASK_ID: 7，然后一样展示进度和奖励`

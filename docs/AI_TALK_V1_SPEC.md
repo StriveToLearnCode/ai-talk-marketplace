@@ -1,10 +1,12 @@
 # AI Talk V1 冻结规范
 
+> 本文是 `route-company-skills.mjs` 的 legacy CLI 兼容规范。当前 `$ai-talk` 对话行为以 `plugins/ai-talk/skills/ai-talk/SKILL.md` 为准：只做需求澄清和风险提醒，确认后退出，不检索仓库、不推荐 Skill、不介入编码。
+
 状态：Frozen  
 版本：V1 / TaskHandoff 1.1  
 生效日期：2026-07-20
 
-本文档是 AI Talk V1 唯一的产品与实现标准。README、USAGE、Skill 文档、代码与测试如有冲突，以本文档为准。
+本文档是 legacy CLI 路由器的冻结实现标准。正常 `$ai-talk` 对话不得据此扩大职责；对话行为以当前 `SKILL.md` 为准。
 
 ## 1. 产品边界
 
@@ -16,13 +18,14 @@ V1 不包含 `planned_changes`、写范围强制、来源优先级引擎、resol
 
 ## 2. 固定输出
 
-默认文本输出只能按以下顺序按需包含五个模块，不得增加、改名或重排：
+默认文本输出只能按以下顺序按需包含六个模块，不得增加、改名或重排：
 
 1. `🧩 已补充上下文`，最多 2 条高价值事实
 2. `🧠 AI 判断`，1～2 句任务专属工程判断
 3. `🔍 公司检索入口`，最多 3 项真实命中
 4. `⚠️ 需要确认`，仅有硬阻塞时出现，最多 1 条
-5. `▶ 下一步`
+5. `🧪 定责条件`，仅故障归属诊断时出现
+6. `▶ 下一步`
 
 已补充上下文只包含附件、代码或原话支持的高价值新增事实，不输出泛化关键词清单。AI 判断必须根据现象缩小范围、说明优先排查层，并保留不确定性。公司检索入口使用“知识对象 → 真实入口（用途）”；标准 Bug 应在预算内覆盖至少两个不同排查层，不得找到一个入口即早停。普通输出不得展示改写后的任务目标、截图完整描述、扫描信息、通用边界、验收标准、AGENTS、README、普通依赖、非阻塞 unknown 或调试字段。无需新增上下文、工程判断和真实入口时设置 `skipEnhancement: true`，输出“当前需求已经明确，无需额外增强。”后直接显示下一步。
 
@@ -54,8 +57,9 @@ verification: []
 - `workflow.next_skill` 仅供 `plan_then_execute` 保存已安装的实施 Skill；确认后将其移动到 `route.skill` 并清空。
 - `knowledge_requirements` 最多 4 项，`retrieval` 最多 3 项。
 - `source_facts` 只保存 `fact` 或带置信度的 `inference`；`unknown` 必须进入 `blockers`。
+- 代码诊断事实使用 `diagnostic_fact`，保留 `control | data | render` 层次、稳定 `signal`、原始描述和源码来源；用户指定的 `文件:行号` 必须进入 `target_scope.line`。
 - 新 blocker 固定包含 `kind`、`description`、`status: unknown`、`resolution` 和 `blocking`；必须继续读取旧字符串 blocker。
-- `verification` 只保存行为级 assertion，不伪造 lint、test 或 e2e 命令。
+- `verification` 保存行为级 assertion；故障归属诊断使用 `responsibility_condition` 保存可观察条件和责任层，不伪造 lint、test 或 e2e 命令。
 - 旧顶层兼容字段只能从 TaskHandoff 投影，不得形成平行事实源。
 - `development_context`、`ui_requirements`、`interaction_requirements`、`data_requirements`、`reusable_resources`、`acceptance_assertions` 不得成为顶层字段。
 
@@ -91,7 +95,13 @@ typed evidence 必须包含 `kind` 和 `source`。事实与推断必须包含合
 
 Skill 推荐只基于已安装索引中的职责匹配。目标 Skill 不存在时保持空值，并生成安装、启用或 `--source-root` 的硬阻塞；不得改选其他职责 Skill。
 
+`inspect_only` 的代码诊断不以代码修改为目标，因此不推荐 `gen-code`，也不生成 Skill 缺失阻塞。操作后“没变化、未更新、不生效”等状态未同步现象必须归类为 Bug；在缺少请求证据时不得直接判定为前端或后端，更不得描述为新增页面功能。
+
+状态未同步与“前端还是后端”诊断固定沿三层故障链检索：控制层检查点击、确认和失败关闭；数据层检查接口响应、状态回写和请求锁；渲染层检查页面最终消费字段。定责条件至少包含：操作失败但页面仍关闭属于前端错误处理；响应已有新值但页面仍显示旧值属于前端状态同步；操作成功且重新查询仍返回旧值属于后端持久化或查询。
+
 明确修改动作在首轮完成授权，并直接 handoff 到 `execution_plan.route.skill`。宿主支持下游调用时同轮继续；不支持时 Formatter 只显示一个建议 Skill 入口，不输出授权口令或重复按钮。`plan_then_execute` 完成方案后只确认一次，确认只更新 mode、阶段和授权状态。
+
+`inspect_only` 诊断收到“执行”“开始执行”等续接词时，仍保持 `inspect_only` 和空 Skill；直接复用上一轮的 `retrieval`、`source_facts`、`verification`、约束与阻塞继续抓包或代码检查，不重新分类、不重新扫描，也不添加修改授权阻塞。
 
 ## 8. V1 黄金用例
 

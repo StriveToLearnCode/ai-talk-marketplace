@@ -36,6 +36,7 @@ const SOURCE_FACT_KINDS = new Set([
   "progress_semantics",
   "resource_reference",
   "resource_reuse_candidate",
+  "diagnostic_fact",
 ]);
 const BLOCKER_KINDS = new Set([
   "data_requirement",
@@ -48,6 +49,7 @@ const ASSERTION_KINDS = new Set([
   "interaction_assertion",
   "state_assertion",
   "resource_assertion",
+  "responsibility_condition",
 ]);
 const EVIDENCE_STATUSES = new Set(["fact", "inference", "unknown"]);
 const ATTACHMENT_ROLES = new Set(["target", "reference", "comparison"]);
@@ -73,6 +75,10 @@ function normalizeTypedEvidence(entries) {
 
     if (ASSERTION_KINDS.has(entry.kind)) {
       entry.description = requiredString(entry, "description", index);
+      if (entry.kind === "responsibility_condition") {
+        entry.condition = requiredString(entry, "condition", index);
+        entry.owner = requiredString(entry, "owner", index);
+      }
       delete entry.status;
       return entry;
     }
@@ -105,6 +111,12 @@ function normalizeTypedEvidence(entries) {
         throw new Error(`--evidence-json entry ${index + 1} has unknown attachment role: ${entry.role}.`);
       }
     }
+    if (entry.kind === "diagnostic_fact") {
+      entry.description = requiredString(entry, "description", index);
+      if (entry.layer && !["control", "data", "render"].includes(entry.layer)) {
+        throw new Error(`--evidence-json entry ${index + 1} has unknown diagnostic layer: ${entry.layer}.`);
+      }
+    }
     return entry;
   }), (item) => JSON.stringify(item));
 }
@@ -124,8 +136,15 @@ function suppliedEvidence(values) {
 
 function extractPaths(query) {
   const extension = "vue|tsx?|jsx?|mjs|cjs|json|css|scss|less|md|py|go|java|kt|swift";
-  const pattern = new RegExp(`(?:^|[\\s\\x60'\"（(：:])((?:\\.{0,2}/)?(?:[\\w@.-]+/)*[\\w@.-]+\\.(?:${extension}))(?=$|[\\s\\x60'\"，。；;：:）)])`, "giu");
-  return [...query.matchAll(pattern)].map((match) => match[1]).filter((value) => !value.startsWith("http"));
+  const pattern = new RegExp(`(?:^|[\\s\\x60'\"（(：:])((?:\\.{0,2}/)?(?:[\\w@.-]+/)*[\\w@.-]+\\.(?:${extension}))(?::(\\d+)(?::\\d+)?)?(?=$|[\\s\\x60'\"，。；;：:）)])`, "giu");
+  return [...query.matchAll(pattern)]
+    .map((match) => {
+      const suffix = query.slice(match.index + match[0].length);
+      const chineseLine = suffix.match(/^\s*第?\s*(\d+)\s*行/u)?.[1];
+      const line = match[2] || chineseLine;
+      return { value: match[1], line: line ? Number(line) : null };
+    })
+    .filter((item) => !item.value.startsWith("http"));
 }
 
 function referencesFigma(query) {
@@ -162,19 +181,31 @@ function extractStates(query) {
 
 function extractResources(query) {
   const values = [];
-  for (const match of query.matchAll(/\b(?:icon|mask|sprite|image|img|asset)s?(?:\/[\w@.-]+)+\b/gi)) values.push(match[0]);
+  for (const match of query.matchAll(/\b(?:audio|sound|icon|mask|sprite|image|img|asset)s?(?:\/[\w@.-]+)+\b/gi)) values.push(match[0]);
   return unique(values);
+}
+
+function requestsBehaviorChange(query) {
+  if (/(?:为什么|为何|怎么|如何|是否|能否|可否|什么|哪个|哪种)/u.test(query)) return false;
+
+  const event = "(?:点击|轻触|按下|选择|切换|进入|打开|关闭|提交|加载|初始化|挂载)";
+  const effect = "(?:播放|暂停|停止|打开|关闭|跳转|切换|显示|隐藏|调用|触发|更新|设置|增加|移除|弹出|收起|展开)";
+  const modifier = "(?:(?:需要|要|应当|应该|自动|直接|同时|都|统一)\\s*)?";
+  return new RegExp(
+    `${event}.{0,40}(?:时|的时候|之后|以后|后)[\\s，,、:：]*${modifier}${effect}`,
+    "iu",
+  ).test(query);
 }
 
 function inferEvidence(query, provided) {
   const text = query.toLowerCase();
   const evidence = [...provided];
-  const add = (type, value) => evidence.push({ type, value, source: "user_request" });
+  const add = (type, value, extra = {}) => evidence.push({ type, value, source: "user_request", ...extra });
   if (includesAny(text, KEYWORDS.screenshotEvidence)) add("screenshot", "用户在原话中明确引用的截图");
   if (referencesFigma(query)) add("figma", "用户在原话中明确提供或引用的 Figma");
   if (includesAny(text, KEYWORDS.designEvidence)) add("design", "用户在原话中明确提供或引用的设计稿");
   if (includesAny(text, KEYWORDS.apiEvidence)) add("api", "用户在原话中明确提供或引用的接口资料");
-  for (const value of extractPaths(query)) add("target_file", value);
+  for (const item of extractPaths(query)) add("target_file", item.value, item.line ? { line: item.line } : {});
   for (const value of extractApiNames(query)) add("api_name", value);
   for (const value of extractComponents(query)) add("component", value);
   for (const value of extractStates(query)) add("state", value);
@@ -198,20 +229,24 @@ function classifyIntent(query) {
     && /(?:冲突|不一致|但|却)/u.test(text);
   const runtimeComponentError = /(?:unknown custom element|failed to resolve component)\s*:/i.test(text);
   const interactionChange = /点击图\s*[一二三四五六七八九\d]+.+(?:后|再).*(?:跳转|切换|定位).*(?:图\s*[一二三四五六七八九\d]+|tab\s*\d+)/iu.test(text);
+  const behavioralCommand = requestsBehaviorChange(text);
+  const ownershipQuestion = /(?:前端|客户端).{0,10}(?:还是|或).{0,10}(?:后端|服务端)|(?:后端|服务端).{0,10}(?:还是|或).{0,10}(?:前端|客户端)/u.test(text);
   const ambiguousModification = /^(?:请)?帮我(?:改一下|修改一下|修一下)(?:这个|它|这里)?[。！!]?$/u.test(text.trim());
   const planThenExecute = /先.{0,20}(?:方案|分析|原因|排查|定位).{0,24}(?:确认|同意|通过).{0,8}(?:后|再).{0,8}(?:改|修改|修复|实现|开发)/u.test(text);
   const flags = {
     analysisOnly: includesAny(text, KEYWORDS.analysisOnly),
-    diagnostic: includesAny(text, KEYWORDS.diagnostic),
+    diagnostic: includesAny(text, KEYWORDS.diagnostic) || ownershipQuestion,
     planThenExecute,
     automatedTest: includesAny(text, KEYWORDS.automatedTest) && !rejectsAutomatedTest,
     plan: includesAny(text, KEYWORDS.plan),
     noCode: includesAny(text, KEYWORDS.noCode),
-    code: includesUnnegatedAny(text, KEYWORDS.code) || interactionChange,
-    bug: includesAny(text, KEYWORDS.bug) || intermittentDisplay || apiPageConflict || runtimeComponentError,
+    code: includesUnnegatedAny(text, KEYWORDS.code) || interactionChange || behavioralCommand,
+    bug: includesAny(text, KEYWORDS.bug) || intermittentDisplay || apiPageConflict || runtimeComponentError || ownershipQuestion,
     ambiguousModification,
     interactionChange,
+    behavioralCommand,
     runtimeComponentError,
+    ownershipQuestion,
     inspect: liveInspect,
     figma: figmaReference,
     analyze: includesAny(text, KEYWORDS.analyze),
@@ -261,6 +296,12 @@ function taskTypeFor(query, evidence) {
   const text = query.toLowerCase();
   const hasTargetFile = evidence.some((item) => item.type === "target_file");
   if (hasTargetFile && /(?:文案|文字|copy|标题|提示语)/i.test(query)) return "copy_change";
+  if (/(?:选择|点击|提交|确认|领取|保存|切换).{0,24}(?:后|之后|以后).{0,16}(?:(?:还是|仍然|仍|依然).{0,4})?(?:没变化|没有变化|无变化|未变化|没有更新|未更新|不更新|不生效)/u.test(query)) {
+    return "post_action_state_not_updated";
+  }
+  if (/(?:前端|客户端).{0,10}(?:还是|或).{0,10}(?:后端|服务端)|(?:后端|服务端).{0,10}(?:还是|或).{0,10}(?:前端|客户端)/u.test(query)) {
+    return "fault_ownership";
+  }
   if (/(?:接口|api)/iu.test(query)
     && /(?:页面|界面|ui|展示|显示)/iu.test(query)
     && /(?:冲突|不一致|但|却)/u.test(query)) return "api_page_conflict";
@@ -317,6 +358,8 @@ function requiredKnowledgeFor(taskType, evidence, typedEvidence, intent) {
     dynamic_component_registration: ["动态组件名称生成", "动态组件注册规则", "实际组件名称"],
     reward_claim_visual: ["奖励领取状态判断", "icon/mask 资源引用", "奖励节点渲染"],
     state_visual_mismatch: ["状态来源", "状态转换", "图片渲染分支"],
+    post_action_state_not_updated: ["控制层：点击、确认与失败处理", "数据层：接口调用、状态回写与请求锁", "渲染层：页面最终消费字段"],
+    fault_ownership: ["控制层：点击、确认与失败处理", "数据层：接口调用、状态回写与请求锁", "渲染层：页面最终消费字段"],
     intermittent_reward_display: ["轮播切换", "奖励数据", "图片配置"],
     api_page_conflict: ["接口返回", "页面展示"],
     image_tab_navigation: ["点击入口", "Tab 跳转", "目标位置"],

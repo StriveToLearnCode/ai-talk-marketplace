@@ -1,39 +1,21 @@
 # AI Talk Plugin
 
-AI Talk 是一个 Codex 插件，用于保持开发者原话，并补充公司 Skill、组件、Docs 和仓库检索所需的增量上下文。它不替代公司的 Skill，也不直接负责写代码。
+AI Talk 用于开发前的需求澄清和只读诊断分诊。它保留用户原话：普通需求只处理会改变实施结果的问题；“为什么”“前端还是后端”等请求沿控制、数据、渲染三层定位。
 
-它把研发输入增强为结构化执行协议：
+运行规则：
 
-1. 保持用户原话，不生成改写后的任务目标。
-2. 最多补充 2 条高价值增量事实，并给出一条 1～2 句的任务专属工程判断。
-3. 只为真实命中的代码、组件、Docs 或 Skill 索引选择入口；标准 Bug 在预算内覆盖至少两个不同排查层，最多 3 项。
-4. 从原话直接确定 `modify_and_verify`、`inspect_only` 或 `plan_then_execute`；仅在无法判断是否允许修改时询问一次。
+1. 一次最多询问 2 个关键问题。
+2. 最多提醒 3 条由当前任务支持的具体风险。
+3. 澄清模式不读取仓库；诊断模式只读取用户指定位置及故障链必要关联，始终不修改代码。
+4. 不推荐或调用下游 Skill。
+5. 需求明确后输出“AI Talk 到此结束，交给代码 Agent 实现。”并停止。
 
-```bash
-node skills/ai-talk/scripts/route-company-skills.mjs \
-  --root /path/to/project \
-  --query '帮我开发这个图，3 是目标 UI。' \
-  --evidence-json '{"kind":"attachment_reference","attachment":"attachment_3","role":"target","source":"user","status":"fact"}'
+```text
+$ai-talk:ai-talk 这两部分的用户头像都需要 pag/user 溜光
 ```
 
-默认输出是由结构化 `execution_plan` 单向渲染的精简增强结果。前台只允许已补充上下文、AI 判断、公司检索入口、需要确认和下一步；机器调用使用 `--format json`，调试时使用 `--debug-json`。
+该场景只需确认页面范围和“每个头像独立播放还是列表共用实例”，并提醒 `ui-pag` 实例上限、PAG name 唯一性与覆盖层点击风险。
 
-只有 `plan_then_execute` 在方案完成后需要一次确认：
+`skills/ai-talk/scripts/route-company-skills.mjs` 与 `references/legacy-router.md` 仅用于 0.4 CLI 兼容和历史测试，正常 Skill 对话不得调用。
 
-```bash
-node skills/ai-talk/scripts/route-company-skills.mjs \
-  --root /path/to/project \
-  --query '开始执行' \
-  --previous-contract /path/to/previous-contract.json
-```
-
-JSON 结果包含 `execution_plan` 1.1；`task.reasoning`、`knowledge_requirements` 和 `retrieval` 驱动 Formatter，截图研发维度仍作为 `source_facts`、`blockers` 和 `verification` 中的 typed entries 保留。明确修改意图首轮即设为 `authorized`，handoff 保留完整计划。
-
-读取范围通过 `realpath` 限制在项目根目录内；拒绝 `node_modules` 和仓库外符号链接。总处理时间目标不超过 45 秒，最多搜索 2 次，单文件最多 128 KiB，上下文正文最多 4 个文件。标准 Bug 至少覆盖两个不同排查层后早停。Skill 默认只读取 name/description 索引。
-
-## 验证
-
-```bash
-PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s skills/ai-talk/tests -v
-node --test skills/ai-talk/tests/*.mjs
-```
+诊断请求固定使用 `inspect_only`，不推荐 `gen-code`。Handoff 保存诊断事实与定责条件；用户说“执行”时直接续接上一轮证据，不重新扫描或升级为修改模式。

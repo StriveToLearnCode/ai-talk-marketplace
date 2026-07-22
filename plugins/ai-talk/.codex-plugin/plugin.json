@@ -1,50 +1,32 @@
 {
   "name": "ai-talk",
-  "version": "0.4.0+codex.20260720023129",
-  "description": "AI Talk turns development requests into bounded task positioning, verified project context, high-signal retrieval targets, and optional Skill recommendations.",
+  "version": "0.4.0+codex.20260722110134",
+  "description": "AI Talk clarifies implementation-changing ambiguities and performs bounded read-only fault triage with evidence-based ownership conditions.",
   "author": {
     "name": "sf"
   },
   "skills": "./skills/",
   "interface": {
     "displayName": "AI Talk",
-    "shortDescription": "Build evidence-based development handoffs",
-    "longDescription": "AI Talk summarizes the user's actual goal, classifies the task without designing the implementation, separates verified project facts from conclusions, and emits searchable retrieval targets plus explicit implementation boundaries. It never modifies the project or invokes a downstream Skill during protocol generation.",
+    "shortDescription": "Clarify requirements and triage faults",
+    "longDescription": "AI Talk asks only questions that change implementation scope or behavior. Explicit diagnostic requests use bounded read-only inspection across control, data, and render layers, preserve evidence, and provide verifiable ownership conditions without modifying code or forcing a code-generation Skill.",
     "developerName": "sf",
     "category": "Productivity",
     "capabilities": [
-      "Concise user goal preservation",
-      "Evidence-based task positioning",
-      "Positioning omission when evidence is insufficient",
-      "High-signal retrieval targets",
-      "Fact and implementation conclusion separation",
-      "Lossless execution goal generation",
-      "Sourced development default rules",
-      "Bounded explicit-target project reads",
-      "Four-file context read budget",
-      "Evidence-based retrieval early stopping",
-      "Project AGENTS.md provenance",
-      "Attachment role normalization",
-      "Typed screenshot development context",
-      "Fact inference and unknown separation",
-      "Behavioral acceptance assertion extraction",
-      "Real project Skill recommendation",
-      "Bounded applicability metadata reads",
-      "Always-on Skill Handoff generation",
-      "Knowledge-gap extraction",
-      "Desired-output-aware Skill recommendation",
-      "Duplicate Skill name detection",
-      "Deterministic user-output formatting",
-      "Typed context and implementation boundaries",
-      "Uncertain state mapping protection",
-      "Compact task protocol generation",
-      "Explicit execution permission gate",
+      "Original request preservation",
+      "Implementation-changing ambiguity detection",
+      "Two-question clarification limit",
+      "Task-specific risk reminders",
+      "Explicit exit before implementation",
+      "Bounded read-only fault triage",
+      "Evidence-preserving diagnostic handoff",
+      "Verifiable frontend/backend ownership conditions",
       "Zero downstream execution"
     ],
     "defaultPrompt": [
-      "$ai-talk \u4fee\u590d src/components/reward-card.vue \u4e2d\u56fe\u7247\u672a\u663e\u793a\u95ee\u9898",
-      "$ai-talk state=0 \u9875\u9762\u5374\u5df2\u9886\u53d6",
-      "$ai-talk \u5f00\u53d1\u4e00\u4e2a\u5f39\u7a97\uff0c\u4e0d\u8981\u6269\u5c55\u4e1a\u52a1\u9700\u6c42"
+      "$ai-talk \u8fd9\u4e24\u90e8\u5206\u7684\u7528\u6237\u5934\u50cf\u90fd\u9700\u8981 pag/user \u6e9c\u5149",
+      "$ai-talk \u5f00\u53d1\u4e00\u4e2a\u5f39\u7a97\uff0c\u5e2e\u6211\u786e\u8ba4\u8303\u56f4\u548c\u98ce\u9669",
+      "$ai-talk \u4e3a\u4ec0\u4e48\u9009\u62e9\u5956\u52b1\u540e\u8fd8\u662f\u6ca1\u53d8\u5316\uff0c\u662f\u524d\u7aef\u8fd8\u662f\u540e\u7aef"
     ]
   }
 }

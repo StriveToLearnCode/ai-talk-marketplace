@@ -7,6 +7,7 @@ SKILL = Path(__file__).resolve().parents[1]
 PLUGIN = SKILL.parents[1]
 ROUTER = SKILL / "scripts/route-company-skills"
 SPEC = PLUGIN.parents[1] / "docs" / "AI_TALK_V1_SPEC.md"
+LEGACY_ROUTER = SKILL / "references" / "legacy-router.md"
 
 
 class Contract(unittest.TestCase):
@@ -15,21 +16,49 @@ class Contract(unittest.TestCase):
         self.assertTrue(manifest["name"])
         skill = (SKILL / "SKILL.md").read_text()
         self.assertIn("name: ai-talk", skill)
-        self.assertIn("AI Talk 增量上下文增强", skill)
-        for heading in ("🧩 已补充上下文", "🧠 AI 判断", "🔍 公司检索入口", "⚠️ 需要确认", "▶ 下一步"):
-            self.assertIn(heading, skill)
-        for removed_heading in ("🎯 任务目标", "🔍 优先检索", "⚠️ 待确认"):
-            self.assertNotIn(removed_heading, skill)
-        self.assertNotIn("📚 需要理解", skill)
-        self.assertIn("--evidence-json", skill)
-        self.assertIn("Stable", skill)
-        self.assertIn("Reserved", skill)
-        self.assertIn("TaskHandoff 1.1", skill)
-        self.assertIn("项目上下文正文最多读取 4 个文件", skill)
-        self.assertIn("Skill 正文读取数默认为 0", skill)
+        self.assertIn("AI Talk 需求澄清", skill)
+        self.assertIn("一次最多询问 2 个短问题", skill)
+        self.assertIn("最多 3 条任务专属风险", skill)
+        self.assertIn("AI Talk 到此结束，交给代码 Agent 实现。", skill)
+        self.assertIn("不选择、推荐或调用代码 Skill", skill)
+        self.assertIn("不读取或检索仓库", skill)
+        self.assertNotIn("node scripts/route-company-skills.mjs", skill)
+        self.assertNotIn("modify_and_verify", skill)
+        self.assertTrue(LEGACY_ROUTER.is_file())
+        legacy = LEGACY_ROUTER.read_text()
+        self.assertIn("TaskHandoff 1.1", legacy)
+        self.assertIn("modify_and_verify", legacy)
         spec = SPEC.read_text()
-        self.assertIn("唯一的产品与实现标准", spec)
+        self.assertIn("legacy CLI 路由器的冻结实现标准", spec)
         self.assertIn("处理链固定为单向三阶段", spec)
+
+    def test_avatar_pag_clarification_case_is_explicit(self):
+        skill = (SKILL / "SKILL.md").read_text()
+        for text in (
+            "recharge",
+            "voice",
+            "每个头像各自循环播放",
+            "整个头像列表共用一个实例",
+            "ui-pag",
+            "PAG name 必须唯一",
+            "覆盖层不得拦截头像点击",
+        ):
+            self.assertIn(text, skill)
+
+    def test_diagnostic_triage_contract_is_explicit(self):
+        skill = (SKILL / "SKILL.md").read_text()
+        for text in (
+            "inspect_only + Bug 定位",
+            "控制层检查点击、确认、失败处理和关闭时机",
+            "数据层检查接口调用、响应消费、状态回写和请求锁",
+            "渲染层检查页面最终读取的字段",
+            "diagnostic_fact",
+            "responsibility_condition",
+            "route.skill",
+            "workflow.next_skill",
+            "不重新判断任务、不重新大范围扫描",
+        ):
+            self.assertIn(text, skill)
 
     def test_router_is_split_by_responsibility(self):
         expected = {

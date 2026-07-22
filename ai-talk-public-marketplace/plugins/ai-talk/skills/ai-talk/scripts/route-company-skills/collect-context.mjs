@@ -191,6 +191,7 @@ function screeningTerms(classification) {
   if (/(?:状态|图片)/u.test(knowledge)) add("state", "status", "reward", "item", "node");
   if (/(?:动态组件|组件名称|注册规则)/u.test(knowledge)) add("dynamic", "component", "loader", "registry");
   if (/(?:接口返回|页面展示)/u.test(knowledge)) add("api", "service", "store", "state", "status", "reward", "page", "component");
+  if (/(?:控制层|数据层|渲染层)/u.test(knowledge)) add("handle", "confirm", "close", "api", "request", "store", "state", "lock", "page", "component", "render");
   if (/(?:h5|跳转)/iu.test(knowledge)) add("h5", "banner", "activity");
   if (/rtl/iu.test(knowledge)) add("rtl", "banner", "activity");
   if (classification.evidence.some((item) => item.type === "target_file")) add("page", "index");
@@ -474,6 +475,18 @@ function codeCandidates(classification, records) {
       && /(?:claimed|rewardStatus|isClaimed)/i.test(record.content)
       && /(?:img|image|icon|mask)/i.test(record.content),
     () => 120);
+
+  addSymbols("控制层：点击、确认与失败处理", "定位操作入口、确认流程和失败后的关闭行为",
+    [/\b(handle[A-Z]\w*)\b/, /\b(on[A-Z]\w*(?:Click|Confirm|Submit)\w*)\b/, /\b(confirm\w*)\b/i, /\b(close\w*)\b/i],
+    (symbol) => /confirm|submit/i.test(symbol) ? 150 : 110);
+  addSymbols("数据层：接口调用、状态回写与请求锁", "定位接口响应、状态回写和请求锁",
+    [/\b((?:choose|select|submit|update|fetch|get|post|request)[A-Z_]\w*)\b/i, /\b(useStore)\b/, /\b(\w*(?:Request|Loading|Pending|Lock)\w*)\b/i],
+    (symbol) => /useStore|lock|pending/i.test(symbol) ? 150 : 120);
+  addFiles("渲染层：页面最终消费字段", "定位页面最终读取的状态字段",
+    (record) => /\.vue$/i.test(record.basename)
+      && /<template\b/i.test(record.content)
+      && /(?:store|state|reward|wish|status)/i.test(record.content),
+    () => 140);
 
   addSymbols("轮播切换", "确认末项切换时的索引与取值",
     [/\b(getNodeDisplayReward)\b/, /\b(get\w*(?:Display)?Reward)\b/i],
