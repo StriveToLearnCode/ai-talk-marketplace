@@ -1,90 +1,75 @@
 [
   {
-    "id": "avatar-initial-clarification",
-    "input": "这两部分的用户头像都需要 pag/user 溜光",
-    "expectedStatus": "clarifying",
-    "expectedQuestions": [
-      "这两部分只指 recharge，还是 voice 的同款区域也同步？",
-      "pag/user 是每个头像各自循环播放，还是整个头像列表共用一个实例？"
-    ]
-  },
-  {
-    "id": "avatar-partial-answer",
-    "input": "recharge 和 voice 都要",
-    "expectedStatus": "clarifying",
-    "resolved": ["scope"],
-    "expectedQuestions": [
-      "pag/user 是每个头像各自循环播放，还是整个头像列表共用一个实例？"
-    ],
-    "mustNotRepeat": ["recharge，还是 voice"]
-  },
-  {
-    "id": "avatar-ready",
-    "input": "两处都要，每个头像独立循环",
-    "expectedContract": {
-      "schemaVersion": "1.0",
-      "status": "ready_to_execute",
-      "authorization": "pending",
-      "sourceRequest": "这两部分的用户头像都需要 pag/user 溜光",
-      "mode": "clarification",
-      "scope": ["recharge", "voice"],
-      "target": "用户头像",
-      "effect": "pag/user",
-      "instanceModel": "per_target",
-      "playback": "loop",
-      "constraints": [
-        {"text": "每个 PAG name 唯一", "source": "derived"},
-        {"text": "动画层不拦截头像点击", "source": "derived"}
-      ],
-      "acceptance": [
-        {"text": "recharge、voice 中所有用户头像均持续播放溜光", "source": "clarification"},
-        {"text": "多个头像同时使用独立实例循环播放", "source": "clarification"},
-        {"text": "列表切换或数据刷新后动画仍正常", "source": "derived"},
-        {"text": "PAG 层不影响头像原有点击", "source": "derived"},
-        {"text": "资源加载失败时页面不阻塞且头像仍可用", "source": "derived"}
+    "id": "implicit-modification-skip",
+    "input": "中奖时播放 audio/get，动画结束后再打开 normalReward",
+    "expected_contract": {
+      "schema_version": "1.2",
+      "result": "skip",
+      "mode": "modify_and_verify",
+      "authorization": "authorized",
+      "source_request": "中奖时播放 audio/get，动画结束后再打开 normalReward",
+      "next_skill": "gen-code",
+      "entry_point": null,
+      "target_refs": [],
+      "control_point": null,
+      "write_scope": [],
+      "behavior": [
+        "successful lottery",
+        "animation completed",
+        "play audio/get",
+        "open normalReward"
       ],
       "evidence": [],
-      "openQuestions": []
+      "verification": [
+        "failures do not play audio",
+        "audio precedes reward dialog"
+      ],
+      "open_questions": []
     }
   },
   {
-    "id": "avatar-execute",
-    "input": "执行",
-    "previousCase": "avatar-ready",
-    "expectedTransition": {
-      "status": "executing",
-      "authorization": "authorized"
-    },
-    "mustNotAsk": true,
-    "expectedAction": "implement_and_verify_current_contract"
+    "id": "entry-and-control-point-handoff",
+    "input": "在 mods/tab3/mod2.vue:80 这个按钮中奖时播放音效",
+    "expected_result": "handoff",
+    "entry_point": {"path": "mods/tab3/mod2.vue", "line": 80, "symbol": "handleOpen"},
+    "control_point": {"path": "mods/tab3/mod2.vue", "line": 132, "symbol": "handleLotterySuccess"},
+    "write_scope": ["mods/tab3/mod2.vue"],
+    "must_not_copy_entry_to_control": true
+  },
+  {
+    "id": "one-hard-question",
+    "input": "这两个区域用一个动画实例",
+    "expected_result": "clarify",
+    "expected_questions": ["两个区域需要同步播放，还是分别保持各自进度？"],
+    "expected_question_count": 1,
+    "next_skill": null
+  },
+  {
+    "id": "diagnosis-inspect-only",
+    "input": "为什么选择奖励后页面还是旧值，只分析不要修改",
+    "expected_result": "handoff",
+    "expected_mode": "inspect_only",
+    "expected_authorization": "inspect_only",
+    "expected_next_skill": null
   },
   {
     "id": "diagnosis-execute",
-    "input": "开始执行",
-    "previousStatus": "ready_to_execute",
-    "previousMode": "diagnosis",
-    "evidence": [
-      {"type": "diagnostic_fact", "summary": "接口已返回新值但渲染仍消费旧状态", "source": "diagnostic"}
-    ],
-    "expectedTransition": {
-      "status": "executing",
-      "authorization": "authorized"
+    "input": "执行",
+    "previous_mode": "inspect_only",
+    "expected_transition": {
+      "mode": "modify_and_verify",
+      "authorization": "authorized",
+      "next_skill": "gen-code"
     },
-    "preserve": ["sourceRequest", "scope", "constraints", "acceptance", "evidence"],
-    "mustNotAsk": true
+    "preserve": ["source_request", "entry_point", "target_refs", "behavior", "evidence", "verification"],
+    "must_not_ask": true
   },
   {
-    "id": "blocked-execute",
+    "id": "hard-blocker-survives-execute",
     "input": "按这个做",
-    "previousStatus": "blocked",
-    "openQuestions": ["请提供可访问的完整页面 URL。"],
-    "expectedStatus": "blocked",
-    "expectedQuestions": ["请提供可访问的完整页面 URL。"]
-  },
-  {
-    "id": "clear-request-ready",
-    "input": "把 recharge 和 voice 的所有用户头像都加上 pag/user，每个头像独立循环，且不能影响点击",
-    "expectedStatus": "ready_to_execute",
-    "expectedQuestionCount": 0
+    "previous_result": "clarify",
+    "open_questions": ["两个区域需要同步播放，还是分别保持各自进度？"],
+    "expected_result": "clarify",
+    "expected_questions": ["两个区域需要同步播放，还是分别保持各自进度？"]
   }
 ]

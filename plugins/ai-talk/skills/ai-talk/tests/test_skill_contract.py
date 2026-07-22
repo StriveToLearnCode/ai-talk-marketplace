@@ -10,191 +10,228 @@ SPEC = PLUGIN.parents[1] / "docs" / "AI_TALK_V1_SPEC.md"
 LEGACY_ROUTER = SKILL / "references" / "legacy-router.md"
 REQUIREMENT_CONTRACT = SKILL / "references" / "requirement-contract.md"
 REQUIREMENT_CASES = SKILL / "tests" / "requirement-contract-cases.json"
+TARGET_BINDING = SKILL / "references" / "target-binding.md"
+TARGET_CASES = SKILL / "tests" / "target-binding-cases.json"
 RUNTIME_UI_CASES = SKILL / "tests" / "runtime-ui-diagnosis-cases.json"
+GATE_CASES = SKILL / "tests" / "gate-cases.json"
+AI_TALK_AGENT = SKILL / "agents" / "openai.yaml"
+UI_SELF_CHECK_AGENT = PLUGIN / "skills" / "ui-self-check" / "agents" / "openai.yaml"
 
 CONTRACT_KEYS = [
-    "schemaVersion", "status", "authorization", "sourceRequest", "mode",
-    "scope", "target", "effect", "instanceModel", "playback", "constraints",
-    "acceptance", "evidence", "openQuestions",
+    "schema_version", "result", "mode", "authorization", "source_request",
+    "next_skill", "entry_point", "target_refs", "control_point", "write_scope",
+    "behavior", "evidence", "verification", "open_questions",
 ]
-CONTRACT_STATUSES = {
-    "clarifying", "diagnosing", "ready_to_execute", "executing", "verifying",
-    "done", "blocked",
-}
-CONTRACT_SOURCES = {"user", "clarification", "derived", "diagnostic"}
+RESULTS = {"skip", "handoff", "clarify"}
+MODES = {"modify_and_verify", "inspect_only", "plan_only", "plan_then_execute"}
+TARGET_REF_KEYS = ["id", "label", "source", "attachment", "browser", "dom"]
+TARGET_SOURCES = {"screenshot_annotation", "dom_selection", "browser_context"}
 
 
 class Contract(unittest.TestCase):
     def test_plugin_manifest_and_skill_are_valid(self):
         manifest = json.loads((PLUGIN / ".codex-plugin/plugin.json").read_text())
         self.assertTrue(manifest["name"])
-        self.assertIn("browser evidence", manifest["description"])
-        self.assertIn("Live browser evidence for UI failures", manifest["interface"]["capabilities"])
         self.assertLessEqual(len(manifest["interface"]["defaultPrompt"]), 3)
         self.assertTrue(all(
             len(prompt) <= 128 for prompt in manifest["interface"]["defaultPrompt"]
         ))
-        skill = (SKILL / "SKILL.md").read_text()
-        self.assertIn("name: ai-talk", skill)
-        self.assertIn("AI Talk 需求编译", skill)
-        self.assertIn("一次最多询问 2 个短问题", skill)
-        self.assertIn("最多 3 条任务专属风险", skill)
-        self.assertIn("AI Talk 契约已就绪，可直接执行。", skill)
-        self.assertIn("不选择、推荐或调用代码 Skill", skill)
-        self.assertIn("不读取或检索仓库", skill)
-        self.assertIn("RequirementContract 1.0", skill)
-        self.assertIn("executing + authorized", skill)
-        self.assertNotIn("node scripts/route-company-skills.mjs", skill)
-        self.assertNotIn("modify_and_verify", skill)
-        self.assertTrue(LEGACY_ROUTER.is_file())
-        self.assertTrue(REQUIREMENT_CONTRACT.is_file())
-        legacy = LEGACY_ROUTER.read_text()
-        self.assertIn("TaskHandoff 1.1", legacy)
-        self.assertIn("modify_and_verify", legacy)
-        spec = SPEC.read_text()
-        self.assertIn("legacy CLI 路由器的冻结实现标准", spec)
-        self.assertIn("处理链固定为单向三阶段", spec)
+        self.assertTrue(all(
+            "$" not in prompt for prompt in manifest["interface"]["defaultPrompt"]
+        ))
 
-    def test_avatar_pag_clarification_case_is_explicit(self):
+        ai_talk_agent = AI_TALK_AGENT.read_text()
+        ui_self_check_agent = UI_SELF_CHECK_AGENT.read_text()
+        self.assertIn("allow_implicit_invocation: true", ai_talk_agent)
+        self.assertIn("allow_implicit_invocation: false", ui_self_check_agent)
+        self.assertNotIn("default_prompt: \"使用 $", ai_talk_agent)
+        self.assertNotIn("default_prompt: \"使用 $", ui_self_check_agent)
+
         skill = (SKILL / "SKILL.md").read_text()
         for text in (
-            "recharge",
-            "voice",
-            "每个头像各自循环播放",
-            "整个头像列表共用一个实例",
-            "ui-pag",
-            "PAG name 必须唯一",
-            "覆盖层不得拦截头像点击",
+            "name: ai-talk",
+            "AI Talk 任务编译器",
+            "RequirementContract 1.2",
+            "modify_and_verify + authorized",
+            "用户描述新增或改变后的系统行为即构成修改意图",
+            "`entry_point`",
+            "`target_refs`",
+            "`control_point`",
+            "一次只问一个决定性问题",
+            "普通代码修改优先 `gen-code`",
+            "优先直接调用下游 Skill",
+            "研发对话中的每条用户消息都先经过门禁",
+            "同一条消息只判定一次",
+            "非研发对话不触发 AI Talk",
         ):
             self.assertIn(text, skill)
+        for obsolete in (
+            "统一等待“执行”",
+            "不选择、推荐或调用代码 Skill",
+            "澄清模式不读取或检索仓库",
+            "ready_to_execute + pending",
+        ):
+            self.assertNotIn(obsolete, skill)
 
-    def test_requirement_contract_reference_freezes_shape_and_transitions(self):
+        self.assertTrue(LEGACY_ROUTER.is_file())
+        self.assertTrue(REQUIREMENT_CONTRACT.is_file())
+        self.assertTrue(TARGET_BINDING.is_file())
+        self.assertIn("TaskHandoff 1.1", LEGACY_ROUTER.read_text())
+        self.assertIn("legacy CLI 路由器的冻结实现标准", SPEC.read_text())
+
+    def test_every_message_gate_releases_or_holds_once(self):
+        cases = json.loads(GATE_CASES.read_text())
+        by_id = {case["id"]: case for case in cases}
+        self.assertEqual(set(by_id), {
+            "non-development-not-invoked",
+            "development-status-release",
+            "clear-development-release",
+            "hard-ambiguity-hold",
+            "ui-check-release-to-downstream",
+        })
+
+        non_development = by_id["non-development-not-invoked"]
+        self.assertEqual(non_development["expected_gate"], "not_applicable")
+        self.assertEqual(non_development["evaluation_count"], 0)
+
+        status = by_id["development-status-release"]
+        self.assertEqual(status["expected_gate"], "release")
+        self.assertIsNone(status["expected_contract"])
+        self.assertTrue(status["must_pass_unchanged"])
+
+        clear = by_id["clear-development-release"]
+        self.assertEqual(clear["expected_gate"], "release")
+        self.assertEqual(clear["expected_result"], "skip")
+
+        blocked = by_id["hard-ambiguity-hold"]
+        self.assertEqual(blocked["expected_gate"], "hold")
+        self.assertEqual(blocked["expected_result"], "clarify")
+        self.assertEqual(blocked["expected_question_count"], 1)
+
+        ui_check = by_id["ui-check-release-to-downstream"]
+        self.assertEqual(ui_check["expected_gate"], "release")
+        self.assertEqual(ui_check["expected_next_skill"], "ui-self-check")
+        self.assertFalse(ui_check["downstream_implicit_invocation"])
+        self.assertTrue(all(
+            case["evaluation_count"] == (0 if case["id"] == "non-development-not-invoked" else 1)
+            for case in cases
+        ))
+
+    def test_requirement_contract_freezes_compact_shape_and_routing(self):
         reference = REQUIREMENT_CONTRACT.read_text()
         for key in CONTRACT_KEYS:
-            self.assertIn(f'"{key}"', reference)
-        for status in CONTRACT_STATUSES:
-            self.assertIn(f"`{status}`", reference)
-        for source in CONTRACT_SOURCES:
-            self.assertIn(source, reference)
+            self.assertIn(f"{key}:", reference)
+        for value in RESULTS | MODES:
+            self.assertIn(f"`{value}`", reference)
         for instruction in (
-            "Use `null` for an inapplicable or unresolved scalar",
-            "Never repeat a resolved question",
-            "let the current code Agent implement and verify",
-            "Treat a later explicit execution instruction as new authorization",
+            "A desired behavior is an implementation request",
+            "Never copy `entry_point` into it as a fallback",
+            "A visual target is not automatically a code control point or writable file",
+            "File names, symbols, repository conventions, and reusable implementations",
+            "Ask one decisive question",
+            "switch to `modify_and_verify + authorized`",
         ):
             self.assertIn(instruction, reference)
 
-    def test_requirement_contract_cases_cover_p0_behavior(self):
+    def test_contract_cases_cover_authorization_control_points_and_continuation(self):
         cases = json.loads(REQUIREMENT_CASES.read_text())
         by_id = {case["id"]: case for case in cases}
         self.assertEqual(set(by_id), {
-            "avatar-initial-clarification",
-            "avatar-partial-answer",
-            "avatar-ready",
-            "avatar-execute",
+            "implicit-modification-skip",
+            "entry-and-control-point-handoff",
+            "one-hard-question",
+            "diagnosis-inspect-only",
             "diagnosis-execute",
-            "blocked-execute",
-            "clear-request-ready",
+            "hard-blocker-survives-execute",
         })
 
-        ready = by_id["avatar-ready"]["expectedContract"]
-        self.assertEqual(list(ready), CONTRACT_KEYS)
-        self.assertEqual(ready["schemaVersion"], "1.0")
-        self.assertIn(ready["status"], CONTRACT_STATUSES)
-        self.assertEqual(ready["authorization"], "pending")
-        self.assertEqual(ready["openQuestions"], [])
-        self.assertEqual(ready["scope"], ["recharge", "voice"])
-        self.assertEqual(ready["instanceModel"], "per_target")
-        self.assertEqual(ready["playback"], "loop")
+        implicit = by_id["implicit-modification-skip"]["expected_contract"]
+        self.assertEqual(list(implicit), CONTRACT_KEYS)
+        self.assertEqual(implicit["schema_version"], "1.2")
+        self.assertEqual(implicit["result"], "skip")
+        self.assertEqual(implicit["mode"], "modify_and_verify")
+        self.assertEqual(implicit["authorization"], "authorized")
+        self.assertEqual(implicit["target_refs"], [])
+        self.assertEqual(implicit["open_questions"], [])
 
-        for field in ("constraints", "acceptance"):
-            for item in ready[field]:
-                self.assertEqual(set(item), {"text", "source"})
-                self.assertTrue(item["text"])
-                self.assertIn(item["source"], CONTRACT_SOURCES)
-        self.assertEqual(
-            [item["text"] for item in ready["acceptance"]],
-            [
-                "recharge、voice 中所有用户头像均持续播放溜光",
-                "多个头像同时使用独立实例循环播放",
-                "列表切换或数据刷新后动画仍正常",
-                "PAG 层不影响头像原有点击",
-                "资源加载失败时页面不阻塞且头像仍可用",
-            ],
-        )
+        handoff = by_id["entry-and-control-point-handoff"]
+        self.assertNotEqual(handoff["entry_point"]["symbol"], handoff["control_point"]["symbol"])
+        self.assertEqual(handoff["write_scope"], ["mods/tab3/mod2.vue"])
+        self.assertTrue(handoff["must_not_copy_entry_to_control"])
 
-        partial = by_id["avatar-partial-answer"]
-        self.assertEqual(len(partial["expectedQuestions"]), 1)
-        self.assertEqual(partial["resolved"], ["scope"])
-        self.assertTrue(partial["mustNotRepeat"])
+        diagnosis = by_id["diagnosis-inspect-only"]
+        self.assertEqual(diagnosis["expected_mode"], "inspect_only")
+        self.assertEqual(diagnosis["expected_authorization"], "inspect_only")
+        self.assertIsNone(diagnosis["expected_next_skill"])
+        self.assertEqual(by_id["one-hard-question"]["expected_question_count"], 1)
 
-        for case_id in ("avatar-execute", "diagnosis-execute"):
-            transition = by_id[case_id]["expectedTransition"]
-            self.assertEqual(transition, {
-                "status": "executing",
-                "authorization": "authorized",
-            })
-            self.assertTrue(by_id[case_id]["mustNotAsk"])
-        diagnosis = by_id["diagnosis-execute"]
-        self.assertIn("evidence", diagnosis["preserve"])
-        self.assertEqual(diagnosis["evidence"][0]["source"], "diagnostic")
+        continuation = by_id["diagnosis-execute"]
+        self.assertEqual(continuation["expected_transition"], {
+            "mode": "modify_and_verify",
+            "authorization": "authorized",
+            "next_skill": "gen-code",
+        })
+        self.assertIn("target_refs", continuation["preserve"])
+        self.assertTrue(continuation["must_not_ask"])
+        blocker = by_id["hard-blocker-survives-execute"]
+        self.assertEqual(blocker["expected_result"], "clarify")
+        self.assertEqual(blocker["expected_questions"], blocker["open_questions"])
 
-        blocked = by_id["blocked-execute"]
-        self.assertEqual(blocked["expectedStatus"], "blocked")
-        self.assertEqual(blocked["expectedQuestions"], blocked["openQuestions"])
-        self.assertEqual(by_id["clear-request-ready"]["expectedQuestionCount"], 0)
-
-    def test_solution_questions_preserve_intent_and_require_repository_evidence(self):
-        skill = (SKILL / "SKILL.md").read_text()
+    def test_p1_target_binding_cases_freeze_visual_context(self):
+        reference = TARGET_BINDING.read_text()
         for text in (
-            "`怎么办`、`怎么做`、`如何实现`、`有什么方案`等表达是方案诉求",
-            "不是修改授权，也不是“只定位还是修改”的歧义",
-            "不要改问“只定位问题，还是允许修改并验证”",
-            "先检索现有包装组件、组件文档和同类用法",
-            "未核实前不得把自定义 PAG、CSS 或其他具体技术当成既定方案",
+            "screenshot_annotation", "dom_selection", "browser_context",
+            "normalized ratio bounds", "1-based `match_ordinal`",
+            "Never use a dynamic class", "Remove auth tokens",
+            "never silently reuse another task's tab",
         ):
-            self.assertIn(text, skill)
+            self.assertIn(text, reference)
 
-    def test_diagnostic_triage_contract_is_explicit(self):
-        skill = (SKILL / "SKILL.md").read_text()
-        for text in (
-            "diagnosing + Bug 定位",
-            "控制层检查点击、确认、失败处理和关闭时机",
-            "数据层检查接口调用、响应消费、状态回写和请求锁",
-            "渲染层检查页面最终读取的字段",
-            "diagnostic_fact",
-            "responsibility_condition",
-            "RequirementContract 的 `evidence`",
-            "ready_to_execute + pending",
-            "executing + authorized",
-            "不重新诊断、不重新大范围扫描",
-        ):
-            self.assertIn(text, skill)
+        cases = json.loads(TARGET_CASES.read_text())
+        by_id = {case["id"]: case for case in cases}
+        self.assertEqual(set(by_id), {
+            "two-screenshot-annotations",
+            "selected-second-avatar",
+            "current-browser-state",
+            "unresolved-deictic-target",
+            "stale-browser-context",
+            "execute-preserves-target-refs",
+        })
 
-    def test_runtime_ui_evidence_contract_is_explicit(self):
-        skill = (SKILL / "SKILL.md").read_text()
-        for text in (
-            "不显示、位置异常、被遮挡、点击无效、修改后仍未生效",
-            "单纯“按截图开发”不是异常诊断，不启动浏览器",
-            "优先使用独立的应用内浏览器或新标签页",
-            "不得点击领取、提交、支付、确认",
-            "currentIndex === rewardNodes.length - 1",
-            'bg-i="btn/receive"',
-            "getBoundingClientRect()",
-            "elementFromPoint()",
-            "naturalWidth",
-            "运行态尚未验证",
-            "target_screenshot_captured",
-            "交给代码 Agent 的结论",
-        ):
-            self.assertIn(text, skill)
-        output_contract = skill.split("诊断模式输出：", 1)[1].split("纯代码或数据链诊断", 1)[0]
-        fields = ["- 页面状态：", "- 条件：", "- DOM：", "- 布局层级：", "- 资源：", "- 截图："]
-        self.assertEqual([output_contract.index(field) for field in fields], sorted(
-            output_contract.index(field) for field in fields
-        ))
+        screenshot_refs = by_id["two-screenshot-annotations"]["expected_refs"]
+        self.assertEqual([ref["id"] for ref in screenshot_refs], ["target_1", "target_2"])
+        self.assertTrue(all(ref["source"] == "screenshot_annotation" for ref in screenshot_refs))
+        for ref in screenshot_refs:
+            self.assertEqual(list(ref), TARGET_REF_KEYS)
+            self.assertIsNone(ref["browser"])
+            self.assertIsNone(ref["dom"])
+            bounds = ref["attachment"]["bounds"]
+            self.assertEqual(bounds["unit"], "ratio")
+            self.assertTrue(all(0 <= bounds[key] <= 1 for key in ("x", "y", "width", "height")))
 
-    def test_runtime_ui_acceptance_cases_cover_required_branches(self):
+        dom_ref = by_id["selected-second-avatar"]["expected_refs"][0]
+        self.assertEqual(dom_ref["source"], "dom_selection")
+        self.assertIn(dom_ref["source"], TARGET_SOURCES)
+        self.assertEqual(dom_ref["dom"]["match_ordinal"], 2)
+        self.assertNotIn("nth-child", dom_ref["dom"]["selector"])
+        self.assertEqual(dom_ref["browser"]["route"], "/activity")
+
+        browser_ref = by_id["current-browser-state"]["expected_refs"][0]
+        self.assertEqual(browser_ref["source"], "browser_context")
+        self.assertIsNone(browser_ref["dom"])
+        self.assertTrue(browser_ref["browser"]["page_state"])
+
+        unresolved = by_id["unresolved-deictic-target"]
+        self.assertEqual(unresolved["expected_result"], "clarify")
+        self.assertEqual(unresolved["expected_refs"], [])
+        stale = by_id["stale-browser-context"]
+        self.assertNotEqual(stale["active_url"], stale["candidate_url"])
+        self.assertEqual(stale["expected_refs"], [])
+        execute = by_id["execute-preserves-target-refs"]
+        self.assertIn("target_refs", execute["preserve"])
+        self.assertTrue(execute["must_not_ask"])
+
+    def test_runtime_ui_evidence_cases_remain_available(self):
         cases = json.loads(RUNTIME_UI_CASES.read_text())
         by_id = {case["id"]: case for case in cases}
         self.assertEqual(set(by_id), {
@@ -205,8 +242,7 @@ class Contract(unittest.TestCase):
             "not-last-reward",
             "browser-unavailable",
         })
-        primary = by_id["last-reward-button-missing"]
-        self.assertEqual(primary["expected_checks"], [
+        self.assertEqual(by_id["last-reward-button-missing"]["expected_checks"], [
             "page_state",
             "render_condition",
             "dom_presence",
@@ -214,11 +250,6 @@ class Contract(unittest.TestCase):
             "resource_load",
             "screenshot",
         ])
-        self.assertEqual(primary["must_not_route"], ["gen-code", "ui-self-check"])
-        self.assertEqual(
-            by_id["not-last-reward"]["expected_outcome"],
-            "precondition_not_met_not_a_defect",
-        )
         self.assertEqual(
             by_id["browser-unavailable"]["expected_outcome"],
             "runtime_unverified",
@@ -236,43 +267,20 @@ class Contract(unittest.TestCase):
         }
         self.assertEqual(expected, {path.name for path in ROUTER.glob("*.mjs")})
 
-    def test_public_result_contract_is_minimal(self):
-        source = (ROUTER / "build-execution-prompt.mjs").read_text()
-        for field in (
-            "original_request", "task_goal", "engineering_judgment",
-            "required_knowledge", "retrieval_entries", "intent", "evidence", "recommended_skill",
-            "alternative_skills", "selection_reason", "boundaries", "unknowns",
-            "stage", "execution_mode", "added_context", "skipEnhancement", "execution_plan", "execution_prompt",
-        ):
-            self.assertIn(field, source)
-        for removed in (
-            "retrieval_query_groups", "business_object", "visual_effect",
-            "development_context:", "planned_changes:",
-        ):
-            self.assertNotIn(removed, source)
-
-    def test_rules_are_centralized(self):
-        source = (ROUTER / "rules.mjs").read_text()
-        for name in ("ui-self-check", "ai-test", "gen-code", "gen-frontend-plan", "figma-analyze"):
-            self.assertIn(name, source)
-        self.assertIn("CONFUSION_GROUPS", source)
-
-    def test_context_reads_are_bounded(self):
-        source = (ROUTER / "collect-context.mjs").read_text()
-        for text in (
-            "node_modules", "MAX_CONTEXT_FILES_READ", "MAX_SIMILAR_IMPLEMENTATIONS",
-            "EARLY_STOP_RETRIEVAL_ENTRIES", "nearestAgentsFile", "safeFile",
-        ):
-            self.assertIn(text, source)
-
-    def test_understanding_retrieval_and_formatter_are_one_way(self):
+    def test_legacy_router_keeps_bounded_one_way_pipeline(self):
         classifier = (ROUTER / "classify-request.mjs").read_text()
         route = (SKILL / "scripts" / "route-company-skills.mjs").read_text()
         formatter = (ROUTER / "build-execution-prompt.mjs").read_text()
+        collector = (ROUTER / "collect-context.mjs").read_text()
         self.assertIn("buildRetrievalRequest", classifier)
         self.assertIn("buildRetrievalRequest(understanding)", route)
         self.assertIn("validateTaskHandoff(executionPlan)", formatter)
         self.assertNotIn("classifyRequest", formatter)
+        for text in (
+            "node_modules", "MAX_CONTEXT_FILES_READ", "MAX_SIMILAR_IMPLEMENTATIONS",
+            "EARLY_STOP_RETRIEVAL_ENTRIES", "nearestAgentsFile", "safeFile",
+        ):
+            self.assertIn(text, collector)
 
 
 if __name__ == "__main__":

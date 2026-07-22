@@ -291,6 +291,8 @@ test("treats event-and-effect requests as code changes without requiring an expl
     "ai talk点击tab的时候 播放 audio/btn",
     "四个 tab 点击时都播放 audio/btn，第三个 tab 原有跳转保持不变",
     "进入页面后自动打开活动弹窗",
+    "在中奖时播放 audio/get",
+    "动画完成后播放 audio/get，再打开 normalReward",
   ];
 
   for (const query of requests) {
@@ -307,6 +309,7 @@ test("treats event-and-effect requests as code changes without requiring an expl
   for (const query of [
     "为什么点击 tab 的时候不播放 audio/btn",
     "只排查点击 tab 时没有播放 audio/btn 的原因，不修改代码",
+    "为什么中奖时没有播放 audio/get",
   ]) {
     const result = await route(root, query);
     assert.equal(result.recommended_skill, "", query);

@@ -1,0 +1,43 @@
+[
+  {
+    "id": "non-development-not-invoked",
+    "message": "推荐一部周末看的电影",
+    "expected_gate": "not_applicable",
+    "evaluation_count": 0
+  },
+  {
+    "id": "development-status-release",
+    "conversation_context": "正在修改奖励弹窗",
+    "message": "现在进度怎么样了",
+    "expected_gate": "release",
+    "expected_contract": null,
+    "must_pass_unchanged": true,
+    "evaluation_count": 1
+  },
+  {
+    "id": "clear-development-release",
+    "message": "中奖时播放音效",
+    "expected_gate": "release",
+    "expected_result": "skip",
+    "expected_next_skill": "gen-code",
+    "evaluation_count": 1
+  },
+  {
+    "id": "hard-ambiguity-hold",
+    "message": "把这里改一下",
+    "context": [],
+    "expected_gate": "hold",
+    "expected_result": "clarify",
+    "expected_question_count": 1,
+    "evaluation_count": 1
+  },
+  {
+    "id": "ui-check-release-to-downstream",
+    "message": "用浏览器检查这个页面的视觉和交互",
+    "expected_gate": "release",
+    "expected_result": "skip",
+    "expected_next_skill": "ui-self-check",
+    "downstream_implicit_invocation": false,
+    "evaluation_count": 1
+  }
+]

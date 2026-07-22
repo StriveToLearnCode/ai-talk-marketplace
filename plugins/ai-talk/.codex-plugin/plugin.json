@@ -1,37 +1,45 @@
 {
   "name": "ai-talk",
-  "version": "0.4.0+codex.20260722084915",
-  "description": "AI Talk compiles ambiguous development requests into executable RequirementContract 1.0 handoffs with acceptance criteria, and performs bounded fault triage with live browser evidence before authorized implementation.",
+  "version": "0.4.0+codex.20260722095446",
+  "description": "AI Talk gates every user message in development conversations, releasing status and confirmation messages unchanged, compiling clear development work into executable RequirementContract 1.2 handoffs, and holding only implementation-changing blockers.",
   "author": {
     "name": "sf"
   },
   "skills": "./skills/",
   "interface": {
     "displayName": "AI Talk",
-    "shortDescription": "Compile requirements into executable contracts",
-    "longDescription": "AI Talk asks only questions that change implementation scope or behavior, then emits a machine-readable RequirementContract 1.0 with observable acceptance criteria. Diagnostic requests first use bounded read-only inspection across control, data, and render layers, including live browser evidence for UI failures. When the user says execute, the current code Agent inherits the contract, implements, and verifies without repeating clarification or routing to another Skill.",
+    "shortDescription": "Gate every message in development conversations",
+    "longDescription": "AI Talk is the single preflight gate for every user message in a development conversation and requires no command prefix. Non-development conversations do not invoke it. Status questions, confirmations, and updates that need no contract revision are released unchanged. Clear development work is compiled into RequirementContract 1.2 and released directly or after bounded evidence enrichment. Only blockers that change the product result or writable scope are held for one decisive question. Each message is evaluated once, so downstream Skills never loop back through AI Talk.",
     "developerName": "sf",
     "category": "Productivity",
     "capabilities": [
       "Original request preservation",
-      "Implementation-changing ambiguity detection",
-      "Two-question clarification limit",
-      "Task-specific risk reminders",
-      "RequirementContract 1.0 structured handoff",
-      "Observable acceptance criteria derivation",
-      "Incremental clarification without repeated questions",
-      "Same-task execution continuity",
+      "Development-conversation preflight gating",
+      "Transparent pass-through for status and confirmation messages",
+      "Single evaluation without downstream loops",
+      "Implicit modification intent recognition",
+      "Intent-driven implementation authorization",
+      "Skip, handoff, or clarify routing",
+      "Single-question hard-blocker clarification",
+      "RequirementContract 1.2 compact handoff",
+      "Screenshot annotation target binding",
+      "Selected DOM target binding",
+      "Fresh browser context binding",
+      "Stable selector and DOM fingerprint capture",
+      "Entry point and control point separation",
+      "Bounded control-point and reuse retrieval",
+      "Direct downstream Skill routing",
       "Bounded read-only fault triage",
       "Live browser evidence for UI failures",
       "DOM, geometry, occlusion, and resource inspection",
       "Evidence-preserving diagnostic handoff",
       "Verifiable frontend/backend ownership conditions",
-      "Zero downstream Skill routing"
+      "Evidence-preserving implementation continuity"
     ],
     "defaultPrompt": [
-      "$ai-talk \u8fd9\u4e24\u90e8\u5206\u7684\u7528\u6237\u5934\u50cf\u90fd\u9700\u8981 pag/user \u6e9c\u5149",
-      "$ai-talk \u5f00\u53d1\u4e00\u4e2a\u5f39\u7a97\uff0c\u5e2e\u6211\u7f16\u8bd1\u6210\u53ef\u6267\u884c\u3001\u53ef\u9a8c\u6536\u7684\u4efb\u52a1\u5951\u7ea6",
-      "$ai-talk \u6700\u540e\u4e00\u4e2a\u5956\u52b1\u9700\u8981\u663e\u793a\u9886\u53d6\u6309\u94ae\uff0c\u4fee\u6539\u540e\u8fd8\u662f\u6ca1\u6709"
+      "\u8fd9\u4e24\u5904\u6807\u6ce8\u7684\u7528\u6237\u5934\u50cf\u90fd\u9700\u8981 pag/user \u6e9c\u5149",
+      "\u7b2c\u4e8c\u4e2a\u5934\u50cf\u4e5f\u52a0\u4e0a\u540c\u6837\u7684\u52a8\u6548",
+      "\u8fd9\u91cc\u7684\u5f39\u7a97\u6539\u6210\u534a\u5c4f\u5c55\u793a"
     ]
   }
 }

@@ -1,6 +1,6 @@
 ---
 name: ui-self-check
-description: 在用户显式调用 $ai-talk:ui-self-check 时，使用已连接的 Playwright MCP 或等价浏览器能力对目标页面执行即时 UI 自测，检查视觉、交互、响应式、控制台与网络；默认修复本次范围内问题并复验，用户明确要求只检查时不修改。AI Talk 路由结果只可推荐此 Skill，不得自动调用；也不得因普通 UI 开发、Figma、截图或 Vue 关键词隐式调用。
+description: 仅在 AI Talk 已放行并交接明确的真实 UI 自测任务，或用户显式调用 $ai-talk:ui-self-check 时使用。使用已连接的 Playwright MCP 或等价浏览器能力检查视觉、交互、响应式、控制台与网络；默认修复本次范围内问题并复验，用户明确要求只检查时不修改。不得独立隐式触发，也不得仅因普通 UI 开发、Figma、截图或 Vue 关键词触发。
 ---
 
 # UI Self Check

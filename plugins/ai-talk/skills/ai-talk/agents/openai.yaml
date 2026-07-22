@@ -1,7 +1,7 @@
 interface:
   display_name: "AI Talk"
-  short_description: "将开发需求编译为可执行契约，并对 UI 异常保留诊断证据"
-  default_prompt: "使用 $ai-talk 将这项开发需求编译为带验收标准的任务契约；我确认后说执行即可连续实施。"
+  short_description: "检查研发对话中的每条消息，决定放行、交接或暂不放行"
+  default_prompt: "检查这条研发对话消息是否可以放行；无需更新契约则原样放行，明确任务生成紧凑契约，只有硬阻塞才提问。"
 
 policy:
-  allow_implicit_invocation: false
+  allow_implicit_invocation: true

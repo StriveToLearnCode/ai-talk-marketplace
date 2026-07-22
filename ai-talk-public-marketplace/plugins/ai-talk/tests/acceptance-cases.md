@@ -2,29 +2,54 @@
 
 ## 当前对话职责
 
-正常 `$ai-talk` 对话把需求编译为 `RequirementContract 1.0`，只询问会改变实施结果的问题，不读取仓库，不推荐或调用下游 Skill。诊断模式可读取必要故障链；UI 异常由 AI Talk 直接执行只读浏览器取证。需求确认完成后必须输出完整 JSON 契约和可观察验收标准；用户明确说“执行”后，当前代码 Agent 继承契约实施和验证。
+正常 `$ai-talk` 对话把自然语言、代码入口、截图标注、选中 DOM 和浏览器状态编译为 `RequirementContract 1.2`。明确行为变更首轮直接授权并路由实施；只询问会改变产品结果、数据语义或写范围的问题。有限检索只服务于视觉目标消歧、真实控制点、复用入口和实现约束。
 
-### 头像 PAG 溜光
+### 截图标注与两处目标
 
-`$ai-talk 这两部分的用户头像都需要 pag/user 溜光`
+`$ai-talk 这两处标注的用户头像都加上 pag/user 溜光`
 
-- 上下文未给出范围时，确认只指 `recharge`，还是 `voice` 同款区域也同步。
-- 确认 `pag/user` 是每个头像各自循环播放，还是头像列表共用一个实例。
-- 提醒 `ui-pag` 同页实例上限、PAG name 唯一性和覆盖层点击风险。
-- 不读取 `mod3.vue`，不检索 PAG 用法，不实现代码，不推荐代码 Skill。
-- 用户只回答范围时，不重复范围问题，只追问实例模型。
-- 用户全部确认后输出 `ready_to_execute + pending` 契约，补齐完整范围、多头像独立循环、列表刷新、点击保持和资源失败降级验收。
-- 用户随后说“执行”时转为 `executing + authorized` 并直接实施，不再次询问范围、实例模型或修改权限。
+- 每个标注区域生成一个稳定 `target_refs` 项，保存 attachment ID、annotation ID、ratio bounds 和原图尺寸。
+- 两处标注必须得到 `target_1`、`target_2`，不得合并为一个含糊 target。
+- 截图不证明 DOM、selector、组件、route 或代码位置；这些字段没有独立证据时保持 `null`。
+- 标注已经唯一确定范围时不再询问“这两处在哪里”。
 
-### 奖励弹窗动效方案
+### DOM 选择与浏览器上下文
 
-`$ai-talk 这个弹窗的奖励需要动效怎么办`
+`$ai-talk 第二个头像也要一样`
 
-- 保留为方案诉求，不改写成“只定位问题，还是允许修改并验证”。
-- 范围和可见行为已经明确时不把执行方式当作澄清问题；直接生成 `ready_to_execute + pending` 契约，等待统一执行指令。
-- 提醒代码 Agent 先核对奖励弹窗渲染入口、现有包装组件、组件文档、同类用法及静态降级。
-- 没有仓库证据前不直接建议新增 PAG、叠加层或 CSS 动效。
-- 范围和可见行为明确后生成可验收的契约，不直接开始修改；等待明确执行指令。
+- 当前 DOM 选择可唯一解释时，保存脱敏 URL、route、viewport、page state、frame path、捕获时间、稳定 selector、1-based ordinal 和 fingerprint。
+- selector 优先 test ID、稳定 data 属性、稳定 ID 或可访问名称；不得以动态 class、生成 ID、绝对 XPath 或 `nth-child` 为主 selector。
+- 仅当前页面状态能确定目标时使用 `browser_context`，DOM 保持 `null`。
+- URL 或页面状态变化、上下文来自旧任务、或多个候选仍成立时，不静默复用；只询问一次目标选择、截图标注或 DOM 选择。
+- `target_refs` 只是视觉入口，不能自动写入 `control_point` 或 `write_scope`；交给实施 Skill 时必须原样保留。
+
+### 隐含修改意图
+
+`$ai-talk 在中奖时播放 audio/get`
+
+- 识别为 `modify_and_verify + authorized`，推荐 `gen-code`。
+- 不询问“是否允许修改代码”，不要求用户再说“执行”。
+- 目标行为明确且无需补充仓库事实时返回 `skip` 并直接实施。
+- “为什么中奖时没有播放 audio/get”仍属于 `inspect_only`。
+
+### 入口与控制点
+
+`$ai-talk 在 mods/tab3/mod2.vue:80 的中奖流程中，动画完成后播放 audio/get，再打开 normalReward`
+
+- `mods/tab3/mod2.vue:80` 和用户提到的 handler 先记录为 `entry_point`。
+- 沿调用链找到成功分支或动画完成回调后，才将其记录为 `control_point`。
+- 不得把按钮行、模板节点或入口 handler 直接复制成控制点。
+- 行为顺序为：中奖成功、动画完成、播放音效、打开奖励弹窗。
+- 验证失败不播放音效，且音效先于奖励弹窗。
+- 找到真实控制点或现有 `useAudio` 入口后停止检索并返回 `handoff`。
+
+### 真正硬阻塞
+
+`$ai-talk 中奖时播放音效，失败时也要不要播放不确定`
+
+- 失败分支行为会改变产品结果，因此返回 `clarify`。
+- 一次只询问“失败时是否也播放音效？”。
+- 不同时询问文件、函数、技术写法或修改权限。
 
 ### 最后奖励领取按钮未显示
 
@@ -36,8 +61,8 @@
 - 条件值不可观察时进入未验证项，不得用 `currentIndex === rewardNodes.length - 1` 源码表达式冒充运行态结果。
 - DOM 存在后才检查定位与层级；不得直接建议 `pt="6"`、`pz="1"` 或声称资源未解析。
 - 不点击领取、提交、支付、确认等写操作，不修改任何代码、配置、测试或快照。
-- 诊断事实进入 `evidence`，修复结果进入 `acceptance`；证据足够时输出 `ready_to_execute + pending` 契约。
-- 用户随后说“执行”时转为 `executing + authorized`，当前代码 Agent 复用证据修复和验证，不重新扫描或再次询问授权。
+- 诊断事实进入 `evidence`，可观察修复结果进入 `verification`。
+- 用户随后说“执行”时转为 `modify_and_verify + authorized`，复用证据并交给实施 Skill，不重新扫描或再次询问授权。
 
 结构化分支用例见 `skills/ai-talk/tests/runtime-ui-diagnosis-cases.json`。
 

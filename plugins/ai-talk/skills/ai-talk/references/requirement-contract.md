@@ -1,66 +1,78 @@
-# RequirementContract 1.0
+# RequirementContract 1.2
 
-Use this contract as the only structured handoff for the normal `$ai-talk` conversation. Preserve the exact top-level keys and emit valid JSON in a fenced `json` block.
+Use this contract as AI Talk's only structured handoff. Preserve the exact keys and emit valid YAML only when the host cannot pass the contract directly to the next Skill.
 
 ## Shape
 
-```json
-{
-  "schemaVersion": "1.0",
-  "status": "ready_to_execute",
-  "authorization": "pending",
-  "sourceRequest": "这两部分的用户头像都需要 pag/user 溜光",
-  "mode": "clarification",
-  "scope": ["recharge", "voice"],
-  "target": "用户头像",
-  "effect": "pag/user",
-  "instanceModel": "per_target",
-  "playback": "loop",
-  "constraints": [
-    {"text": "每个 PAG name 唯一", "source": "derived"},
-    {"text": "动画层不拦截头像点击", "source": "derived"}
-  ],
-  "acceptance": [
-    {"text": "recharge、voice 中所有用户头像均持续播放溜光", "source": "clarification"},
-    {"text": "多个头像同时使用独立实例循环播放", "source": "clarification"},
-    {"text": "列表切换或数据刷新后动画仍正常", "source": "derived"},
-    {"text": "PAG 层不影响头像原有点击", "source": "derived"},
-    {"text": "资源加载失败时页面不阻塞且头像仍可用", "source": "derived"}
-  ],
-  "evidence": [],
-  "openQuestions": []
-}
+```yaml
+schema_version: "1.2"
+result: handoff
+mode: modify_and_verify
+authorization: authorized
+source_request: 在中奖时播放音效
+next_skill: gen-code
+entry_point:
+  path: mods/tab3/mod2.vue
+  line: 80
+  symbol: handleOpen
+target_refs: []
+control_point:
+  path: mods/tab3/mod2.vue
+  line: 132
+  symbol: handleLotterySuccess
+write_scope:
+  - mods/tab3/mod2.vue
+behavior:
+  - successful lottery
+  - animation completed
+  - play audio/get
+  - open normalReward
+evidence:
+  - type: reuse_candidate
+    summary: existing useAudio implementation
+    source: mods/tab3/mod1.vue:44
+verification:
+  - failures do not play audio
+  - audio precedes reward dialog
+open_questions: []
 ```
 
-## Field rules
+## Field Rules
 
-- Keep the top-level keys in the documented order; do not add temporary fields.
-- Use `clarifying`, `diagnosing`, `ready_to_execute`, `executing`, `verifying`, `done`, or `blocked` for `status`.
-- Use `pending` or `authorized` for `authorization`. Only an explicit execution instruction authorizes implementation.
-- Use `clarification` or `diagnosis` for `mode`.
-- Preserve the original request in `sourceRequest`; do not replace it with a rewritten goal.
-- Use `null` for an inapplicable or unresolved scalar and `[]` for an empty list.
-- Keep `scope` as strings that identify user-visible areas or behaviors. Keep `target` as a stable plain-language target in P0.
-- Store constraints and acceptance criteria as `{ "text": string, "source": source }`.
-- Use only `user`, `clarification`, `derived`, or `diagnostic` for `source`.
-- Store diagnostic evidence as `{ "type": string, "summary": string, "source": "diagnostic" }`. Do not store unsupported causes as evidence.
-- Keep only unresolved, implementation-changing questions in `openQuestions`. Never repeat a resolved question.
+- Keep the top-level keys in the documented order. Do not add summary, reasoning, confidence, or temporary fields.
+- Use `skip`, `handoff`, or `clarify` for `result`.
+- Use `modify_and_verify`, `inspect_only`, `plan_only`, or `plan_then_execute` for `mode`.
+- Use `authorized` for an implementation request and `inspect_only` for diagnosis or explanation. A desired behavior is an implementation request even when the user omits verbs such as “修改” or “实现”.
+- Preserve the user's original words in `source_request`.
+- Set `next_skill` to an installed Skill whose responsibility matches the mode. Use `gen-code` for ordinary code modification. Use `null` when no downstream Skill is needed or available.
+- Store the user's selected line, annotated button, visible interaction, or mentioned handler in `entry_point`. It identifies where the request entered the conversation, not necessarily where code should change.
+- Store screenshot annotations, selected DOM nodes, and current browser state in `target_refs`. Read `references/target-binding.md` for the exact shape. A visual target is not automatically a code control point or writable file.
+- Store a location in `control_point` only when code or runtime evidence shows that it decides the requested timing or state transition. Never copy `entry_point` into it as a fallback. Use `null` when unresolved.
+- Keep `write_scope` to evidence-supported files. An entry point is not automatically writable scope.
+- Express `behavior` in execution order. Keep each item short.
+- Store only decision-relevant facts in `evidence`, each with `type`, `summary`, and a concrete `source`.
+- Store observable positive and negative checks in `verification`; include ordering when timing matters.
+- Keep only implementation-changing blockers in `open_questions`. File names, symbols, repository conventions, and reusable implementations that the code Agent can locate are not questions.
 
-## Transitions
+## Result Selection
 
-```text
-clarifying -> ready_to_execute -> executing -> verifying -> done
-diagnosing -> ready_to_execute -> executing -> verifying -> done
-clarifying | diagnosing -> blocked
-blocked -> clarifying | diagnosing | ready_to_execute
-```
+- Gate every user message in a development conversation before routing. Non-development conversations do not invoke AI Talk. A status question, confirmation, or other message in the active development conversation that does not need contract creation or revision is released unchanged to the current Agent. Do not add a gate field to this schema.
+- `skip`: release. Intent, authorization, target behavior, and implementation direction are already clear. Do not retrieve extra context; pass the compact contract directly to `next_skill`.
+- `handoff`: release after bounded enrichment. Retrieval found a real control point, reuse candidate, or implementation constraint that materially reduces downstream rediscovery.
+- `clarify`: hold. At least two plausible answers would produce different user-visible behavior or write scope, and repository evidence cannot resolve the choice. Ask one decisive question and do not route yet.
+- Evaluate each user message once. A released handoff must not invoke AI Talk again downstream.
 
-- Set `ready_to_execute` only when `openQuestions` is empty and the contract contains observable acceptance criteria.
-- On `执行`, `开始执行`, or `按这个做`, transition `ready_to_execute + pending` to `executing + authorized`. Preserve every confirmed field and diagnostic evidence, then let the current code Agent implement and verify without another clarification or authorization question.
-- Do not transition from `clarifying` or `blocked` while an implementation-changing question or external prerequisite remains. Ask only for that missing item.
-- Treat a later explicit execution instruction as new authorization even when the original request asked for diagnosis only.
-- Update the current contract in place when the user answers or corrects a field. Start a new contract only for an explicitly different task.
+## Routing
 
-## Acceptance derivation
+- Route event plus desired effect as `modify_and_verify + authorized`: “中奖时播放音效”, “动画完成后打开奖励弹窗”, and “点击 tab 时切换图片” are implementation requests.
+- Route explicit imperatives such as “增加”, “改成”, “修复”, “接入”, or “做一下” as `modify_and_verify + authorized` when the requested outcome is identifiable.
+- Route “为什么”, “定位原因”, “前端还是后端”, “只分析”, or “不要修改” as `inspect_only`. Do not recommend `gen-code` until the user asks to implement a fix.
+- Route “先分析/出方案，确认后再改” as `plan_then_execute + inspect_only`.
+- Do not treat missing implementation details as missing authorization. Ask only when the answer changes the product result or materially changes allowed scope.
 
-Add only applicable, observable criteria. Check scope coverage, independent or concurrent behavior, refresh or remount behavior, preservation of existing interactions, and recoverable dependency or resource failure. Mark criteria not stated by the user as `derived`; do not invent product behavior that changes the requested result.
+## Continuation
+
+- Preserve the same contract when the user corrects timing, scope, behavior, or a visual target. Update the affected fields, keep the original `source_request`, and preserve stable `target_refs` IDs for unchanged targets.
+- When the user says “执行”, “开始执行”, or “按这个做” after an `inspect_only` or `plan_then_execute` result, switch to `modify_and_verify + authorized`, select the implementation Skill, and reuse confirmed evidence without repeating classification or broad retrieval.
+- Preserve `target_refs` through routing and execution. If the active browser state no longer matches, recapture or block instead of silently binding a similar element.
+- A hard blocker remains `clarify` until resolved; an execution word does not erase it.

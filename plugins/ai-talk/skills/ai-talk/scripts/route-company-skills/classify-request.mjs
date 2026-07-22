@@ -188,7 +188,7 @@ function extractResources(query) {
 function requestsBehaviorChange(query) {
   if (/(?:为什么|为何|怎么|如何|是否|能否|可否|什么|哪个|哪种)/u.test(query)) return false;
 
-  const event = "(?:点击|轻触|按下|选择|切换|进入|打开|关闭|提交|加载|初始化|挂载)";
+  const event = "(?:点击|轻触|按下|选择|切换|进入|打开|关闭|提交|加载|初始化|挂载|中奖|抽中|成功|完成|结束|返回成功|请求成功|动画完成|动画结束|结算完成)";
   const effect = "(?:播放|暂停|停止|打开|关闭|跳转|切换|显示|隐藏|调用|触发|更新|设置|增加|移除|弹出|收起|展开)";
   const modifier = "(?:(?:需要|要|应当|应该|自动|直接|同时|都|统一)\\s*)?";
   return new RegExp(

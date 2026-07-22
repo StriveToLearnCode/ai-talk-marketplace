@@ -1,23 +1,23 @@
 # AI Talk Plugin
 
-AI Talk 用于把开发需求编译为可执行、可验收的 `RequirementContract 1.0`，并执行必要的只读诊断。它保留用户原话，只处理会改变实施结果的问题；“为什么”“前端还是后端”等请求沿控制、数据、渲染三层定位；UI 异常直接补充浏览器运行态证据。
+AI Talk 是研发对话中每条用户消息的单一前置门禁。非研发对话不触发；研发对话中的状态询问和确认原样放行，研发任务将用户原话、代码入口、视觉目标和必要仓库证据编译为 `RequirementContract 1.2`，再决定直接放行、增强后放行或暂不放行。
 
 运行规则：
 
-1. 一次最多询问 2 个关键问题。
-2. 最多提醒 3 条由当前任务支持的具体风险。
-3. 澄清模式不读取仓库；诊断模式只读取用户指定位置及故障链必要关联；用户授权执行前始终不修改代码。
-4. 不推荐或调用下游 Skill。
-5. 需求明确后输出完整 JSON 契约和可观察验收标准。
-6. 用户说“执行”“开始执行”或“按这个做”后，当前代码 Agent 继承契约直接实施和验证，不重复提问。
-7. UI 异常按页面状态、条件、DOM、布局层级、资源和截图顺序取证；浏览器不可用时明确降级，不伪造验证结果。
+1. 明确目标行为直接视为实施请求，使用 `modify_and_verify + authorized`。
+2. 只分析、原因定位和前后端归属保持 `inspect_only`；用户随后说“执行”时复用契约转入实施。
+3. `entry_point` 只保存用户标注入口；`control_point` 和 `write_scope` 必须由代码或运行态证据确认。
+4. 截图标注、选中 DOM 和当前浏览器页面写入稳定 `target_refs`，不与根因 evidence 混用。
+5. 视觉上下文绑定保持只读，敏感 URL 参数必须移除；陈旧或多义目标只问一个决定性问题。
+6. 默认在后台把紧凑契约交给匹配的下游 Skill；宿主不能直接 handoff 时才显示 YAML。
+7. 研发对话中的每条用户消息只判断一次；状态询问和确认不创建空契约，下游 Skill 不回调 AI Talk。
 
 ```text
-$ai-talk:ai-talk 这两部分的用户头像都需要 pag/user 溜光
+这里的第二个头像也加上同样的动效
 ```
 
-该场景只需确认页面范围和“每个头像独立播放还是列表共用实例”，并生成覆盖完整范围、多头像独立循环、刷新恢复、点击保持和加载失败降级的验收标准。
+若当前 DOM 选择可以唯一定位该头像，AI Talk 直接保存稳定 selector、1-based ordinal、DOM fingerprint 和匹配的浏览器状态；不会要求用户重新描述，也不会把选中节点直接当作代码修改点。
 
-`skills/ai-talk/scripts/route-company-skills.mjs` 与 `references/legacy-router.md` 仅用于 0.4 CLI 兼容和历史测试，正常 Skill 对话不得调用。
+安装后用户在研发对话中只需正常说话，AI Talk 会自动先判断放行与否。非研发对话不触发；`$ai-talk:...` 仅保留为兼容的显式调用方式。
 
-诊断取证阶段保持只读，不推荐 `gen-code` 或 `ui-self-check`。RequirementContract 保存诊断事实与定责条件；用户说“执行”时转为 `executing + authorized`，由当前代码 Agent 复用证据修复和验证，不重新扫描。授权前浏览器只允许可逆的页面状态切换，不触发领取、提交、支付或写接口。
+`skills/ai-talk/scripts/route-company-skills.mjs` 与 `references/legacy-router.md` 仅用于 legacy CLI 兼容和历史测试。
