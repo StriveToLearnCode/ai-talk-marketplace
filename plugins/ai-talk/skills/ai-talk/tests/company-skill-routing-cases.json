@@ -98,6 +98,17 @@
     "expected_skill": "gen-frontend-plan"
   },
   {
+    "id": "plan-reward-animation-how-to",
+    "clarity": "clear",
+    "prompt": "这个弹窗的奖励需要动效怎么办",
+    "expected_skill": "gen-frontend-plan",
+    "expected_mode": "plan_only",
+    "must_preserve": ["弹窗", "奖励", "动效", "怎么办"],
+    "must_include_boundaries": ["只输出方案", "先核对现有奖励渲染组件及组件文档"],
+    "must_not_include": ["需要确认", "修改并验证"],
+    "expected_unknowns": []
+  },
+  {
     "id": "code-plan",
     "clarity": "clear",
     "prompt": "根据现有 docs/plan 直接生成页面代码并完成验证",
