@@ -40,6 +40,21 @@ async function fixture() {
   await writeFile(path.join(root, "src", "pages", "page.vue"), "<template><SelfSelectDialog /></template>\n<script setup>onAfterInit(() => {});</script>\n");
   await writeFile(path.join(root, "src", "api", "lottery.ts"), "export async function do_lottery() { return {}; }\n");
   await writeFile(path.join(root, "src", "stores", "reward.ts"), "export function openRewardDialog(payload) { return payload; }\n");
+  await writeFile(path.join(root, "src", "stores", "wish.ts"), [
+    "export function useStore() {",
+    "  const requestLock = false;",
+    "  async function chooseWishReward() { return { wish_rewards: [] }; }",
+    "  return { requestLock, chooseWishReward, wishRewards: [] };",
+    "}",
+  ].join("\n"));
+  await writeFile(path.join(root, "src", "pages", "wish.vue"), [
+    "<template><div>{{ wishRewards }}</div></template>",
+    "<script setup>",
+    "import { useStore } from '../stores/wish';",
+    "const { wishRewards, chooseWishReward } = useStore();",
+    "async function handleConfirm() { await chooseWishReward(); closeDialog(); }",
+    "</script>",
+  ].join("\n"));
   await writeFile(path.join(root, "src", "components", "reward-dialog.vue"), "<template><div>{{ reward.name }}{{ reward.badge }}</div></template>\n");
   await writeFile(path.join(root, "src", "dynamic", "component-loader.ts"), "export const dynamicComponentName = 'LuckyReward';\nexport const componentRegistry = {};\n");
   await writeFile(path.join(root, "src", "components", "LuckyReward.vue"), "<template><div>reward</div></template>\n");
@@ -80,7 +95,7 @@ test("routes the seven required MVP scenarios", async (t) => {
     ["先出实施方案，不要修改代码", "gen-frontend-plan"],
     ["根据 Figma 修改这个弹窗", "gen-code"],
     ["分析这个 Figma 页面并输出分析文档", "figma-analyze"],
-    ["检查这个问题，只定位原因，不要修改", "gen-code"],
+    ["检查这个问题，只定位原因，不要修改", ""],
     ["修复 claimed 状态下图片不切换的问题", "gen-code"],
   ];
   for (const [query, expected] of cases) {
@@ -91,15 +106,139 @@ test("routes the seven required MVP scenarios", async (t) => {
   }
 });
 
-test("code analysis without browser inspection routes to gen-code in inspect-only mode", async (t) => {
+test("code analysis stays inspect-only without routing to a code generation skill", async (t) => {
   const root = await fixture();
   t.after(() => rm(root, { recursive: true, force: true }));
   for (const query of ["只分析这个报错，不修改代码", "定位并检查问题，不要修改", "只排查 claimed 状态异常，不修复"]) {
     const result = await route(root, query);
-    assert.equal(result.recommended_skill, "gen-code", query);
+    assert.equal(result.recommended_skill, "", query);
     assert.equal(result.execution_mode, "inspect_only", query);
     assert.ok(result.boundaries.some((item) => item.includes("不修改代码")), query);
+    assert.match(result.execution_prompt, /建议 Skill：暂不建议 Skill/, query);
+    assert.doesNotMatch(result.execution_prompt, /缺少 gen-code|需安装或启用/, query);
   }
+});
+
+test("classifies post-action state not updated as a bug without guessing frontend or backend", async (t) => {
+  const root = await fixture();
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const result = await route(root, "为什么选择奖励后还是没变化是前端问题还是后端", { debugJson: true });
+
+  assert.equal(result._debug.flags.bug, true);
+  assert.equal(result.execution_mode, "inspect_only");
+  assert.equal(result.recommended_skill, "");
+  assert.deepEqual(result.required_knowledge, [
+    "控制层：点击、确认与失败处理",
+    "数据层：接口调用、状态回写与请求锁",
+    "渲染层：页面最终消费字段",
+  ]);
+  assert.match(result.engineering_judgment, /不能直接归为前端或后端/);
+  assert.deepEqual(result.execution_plan.verification.map((item) => item.owner), [
+    "前端错误处理",
+    "前端状态同步",
+    "后端状态持久化或查询",
+  ]);
+  assert.match(result.execution_prompt, /操作接口返回新值，页面仍显示旧值 → 前端状态同步/);
+  assert.doesNotMatch(result.execution_prompt, /新增页面功能|gen-code/);
+
+  const ownershipOnly = await route(root, "前端还是后端");
+  assert.equal(ownershipOnly.execution_mode, "inspect_only");
+  assert.equal(ownershipOnly.recommended_skill, "");
+  assert.deepEqual(ownershipOnly.required_knowledge, result.required_knowledge);
+});
+
+test("preserves diagnostic evidence, target line, and responsibility conditions in the handoff", async (t) => {
+  const root = await fixture();
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const evidenceEntries = [
+    {
+      kind: "diagnostic_fact",
+      source: "src/pages/wish.vue:5",
+      status: "fact",
+      layer: "data",
+      signal: "operation_response_contains_latest_state",
+      description: "choose_wish_reward 返回最新 wish_rewards",
+    },
+    {
+      kind: "diagnostic_fact",
+      source: "src/pages/wish.vue:5",
+      status: "fact",
+      layer: "data",
+      signal: "operation_response_discarded",
+      description: "前端丢弃该响应",
+    },
+    {
+      kind: "diagnostic_fact",
+      source: "src/stores/wish.ts:2",
+      status: "fact",
+      layer: "data",
+      signal: "refresh_may_be_skipped_by_request_lock",
+      description: "二次刷新可能被 useStore 请求锁跳过",
+    },
+    {
+      kind: "diagnostic_fact",
+      source: "src/pages/wish.vue:1",
+      status: "fact",
+      layer: "render",
+      signal: "render_reads_field",
+      description: "页面渲染只读取 wishRewards",
+    },
+  ];
+  const result = await route(
+    root,
+    "为什么 src/pages/wish.vue:5 选择奖励后没变化，是前端还是后端",
+    { evidenceEntries },
+  );
+
+  assert.equal(result.execution_mode, "inspect_only");
+  assert.equal(result.recommended_skill, "");
+  assert.ok(result.execution_plan.target_scope.some((item) =>
+    item.value === "src/pages/wish.vue" && item.line === 5));
+  assert.deepEqual(result.execution_plan.retrieval.map((item) => item.knowledge), [
+    "控制层：点击、确认与失败处理",
+    "数据层：接口调用、状态回写与请求锁",
+    "渲染层：页面最终消费字段",
+  ]);
+  assert.deepEqual(
+    result.execution_plan.source_facts.filter((item) => item.kind === "diagnostic_fact").map((item) => item.description),
+    evidenceEntries.map((item) => item.description),
+  );
+  assert.equal(result.execution_plan.verification.filter((item) => item.kind === "responsibility_condition").length, 3);
+  assert.equal(
+    result.engineering_judgment,
+    "当前代码存在明确的前端状态同步风险：选择接口返回的新状态未被消费，后续查询又可能被请求锁跳过。应先验证接口响应；若响应已包含新奖励 ID，可直接判定为前端问题。",
+  );
+});
+
+test("continues an inspect-only diagnosis without rerouting, rescanning, or losing evidence", async (t) => {
+  const root = await fixture();
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const previous = await route(root, "为什么 src/pages/wish.vue:5 选择奖励后没变化，是前端还是后端", {
+    evidenceEntries: [{
+      kind: "diagnostic_fact",
+      source: "src/pages/wish.vue:5",
+      status: "fact",
+      layer: "data",
+      signal: "operation_response_contains_latest_state",
+      description: "choose_wish_reward 返回最新 wish_rewards",
+    }],
+  });
+
+  const handoff = await routeCompanySkills({
+    root: path.join(root, "does-not-exist"),
+    query: "执行",
+    previousContract: previous,
+  });
+
+  assert.equal(handoff.continued, true);
+  assert.equal(handoff.authorized, false);
+  assert.equal(handoff.skill, null);
+  assert.equal(handoff.execution_mode, "inspect_only");
+  assert.deepEqual(handoff.execution_plan.source_facts, previous.execution_plan.source_facts);
+  assert.deepEqual(handoff.execution_plan.verification, previous.execution_plan.verification);
+  assert.deepEqual(handoff.execution_plan.retrieval, previous.execution_plan.retrieval);
+  assert.ok(!handoff.execution_plan.blockers.some((item) =>
+    (typeof item === "string" ? item : item.description).includes("执行确认")));
 });
 
 test("turns a state-driven image bug into an executable diagnostic chain", async (t) => {
@@ -142,6 +281,38 @@ test("derives modification permission from the original request without a second
   assert.equal(ambiguous.execution_mode, "inspect_only");
   assert.equal(blockers.length, 1);
   assert.match(ambiguous.execution_prompt, /⚠️ 需要确认\n- 你希望只定位问题，还是允许修改并验证？/);
+});
+
+test("treats event-and-effect requests as code changes without requiring an explicit modify verb", async (t) => {
+  const root = await fixture();
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await addSkill(root, "create-component-document", "为组件生成文档，记录点击交互和 audio 资源");
+  const requests = [
+    "ai talk点击tab的时候 播放 audio/btn",
+    "四个 tab 点击时都播放 audio/btn，第三个 tab 原有跳转保持不变",
+    "进入页面后自动打开活动弹窗",
+  ];
+
+  for (const query of requests) {
+    const result = await route(root, query);
+    assert.equal(result.recommended_skill, "gen-code", query);
+    assert.equal(result.execution_mode, "modify_and_verify", query);
+    assert.equal(result.execution_plan.route.authorization, "authorized", query);
+    assert.doesNotMatch(result.execution_prompt, /⚠️ 需要确认/, query);
+  }
+
+  const audioRequest = await route(root, requests[0]);
+  assert.ok(audioRequest.evidence.some((item) => item.type === "resource" && item.value === "audio/btn"));
+
+  for (const query of [
+    "为什么点击 tab 的时候不播放 audio/btn",
+    "只排查点击 tab 时没有播放 audio/btn 的原因，不修改代码",
+  ]) {
+    const result = await route(root, query);
+    assert.equal(result.recommended_skill, "", query);
+    assert.equal(result.execution_mode, "inspect_only", query);
+    assert.equal(result.execution_plan.route.authorization, "inspect_only", query);
+  }
 });
 
 test("structured routing cases assert mode, preserved semantics, boundaries, exclusions, and unknowns", async (t) => {
@@ -294,7 +465,7 @@ test("the seven release scenarios pass through the real CLI", async (t) => {
     ["先输出实施方案，不要修改代码", "gen-frontend-plan", true],
     ["根据 Figma 修改这个弹窗", "gen-code", false],
     ["分析这个 Figma 页面，不修改代码", "figma-analyze", true],
-    ["检查 claimed 状态图片为什么没有切换，只定位原因，不要修改代码", "gen-code", true],
+    ["检查 claimed 状态图片为什么没有切换，只定位原因，不要修改代码", "", true],
     ["修复 claimed 状态下图片不切换的问题", "gen-code", false],
   ];
 
@@ -373,6 +544,24 @@ test("denied handoff adds the authorization blocker only once", () => {
   const previous = {
     recommended_skill: "gen-code",
     original_request: "修复问题",
+    execution_plan: {
+      schema_version: "1.1",
+      route: { skill: "gen-frontend-plan", authorization: "inspect_only" },
+      workspace: { project_root: "/repo", workdir: null },
+      workflow: {
+        execution_mode: "plan_then_execute",
+        next_skill: "gen-code",
+        stage: { value: "方案设计", source: "derived", status: "available" },
+      },
+      task: { source_request: "先给方案，确认后再改", deliverable: "方案", reasoning: null },
+      knowledge_requirements: [],
+      retrieval: [],
+      target_scope: [],
+      source_facts: [],
+      constraints: [],
+      blockers: [],
+      verification: [],
+    },
   };
   const first = executionHandoffFor("修复这个问题", previous);
   const second = executionHandoffFor("修复这个问题", first);
@@ -423,6 +612,10 @@ test("extracts a target file after a Chinese colon", async (t) => {
   const result = await route(root, "修改目标文件：src/components/card.ts", { debugJson: true });
   assert.ok(result.evidence.some((item) => item.type === "target_file" && item.value === "src/components/card.ts"));
   assert.ok(result._debug.context.files_read.includes("src/components/card.ts"));
+
+  const withLine = await route(root, "为什么 src/components/card.ts 第 20 行选择后没变化");
+  assert.ok(withLine.execution_plan.target_scope.some((item) =>
+    item.value === "src/components/card.ts" && item.line === 20));
 });
 
 test("execution plan is the source of the compatibility prompt", async (t) => {
@@ -519,7 +712,7 @@ test("clear intermittent reward bug keeps the original request without synthesiz
   assert.match(result.execution_prompt, /🔄 轮播切换\n→ mod3\.vue \/ getNodeDisplayReward（确认末项切换时的索引与取值）/);
   assert.match(result.execution_prompt, /🎁 奖励数据\n→ medalRewards \/ Rewards（确认末项奖励字段是否完整）/);
   assert.match(result.execution_prompt, /🖼️ 图片配置\n→ mod3\.vue \/ PageCenter（确认末项图片资源是否存在）/);
-  assert.match(result.execution_prompt, /当前阶段：定位问题\n建议 Skill：gen-code（只分析，不修改）/);
+  assert.match(result.execution_prompt, /当前阶段：定位问题\n建议 Skill：暂不建议 Skill/);
   assert.doesNotMatch(result.execution_prompt, /定位末项奖励|🎯 任务目标|重点对象/);
   assert.doesNotMatch(result.execution_prompt, /根因(?:是|为)|可以确定/);
   assert.ok(result.execution_prompt.length < 1_000);
@@ -587,7 +780,7 @@ test("API and page mismatch adds only the conflict relationship", async (t) => {
   const result = await route(root, "接口返回已领取，但页面显示未领取");
   assert.deepEqual(result.added_context, ["冲突关系：接口返回与页面展示不一致"]);
   assert.match(result.execution_prompt, /🧩 已补充上下文\n- 冲突关系：接口返回与页面展示不一致/);
-  assert.match(result.execution_prompt, /当前阶段：定位问题\n建议 Skill：gen-code（只分析，不修改）/);
+  assert.match(result.execution_prompt, /当前阶段：定位问题\n建议 Skill：暂不建议 Skill/);
   assert.doesNotMatch(result.execution_prompt, /需要确认/);
   assert.doesNotMatch(result.execution_prompt, /任务目标/);
 });

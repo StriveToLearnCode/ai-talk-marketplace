@@ -112,12 +112,14 @@ const SOURCE_FACT_KINDS = new Set([
   "progress_semantics",
   "resource_reference",
   "resource_reuse_candidate",
+  "diagnostic_fact",
 ]);
 const ASSERTION_KINDS = new Set([
   "ui_assertion",
   "interaction_assertion",
   "state_assertion",
   "resource_assertion",
+  "responsibility_condition",
 ]);
 
 function hasScreenshotProtocol(classification) {
@@ -224,6 +226,13 @@ function blockersFor(classification, context, ranking) {
 function engineeringJudgment(classification, retrievalEntries) {
   if (classification.intent.desired_output === "unknown") return null;
   const hasDialogSystem = retrievalEntries.some((item) => ["弹窗模板结构", "弹窗打开与关闭方式"].includes(item.knowledge));
+  const diagnosticSignals = new Set(classification.typedEvidence
+    .filter((item) => item.kind === "diagnostic_fact" && item.status === "fact")
+    .map((item) => item.signal)
+    .filter(Boolean));
+  const hasFrontendSyncRisk = diagnosticSignals.has("operation_response_contains_latest_state")
+    && (diagnosticSignals.has("operation_response_discarded")
+      || diagnosticSignals.has("refresh_may_be_skipped_by_request_lock"));
   const judgments = {
     dialog_auto_open: hasDialogSystem
       ? "这是新增弹窗功能。复用现有弹窗结构和打开能力；新增内容是首次进入时的触发与页面挂载。"
@@ -235,6 +244,10 @@ function engineeringJudgment(classification, retrievalEntries) {
     dynamic_component_registration: "该报错指向动态组件解析链。应先核对名称生成、注册映射和实际组件名，不能仅凭报错认定组件文件缺失。",
     reward_claim_visual: "这是现有奖励展示的领取态扩展。复用领取状态判断和奖励节点；新增内容是 icon/mask 蒙层及其状态分支。",
     state_visual_mismatch: "这是状态图片异常定位。复用现有状态来源和转换逻辑；需要调整图片渲染分支。",
+    post_action_state_not_updated: hasFrontendSyncRisk
+      ? "当前代码存在明确的前端状态同步风险：选择接口返回的新状态未被消费，后续查询又可能被请求锁跳过。应先验证接口响应；若响应已包含新奖励 ID，可直接判定为前端问题。"
+      : "操作后页面状态未变化，现象本身不能直接归为前端或后端。应沿控制层、数据层和渲染层核对请求结果、状态回写、请求锁与页面消费字段，并按旧值首次出现的位置定位责任层。",
+    fault_ownership: "当前证据不足以直接判断前端或后端。应沿控制层、数据层和渲染层检查，并用接口响应、重新查询结果和页面消费值确定旧值首次出现的位置。",
     intermittent_reward_display: "现象只说明末项奖励展示不稳定，尚不能确认是否与轮播周期同步。应优先核对末项取值、奖励数据和图片配置。",
     api_page_conflict: "接口返回与页面展示冲突，排查应集中在响应适配、视图状态转换和渲染分支，但不能据此判断接口或页面单侧有误。应先对照同一请求下的原始响应与页面消费值。",
     copy_change: "这是现有页面文案调整。复用目标文件的渲染位置；只需新增或替换指定文案。",
@@ -382,6 +395,33 @@ function verificationFor(classification) {
   const hasKind = (kind) => explicit.some((item) => item.kind === kind);
   const facts = classification.typedEvidence.filter((item) => item.status === "fact");
   const generated = [];
+
+  if (["post_action_state_not_updated", "fault_ownership"].includes(classification.taskType)
+    && !hasKind("responsibility_condition")) {
+    generated.push(
+      {
+        kind: "responsibility_condition",
+        condition: "操作接口失败，但页面仍关闭",
+        owner: "前端错误处理",
+        description: "若操作接口失败但页面仍关闭，判定为前端错误处理问题。",
+        source: "diagnostic_protocol",
+      },
+      {
+        kind: "responsibility_condition",
+        condition: "操作接口返回新值，页面仍显示旧值",
+        owner: "前端状态同步",
+        description: "若操作接口返回新值但页面仍显示旧值，判定为前端状态同步问题。",
+        source: "diagnostic_protocol",
+      },
+      {
+        kind: "responsibility_condition",
+        condition: "操作成功，重新查询仍返回旧值",
+        owner: "后端状态持久化或查询",
+        description: "若操作成功但重新查询仍返回旧值，判定为后端状态持久化或查询问题。",
+        source: "diagnostic_protocol",
+      },
+    );
+  }
 
   if (!hasKind("ui_assertion")) {
     const target = facts.find((item) => item.kind === "attachment_reference" && item.role === "target");
@@ -558,6 +598,14 @@ export function buildExecutionPrompt(executionPlan) {
     }
   }
   addSection(lines, "⚠️ 需要确认", blocking, blockingLine);
+  const responsibilityConditions = (executionPlan.verification || [])
+    .filter((item) => item?.kind === "responsibility_condition");
+  addSection(
+    lines,
+    "🧪 定责条件",
+    responsibilityConditions,
+    (item) => `${item.condition} → ${item.owner}`,
+  );
   const unavailableSkill = blocking.find((item) => item?.kind === "skill_availability")?.skill;
   lines.push(
     "",

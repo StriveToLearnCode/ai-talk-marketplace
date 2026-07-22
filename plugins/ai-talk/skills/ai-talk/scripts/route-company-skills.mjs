@@ -119,6 +119,10 @@ function executionPlanFrom(previousContract) {
 export function executionHandoffFor(currentInput, previousContract) {
   const gate = executionGateFor(currentInput, previousContract);
   const executionPlan = executionPlanFrom(previousContract);
+  const continuationRequested = EXECUTION_REQUESTS.has(normalizeExecutionRequest(currentInput));
+  const diagnosticContinuation = continuationRequested
+    && executionPlan.workflow.execution_mode === "inspect_only"
+    && executionPlan.workflow.stage?.value === "定位问题";
   const authorized = executionPlan.route.authorization === "authorized" || gate.authorized;
   executionPlan.route.authorization = authorized ? "authorized" : "inspect_only";
   if (authorized) {
@@ -129,7 +133,9 @@ export function executionHandoffFor(currentInput, previousContract) {
     executionPlan.blockers = executionPlan.blockers.filter(
       (blocker) => blockerDescription(blocker) !== AUTHORIZATION_BLOCKER,
     );
-  } else if (!executionPlan.blockers.some((blocker) => blockerDescription(blocker) === AUTHORIZATION_BLOCKER)) {
+  } else if (!diagnosticContinuation
+    && executionPlan.workflow.execution_mode === "plan_then_execute"
+    && !executionPlan.blockers.some((blocker) => blockerDescription(blocker) === AUTHORIZATION_BLOCKER)) {
     executionPlan.blockers = [
       ...executionPlan.blockers,
       authorizationBlocker(),
@@ -137,6 +143,7 @@ export function executionHandoffFor(currentInput, previousContract) {
   }
   return {
     authorized,
+    continued: diagnosticContinuation,
     skill: authorized ? executionPlan.route.skill : null,
     execution_mode: executionPlan.workflow.execution_mode,
     added_context: addedContextFor(executionPlan),

@@ -176,7 +176,7 @@ test("V1 routes the eight acceptance requests without editing the project", asyn
       query: "Unknown custom element: b-record-dialog-wrapper-3-col。",
       assertResult(result) {
         assert.equal(result.execution_mode, "inspect_only");
-        assert.equal(result.recommended_skill, "gen-code");
+        assert.equal(result.recommended_skill, "");
         assert.deepEqual(result.required_knowledge, ["动态组件名称生成", "动态组件注册规则", "实际组件名称"]);
         assert.ok(result.retrieval_entries.some((item) => item.entry === "b-record-dialog-wrapper-3-col.vue"));
         assert.doesNotMatch(result.execution_prompt, /需要确认|弹窗能力扩展/);

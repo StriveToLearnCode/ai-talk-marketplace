@@ -220,7 +220,7 @@
     "id": "bug-missing-display",
     "clarity": "clear",
     "prompt": "为什么奖励状态没有显示",
-    "expected_skill": "gen-code"
+    "expected_skill": ""
   },
   {
     "id": "bug-fix-here",
@@ -232,7 +232,7 @@
     "id": "bug-page-screenshot",
     "clarity": "clear",
     "prompt": "已有页面奖励状态显示异常，见截图",
-    "expected_skill": "gen-code",
+    "expected_skill": "",
     "evidence_types": [
       "screenshot"
     ]
@@ -247,7 +247,7 @@
     "id": "bug-analysis-only",
     "clarity": "clear",
     "prompt": "定位 claimed 状态下图片不切换的代码原因，只分析，不修改代码",
-    "expected_skill": "gen-code",
+    "expected_skill": "",
     "expected_mode": "inspect_only",
     "must_preserve": ["claimed", "图片不切换", "代码原因", "只分析", "不修改代码"],
     "must_include_boundaries": ["只定位问题，不修改代码"],
@@ -258,7 +258,7 @@
     "id": "bug-analysis-visual-code",
     "clarity": "clear",
     "prompt": "定位 RewardDialog 视觉样式代码为什么异常，只排查原因，不修复",
-    "expected_skill": "gen-code",
+    "expected_skill": "",
     "expected_mode": "inspect_only",
     "must_preserve": ["RewardDialog", "视觉样式代码", "只排查原因", "不修复"],
     "must_include_boundaries": ["只定位问题，不修改代码"],
@@ -269,7 +269,7 @@
     "id": "bug-analysis-page-code",
     "clarity": "clear",
     "prompt": "检查 recharge 页面代码为什么没有更新状态，只定位原因，不修改代码",
-    "expected_skill": "gen-code",
+    "expected_skill": "",
     "expected_mode": "inspect_only",
     "must_preserve": ["recharge", "页面代码", "没有更新状态", "只定位原因", "不修改代码"],
     "must_include_boundaries": ["只定位问题，不修改代码"],

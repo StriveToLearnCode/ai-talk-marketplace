@@ -3,6 +3,8 @@ import { CONFUSION_GROUPS, SKILL_ROUTES } from "./rules.mjs";
 const OUTPUT_TO_SKILL = Object.fromEntries(Object.entries(SKILL_ROUTES).map(([name, rule]) => [rule.desiredOutput, name]));
 
 export function expectedSkillFor(classification) {
+  if (classification.executionMode === "inspect_only"
+    && classification.intent.desired_output === "code_changes") return "";
   return OUTPUT_TO_SKILL[classification.intent.desired_output] || "";
 }
 
@@ -19,6 +21,9 @@ function lexicalScore(skill, query) {
 function selectionReason(skill, classification, expected) {
   const { desired_output: output } = classification.intent;
   if (!skill && expected) return `目标产物需要 ${expected}，但当前 Skill 索引中未找到它；未改用其他职责的 Skill。`;
+  if (!skill && output === "code_changes" && classification.executionMode === "inspect_only") {
+    return "当前任务是只读代码诊断，不需要交给代码生成 Skill。";
+  }
   if (!skill) return "没有发现与目标产物足够匹配的 Skill；未改用其他职责的 Skill。";
   if (output === "live_page_findings") return "用户明确要求浏览器现场检查页面视觉、交互或运行状态，不是代码静态定位或自动化测试文件。";
   if (output === "automated_test") return "用户明确要求 Midscene、自动化测试、测试文件或运行测试。";
@@ -35,6 +40,8 @@ function selectionReason(skill, classification, expected) {
 
 export function rankSkills(skills, classification, limit = 3) {
   const expected = expectedSkillFor(classification);
+  const directCodeDiagnosis = classification.executionMode === "inspect_only"
+    && classification.intent.desired_output === "code_changes";
   const executionSkill = classification.executionMode === "plan_then_execute"
     && classification.intent.desired_output === "implementation_plan"
     ? skills.find((skill) => skill.name.toLowerCase() === "gen-code")?.name || ""
@@ -46,7 +53,9 @@ export function rankSkills(skills, classification, limit = 3) {
     return { skill, score, exact_output: exactOutput };
   }).sort((a, b) => b.score - a.score || a.skill.name.localeCompare(b.skill.name));
 
-  const primary = expected
+  const primary = directCodeDiagnosis
+    ? null
+    : expected
     ? ranked.find((item) => item.skill.name.toLowerCase() === expected) || null
     : ranked.find((item) => item.score > 0) || null;
   const group = CONFUSION_GROUPS.find((items) => items.includes(primary?.skill.name.toLowerCase()));
