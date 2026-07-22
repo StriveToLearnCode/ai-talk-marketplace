@@ -8,7 +8,20 @@ PLUGIN = SKILL.parents[1]
 ROUTER = SKILL / "scripts/route-company-skills"
 SPEC = PLUGIN.parents[1] / "docs" / "AI_TALK_V1_SPEC.md"
 LEGACY_ROUTER = SKILL / "references" / "legacy-router.md"
+REQUIREMENT_CONTRACT = SKILL / "references" / "requirement-contract.md"
+REQUIREMENT_CASES = SKILL / "tests" / "requirement-contract-cases.json"
 RUNTIME_UI_CASES = SKILL / "tests" / "runtime-ui-diagnosis-cases.json"
+
+CONTRACT_KEYS = [
+    "schemaVersion", "status", "authorization", "sourceRequest", "mode",
+    "scope", "target", "effect", "instanceModel", "playback", "constraints",
+    "acceptance", "evidence", "openQuestions",
+]
+CONTRACT_STATUSES = {
+    "clarifying", "diagnosing", "ready_to_execute", "executing", "verifying",
+    "done", "blocked",
+}
+CONTRACT_SOURCES = {"user", "clarification", "derived", "diagnostic"}
 
 
 class Contract(unittest.TestCase):
@@ -17,17 +30,24 @@ class Contract(unittest.TestCase):
         self.assertTrue(manifest["name"])
         self.assertIn("browser evidence", manifest["description"])
         self.assertIn("Live browser evidence for UI failures", manifest["interface"]["capabilities"])
+        self.assertLessEqual(len(manifest["interface"]["defaultPrompt"]), 3)
+        self.assertTrue(all(
+            len(prompt) <= 128 for prompt in manifest["interface"]["defaultPrompt"]
+        ))
         skill = (SKILL / "SKILL.md").read_text()
         self.assertIn("name: ai-talk", skill)
-        self.assertIn("AI Talk 需求澄清", skill)
+        self.assertIn("AI Talk 需求编译", skill)
         self.assertIn("一次最多询问 2 个短问题", skill)
         self.assertIn("最多 3 条任务专属风险", skill)
-        self.assertIn("AI Talk 到此结束，交给代码 Agent 实现。", skill)
+        self.assertIn("AI Talk 契约已就绪，可直接执行。", skill)
         self.assertIn("不选择、推荐或调用代码 Skill", skill)
         self.assertIn("不读取或检索仓库", skill)
+        self.assertIn("RequirementContract 1.0", skill)
+        self.assertIn("executing + authorized", skill)
         self.assertNotIn("node scripts/route-company-skills.mjs", skill)
         self.assertNotIn("modify_and_verify", skill)
         self.assertTrue(LEGACY_ROUTER.is_file())
+        self.assertTrue(REQUIREMENT_CONTRACT.is_file())
         legacy = LEGACY_ROUTER.read_text()
         self.assertIn("TaskHandoff 1.1", legacy)
         self.assertIn("modify_and_verify", legacy)
@@ -48,6 +68,82 @@ class Contract(unittest.TestCase):
         ):
             self.assertIn(text, skill)
 
+    def test_requirement_contract_reference_freezes_shape_and_transitions(self):
+        reference = REQUIREMENT_CONTRACT.read_text()
+        for key in CONTRACT_KEYS:
+            self.assertIn(f'"{key}"', reference)
+        for status in CONTRACT_STATUSES:
+            self.assertIn(f"`{status}`", reference)
+        for source in CONTRACT_SOURCES:
+            self.assertIn(source, reference)
+        for instruction in (
+            "Use `null` for an inapplicable or unresolved scalar",
+            "Never repeat a resolved question",
+            "let the current code Agent implement and verify",
+            "Treat a later explicit execution instruction as new authorization",
+        ):
+            self.assertIn(instruction, reference)
+
+    def test_requirement_contract_cases_cover_p0_behavior(self):
+        cases = json.loads(REQUIREMENT_CASES.read_text())
+        by_id = {case["id"]: case for case in cases}
+        self.assertEqual(set(by_id), {
+            "avatar-initial-clarification",
+            "avatar-partial-answer",
+            "avatar-ready",
+            "avatar-execute",
+            "diagnosis-execute",
+            "blocked-execute",
+            "clear-request-ready",
+        })
+
+        ready = by_id["avatar-ready"]["expectedContract"]
+        self.assertEqual(list(ready), CONTRACT_KEYS)
+        self.assertEqual(ready["schemaVersion"], "1.0")
+        self.assertIn(ready["status"], CONTRACT_STATUSES)
+        self.assertEqual(ready["authorization"], "pending")
+        self.assertEqual(ready["openQuestions"], [])
+        self.assertEqual(ready["scope"], ["recharge", "voice"])
+        self.assertEqual(ready["instanceModel"], "per_target")
+        self.assertEqual(ready["playback"], "loop")
+
+        for field in ("constraints", "acceptance"):
+            for item in ready[field]:
+                self.assertEqual(set(item), {"text", "source"})
+                self.assertTrue(item["text"])
+                self.assertIn(item["source"], CONTRACT_SOURCES)
+        self.assertEqual(
+            [item["text"] for item in ready["acceptance"]],
+            [
+                "recharge、voice 中所有用户头像均持续播放溜光",
+                "多个头像同时使用独立实例循环播放",
+                "列表切换或数据刷新后动画仍正常",
+                "PAG 层不影响头像原有点击",
+                "资源加载失败时页面不阻塞且头像仍可用",
+            ],
+        )
+
+        partial = by_id["avatar-partial-answer"]
+        self.assertEqual(len(partial["expectedQuestions"]), 1)
+        self.assertEqual(partial["resolved"], ["scope"])
+        self.assertTrue(partial["mustNotRepeat"])
+
+        for case_id in ("avatar-execute", "diagnosis-execute"):
+            transition = by_id[case_id]["expectedTransition"]
+            self.assertEqual(transition, {
+                "status": "executing",
+                "authorization": "authorized",
+            })
+            self.assertTrue(by_id[case_id]["mustNotAsk"])
+        diagnosis = by_id["diagnosis-execute"]
+        self.assertIn("evidence", diagnosis["preserve"])
+        self.assertEqual(diagnosis["evidence"][0]["source"], "diagnostic")
+
+        blocked = by_id["blocked-execute"]
+        self.assertEqual(blocked["expectedStatus"], "blocked")
+        self.assertEqual(blocked["expectedQuestions"], blocked["openQuestions"])
+        self.assertEqual(by_id["clear-request-ready"]["expectedQuestionCount"], 0)
+
     def test_solution_questions_preserve_intent_and_require_repository_evidence(self):
         skill = (SKILL / "SKILL.md").read_text()
         for text in (
@@ -62,15 +158,16 @@ class Contract(unittest.TestCase):
     def test_diagnostic_triage_contract_is_explicit(self):
         skill = (SKILL / "SKILL.md").read_text()
         for text in (
-            "inspect_only + Bug 定位",
+            "diagnosing + Bug 定位",
             "控制层检查点击、确认、失败处理和关闭时机",
             "数据层检查接口调用、响应消费、状态回写和请求锁",
             "渲染层检查页面最终读取的字段",
             "diagnostic_fact",
             "responsibility_condition",
-            "route.skill",
-            "workflow.next_skill",
-            "不重新判断任务、不重新大范围扫描",
+            "RequirementContract 的 `evidence`",
+            "ready_to_execute + pending",
+            "executing + authorized",
+            "不重新诊断、不重新大范围扫描",
         ):
             self.assertIn(text, skill)
 

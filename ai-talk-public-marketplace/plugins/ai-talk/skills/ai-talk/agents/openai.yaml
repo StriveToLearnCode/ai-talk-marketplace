@@ -1,7 +1,7 @@
 interface:
   display_name: "AI Talk"
-  short_description: "澄清关键需求并对 UI 异常执行浏览器只读运行态取证"
-  default_prompt: "使用 $ai-talk 澄清这项开发需求；若是 UI 异常，直接检查浏览器运行态证据并给出只读诊断结论。"
+  short_description: "将开发需求编译为可执行契约，并对 UI 异常保留诊断证据"
+  default_prompt: "使用 $ai-talk 将这项开发需求编译为带验收标准的任务契约；我确认后说执行即可连续实施。"
 
 policy:
   allow_implicit_invocation: false

@@ -1,15 +1,15 @@
 {
   "name": "ai-talk",
-  "version": "0.4.0+codex.20260722082845",
-  "description": "AI Talk clarifies implementation-changing ambiguities and performs bounded read-only fault triage, including live browser evidence for UI failures.",
+  "version": "0.4.0+codex.20260722084915",
+  "description": "AI Talk compiles ambiguous development requests into executable RequirementContract 1.0 handoffs with acceptance criteria, and performs bounded fault triage with live browser evidence before authorized implementation.",
   "author": {
     "name": "sf"
   },
   "skills": "./skills/",
   "interface": {
     "displayName": "AI Talk",
-    "shortDescription": "Clarify requirements and inspect UI failures",
-    "longDescription": "AI Talk asks only questions that change implementation scope or behavior. Explicit diagnostic requests use bounded read-only inspection across control, data, and render layers. UI failures add direct browser evidence for render conditions, DOM presence, geometry, occlusion, resources, and screenshots without modifying code or routing to another Skill.",
+    "shortDescription": "Compile requirements into executable contracts",
+    "longDescription": "AI Talk asks only questions that change implementation scope or behavior, then emits a machine-readable RequirementContract 1.0 with observable acceptance criteria. Diagnostic requests first use bounded read-only inspection across control, data, and render layers, including live browser evidence for UI failures. When the user says execute, the current code Agent inherits the contract, implements, and verifies without repeating clarification or routing to another Skill.",
     "developerName": "sf",
     "category": "Productivity",
     "capabilities": [
@@ -17,18 +17,20 @@
       "Implementation-changing ambiguity detection",
       "Two-question clarification limit",
       "Task-specific risk reminders",
-      "Explicit exit before implementation",
+      "RequirementContract 1.0 structured handoff",
+      "Observable acceptance criteria derivation",
+      "Incremental clarification without repeated questions",
+      "Same-task execution continuity",
       "Bounded read-only fault triage",
       "Live browser evidence for UI failures",
       "DOM, geometry, occlusion, and resource inspection",
       "Evidence-preserving diagnostic handoff",
       "Verifiable frontend/backend ownership conditions",
-      "Zero downstream execution"
+      "Zero downstream Skill routing"
     ],
     "defaultPrompt": [
       "$ai-talk \u8fd9\u4e24\u90e8\u5206\u7684\u7528\u6237\u5934\u50cf\u90fd\u9700\u8981 pag/user \u6e9c\u5149",
-      "$ai-talk \u5f00\u53d1\u4e00\u4e2a\u5f39\u7a97\uff0c\u5e2e\u6211\u786e\u8ba4\u8303\u56f4\u548c\u98ce\u9669",
-      "$ai-talk \u4e3a\u4ec0\u4e48\u9009\u62e9\u5956\u52b1\u540e\u8fd8\u662f\u6ca1\u53d8\u5316\uff0c\u662f\u524d\u7aef\u8fd8\u662f\u540e\u7aef",
+      "$ai-talk \u5f00\u53d1\u4e00\u4e2a\u5f39\u7a97\uff0c\u5e2e\u6211\u7f16\u8bd1\u6210\u53ef\u6267\u884c\u3001\u53ef\u9a8c\u6536\u7684\u4efb\u52a1\u5951\u7ea6",
       "$ai-talk \u6700\u540e\u4e00\u4e2a\u5956\u52b1\u9700\u8981\u663e\u793a\u9886\u53d6\u6309\u94ae\uff0c\u4fee\u6539\u540e\u8fd8\u662f\u6ca1\u6709"
     ]
   }
