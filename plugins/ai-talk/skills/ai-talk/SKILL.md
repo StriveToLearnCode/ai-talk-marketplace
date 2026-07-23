@@ -1,17 +1,17 @@
 ---
 name: ai-talk
-description: 在用户发起或继续研发对话时使用，是研发对话中每条用户消息的前置门禁，无需用户输入 $ai-talk。非研发对话不触发。研发对话中先判断消息是否可以放行：状态询问、确认和无需重新编译的补充原样放行；明确研发任务编译为下游 Agent 可直接执行的紧凑契约后放行；只有会改变产品结果或写范围的硬阻塞才暂不放行并询问一个决定性问题。处理代码选区、截图标注、选中 DOM、当前浏览器页面、视觉指代和故障定位时保存必要证据。
+description: 自动匹配发起或继续软件研发工作的用户消息，无需用户输入 $ai-talk；在仓库安装 AI Talk Strict Mode 后，每条研发消息都必须先应用本 Skill。状态询问、确认和无需更新契约的上下文原样放行；明确研发任务编译为下游 Agent 可直接执行的紧凑契约后放行；只有会改变产品结果或写范围的硬阻塞才暂不放行并询问一个决定性问题。非研发对话不触发。处理代码选区、截图标注、选中 DOM、当前浏览器页面、视觉指代和故障定位时保存必要证据。
 ---
 
 # AI Talk 任务编译器
 
-作为研发对话中每条用户消息的单一前置门禁，先决定放行或暂不放行。非研发对话不触发 AI Talk；研发对话中的状态询问、确认和无需重新编译的补充原样放行；研发任务保留用户原话并编译为 `RequirementContract 1.2`，然后返回 `skip`、`handoff` 或 `clarify`。默认在后台把放行的消息或契约传给当前 Agent 或下游 Skill；只有宿主不能直接交接时才向用户显示紧凑 YAML。
+AI Talk 有两种入口。默认自动模式依赖 Codex 根据 description 隐式匹配，用户无需输入 Skill 名称，但宿主不保证每轮都触发。仓库严格模式通过根 `AGENTS.md` 显式要求每条研发消息先应用 AI Talk，使用 `scripts/install-strict-mode.mjs` 幂等安装。两种入口进入同一编译流程：状态询问和确认原样放行；研发任务保留用户原话并编译为 `RequirementContract 1.2`，然后返回 `skip`、`handoff` 或 `clarify`。默认在后台把放行的消息或契约传给当前 Agent 或下游 Skill；只有宿主不能直接交接时才向用户显示紧凑 YAML。
 
-处理任务前读取 `references/requirement-contract.md`，严格使用其中的字段、枚举和路由规则。出现截图标注、DOM 选择、浏览器上下文或视觉指代时，再读取 `references/target-binding.md` 并生成 `target_refs`。仅在维护旧 CLI 时读取 `references/legacy-router.md`。
+处理任务前读取 `references/requirement-contract.md`，严格使用其中的字段、枚举和路由规则。出现截图标注、DOM 选择、浏览器上下文或视觉指代时，再读取 `references/target-binding.md` 并生成 `target_refs`。任务到达用户可见终态或用户回复帮助度反馈时读取 `references/feedback-envelope.md`；反馈作为独立 sidecar 处理，不修改 `RequirementContract 1.2`。仅在维护旧 CLI 时读取 `references/legacy-router.md`。
 
 ## 核心边界
 
-- 仅研发对话使用 AI Talk。研发对话中的每条用户消息都先经过门禁，包括首条研发请求和同一对话中的后续消息；用户不需要记住名称、前缀或调用语法。同一条消息只判定一次；内部 handoff 和下游 Skill 执行不得再次回到 AI Talk。
+- 仅研发对话使用 AI Talk。默认自动模式尽力匹配首条研发请求和后续研发消息；严格模式要求每条研发消息都先经过门禁。用户不需要记住名称、前缀或调用语法。同一条消息只判定一次；内部 handoff 和下游 Skill 执行不得再次回到 AI Talk。
 - 非研发对话不触发 AI Talk。研发对话中的状态询问、确认和无需重新编译的补充直接原样放行，不检索仓库、不创建空契约、不输出 YAML，也不为了使用 AI Talk 而追问。
 - 研发请求中，`skip` 和 `handoff` 都表示放行：前者直接交接，后者补充必要证据后交接。只有 `clarify` 表示暂不放行，并且只问一个会改变产品结果或写范围的问题。
 - 把 AI Talk 当作编译层，不做提示词润色，不改写 `source_request`，不输出上下文摘要或内部推理。
@@ -23,12 +23,14 @@ description: 在用户发起或继续研发对话时使用，是研发对话中�
 - 不把截图区域、选中 DOM 或当前页面直接当作代码位置。`target_refs` 保存视觉目标；它们不能自动进入 `control_point` 或 `write_scope`。
 - 不把内部协议全文包装进执行提示，不与下游 Skill 重复分析同一份代码。
 - 用户明确要求“用浏览器检查”“页面自测”或全面检查视觉、交互、响应式、控制台和网络时，直接交给 `ui-self-check`；普通 UI 开发、视觉指代和具体故障定位仍由 AI Talk 编译，不得仅凭 Figma、截图或 Vue 关键词触发自测。
+- AI Talk 路由的任务达到 `completed`、`partial`、`failed` 或 `blocked` 终态时，先调用 reporter 判断是否具备反馈资格；只有返回 `ask: true` 才询问一次帮助度。状态更新、确认、澄清问题、中间进度、未采样的成功任务和非研发消息不询问。将终态反馈指令作为契约外 sidecar 交给下游，不得向 `RequirementContract 1.2` 增加字段。
+- 用户对帮助度问题的回答属于反馈，不是新研发任务：不检索仓库、不创建契约、不路由 `gen-code`。按 `FeedbackEnvelope 1.0` 脱敏后调用随插件提供的 reporter；没有远端端点或没有明确同意时只进入本地私有队列。
 
 ## 编译流程
 
 1. 判断当前消息是否发起或继续研发对话。非研发对话不适用；研发对话中若包含 `$ai-talk` 或 `$ai-talk:ai-talk` 标记则移除，没有标记时直接处理自然语言。
-2. 判断当前消息是否需要新建或更新研发任务契约。状态询问、确认和无需重新编译的补充原样放行并停止，不生成空 RequirementContract。
-3. 需要编译时，从当前对话恢复同一份契约；用户更正时原位更新，不创建平行事实源。
+2. 判断当前消息是否是紧接帮助度问题的反馈或反馈偏好。若是，按 `references/feedback-envelope.md` 上报、关闭或开启询问并停止，不生成 RequirementContract。否则将续接消息判定为 `pass_through`、`revise` 或 `new_task`：状态询问、确认、文件位置和不改变结果的上下文属于 `pass_through`，原样放行；改变行为、范围、时序、视觉目标、验收或授权的补充属于 `revise`；可独立完成和验收的新目标属于 `new_task`。
+3. `revise` 从当前对话恢复同一份契约并原位更新，不创建平行事实源；“voice 也要改”“第二个也一样”“改成动画结束后播放”不得作为普通补充跳过。`new_task` 创建新契约，不把目标或写范围合并进旧任务。
 4. 先判定意图与授权，再决定是否检索。不要用是否出现命令动词替代意图判断。
 5. 先绑定当前任务中的截图标注、选中 DOM 和匹配的浏览器页面。只有一个新鲜上下文能解释视觉指代时直接写入 `target_refs`；多个候选或没有证据时设置 `clarify`，只请求一次选择、截图标注或 DOM 选择，不猜目标。
 6. 若目标行为和实现方向已足够明确，设置 `result: skip` 并放行，直接交给匹配的下游 Skill。
@@ -36,6 +38,7 @@ description: 在用户发起或继续研发对话时使用，是研发对话中�
 8. 检索产生决策价值时设置 `result: handoff` 并放行，否则保持 `skip`。将真实源码位置写入 `control_point`、`write_scope` 和 `evidence`。
 9. 仍存在实施级分歧时设置 `result: clarify` 并暂不放行，一次只问一个决定性问题；保留尚未解决的问题，不重复已回答内容。
 10. `modify_and_verify` 使用 `authorization: authorized` 并路由到职责匹配的实施 Skill；普通代码修改优先 `gen-code`。宿主支持 Skill handoff 时同轮继续，下游不得回调 AI Talk。
+11. 对已放行任务附加契约外终态反馈指令。下游在任务真正结束时调用 `node ../../scripts/report-feedback.mjs --should-ask --outcome <completed|partial|failed|blocked>`；只有返回 `ask: true` 才追加一次 `<!-- ai-talk-feedback:eligible -->`、帮助度问题和 `<!-- ai-talk-feedback:asked -->`。不得在进度消息、澄清消息或未采样终态中追加。可选的项目级 `Stop` Hook 只补齐已标记 eligible 但漏问的终态回复，不负责猜测任务是否结束；插件安装本身不保证加载 Hook。
 
 ## 控制点判定
 
@@ -64,14 +67,16 @@ description: 在用户发起或继续研发对话时使用，是研发对话中�
 
 ## 验证契约
 
-- `verification` 只写可观察结果，覆盖成功路径、失败不触发和关键时序。
-- 音效类任务至少区分成功与失败，并验证音效相对弹窗或动画的先后顺序。
+- `verification` 只写目标流程中真实存在的可观察结果和关键时序。只有目标流程存在业务成功、失败状态时，才覆盖对应分支，不得为普通点击、切换等无结果分支的交互虚构成功或失败路径。
+- 音效类任务按真实触发语义验证：业务结果触发的音效区分已有的成功、失败分支并检查相对弹窗或动画的顺序；普通交互音效检查有效交互的播放次数、触发时机和原交互不受影响。
 - 交互类任务验证原交互仍可用；资源失败时只添加任务确实要求的降级结果。
 - 不伪造测试命令、运行结果或未读取的仓库约束。
 
 ## 输出
 
 `clarify` 时只输出一个问题。`skip` 或 `handoff` 时优先直接调用下游 Skill，不显示中间协议。宿主不支持直接交接时，只输出 `references/requirement-contract.md` 定义的 YAML，不附加需求复述、解释、风险清单或授权口令。
+
+任务终态反馈不与 `clarify` 的决定性问题同时出现。收到帮助度回答后，只简短告知 `uploaded` 或 `queued_local` 的真实状态；不得把本地排队说成远端上报成功。用户要求不再询问时调用 reporter 保存偏好，并确认已关闭。
 
 ## 示例
 

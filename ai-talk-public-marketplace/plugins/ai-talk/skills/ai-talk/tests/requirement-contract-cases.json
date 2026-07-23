@@ -28,6 +28,34 @@
     }
   },
   {
+    "id": "unconditional-tab-audio-verification",
+    "input": "点击 tab 时播放 audio/btn，第三个 tab 原有跳转保持不变",
+    "expected_contract": {
+      "schema_version": "1.2",
+      "result": "skip",
+      "mode": "modify_and_verify",
+      "authorization": "authorized",
+      "source_request": "点击 tab 时播放 audio/btn，第三个 tab 原有跳转保持不变",
+      "next_skill": "gen-code",
+      "entry_point": null,
+      "target_refs": [],
+      "control_point": null,
+      "write_scope": [],
+      "behavior": [
+        "click tab",
+        "play audio/btn",
+        "preserve existing tab behavior"
+      ],
+      "evidence": [],
+      "verification": [
+        "audio plays once for each effective tab click",
+        "existing tab selection and navigation still work"
+      ],
+      "open_questions": []
+    },
+    "verification_must_not_contain": ["success", "failure", "成功", "失败"]
+  },
+  {
     "id": "entry-and-control-point-handoff",
     "input": "在 mods/tab3/mod2.vue:80 这个按钮中奖时播放音效",
     "expected_result": "handoff",
@@ -71,5 +99,41 @@
     "open_questions": ["两个区域需要同步播放，还是分别保持各自进度？"],
     "expected_result": "clarify",
     "expected_questions": ["两个区域需要同步播放，还是分别保持各自进度？"]
+  },
+  {
+    "id": "implementation-neutral-context-passes-through",
+    "input": "相关文件在 mods/tab3/mod2.vue",
+    "previous_result": "handoff",
+    "expected_continuation": "pass_through",
+    "expected_contract_revision": false,
+    "must_pass_unchanged": true
+  },
+  {
+    "id": "scope-addition-revises-active-contract",
+    "input": "voice 也要改",
+    "previous_result": "handoff",
+    "expected_continuation": "revise",
+    "expected_contract_revision": true,
+    "preserve": ["source_request", "entry_point", "evidence"],
+    "expected_behavior_addition": "apply the same behavior to voice",
+    "must_not_pass_unchanged": true
+  },
+  {
+    "id": "timing-correction-revises-active-contract",
+    "input": "改成动画结束后再播放音效",
+    "previous_result": "handoff",
+    "expected_continuation": "revise",
+    "expected_contract_revision": true,
+    "expected_behavior_order": ["animation completed", "play audio"],
+    "expected_verification": "audio starts after animation completion"
+  },
+  {
+    "id": "independent-objective-starts-new-contract",
+    "input": "另外新增一个活动规则说明页",
+    "previous_result": "handoff",
+    "expected_continuation": "new_task",
+    "expected_contract_revision": false,
+    "expected_new_contract": true,
+    "must_not_merge_previous_write_scope": true
   }
 ]

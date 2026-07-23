@@ -1,5 +1,13 @@
 # AI Talk 验收场景
 
+## 触发模式
+
+- 默认模式依赖 Codex 对 Skill description 的隐式匹配，测试记录真实触发率，不得把 fixture 中的期望路由写成 100% 宿主保证。
+- 严格模式通过根 `AGENTS.md` 托管区块显式要求每条研发消息先应用 `$ai-talk:ai-talk`，同一条消息只执行一次。
+- `install-strict-mode.mjs` 重复执行不得产生重复区块，`--remove` 只能移除托管区块，其他项目规则保持不变。
+- 严格模式下 Skill 不可用时必须报告门禁未运行，不得静默声称已经放行。
+- 非研发消息在两种模式下都不触发 AI Talk。
+
 ## 当前对话职责
 
 正常 `$ai-talk` 对话把自然语言、代码入口、截图标注、选中 DOM 和浏览器状态编译为 `RequirementContract 1.2`。明确行为变更首轮直接授权并路由实施；只询问会改变产品结果、数据语义或写范围的问题。有限检索只服务于视觉目标消歧、真实控制点、复用入口和实现约束。
@@ -43,6 +51,15 @@
 - 验证失败不播放音效，且音效先于奖励弹窗。
 - 找到真实控制点或现有 `useAudio` 入口后停止检索并返回 `handoff`。
 
+### 无业务结果分支的交互音效
+
+`$ai-talk 点击 tab 时播放 audio/btn，第三个 tab 原有跳转保持不变`
+
+- 识别为 `modify_and_verify + authorized`，推荐 `gen-code`，不询问成功或失败行为。
+- `verification` 检查每次有效 tab 点击只播放一次音效，以及原有选中、切换和跳转仍可用。
+- 不生成“成功时播放”“失败不播放”等不存在于该交互中的业务结果分支。
+- 只有代码或运行态证据表明目标流程真实存在成功、失败状态时，才把对应分支写入 `verification`。
+
 ### 真正硬阻塞
 
 `$ai-talk 中奖时播放音效，失败时也要不要播放不确定`
@@ -65,6 +82,23 @@
 - 用户随后说“执行”时转为 `modify_and_verify + authorized`，复用证据并交给实施 Skill，不重新扫描或再次询问授权。
 
 结构化分支用例见 `skills/ai-talk/tests/runtime-ui-diagnosis-cases.json`。
+
+### 终态帮助度反馈
+
+AI Talk 路由的任务完成后：
+
+- 先调用 reporter 判断反馈资格；没有已同意端点时默认不询问，显式本地评测除外。
+- `partial`、`failed`、`blocked` 在具备反馈通道时询问一次，`completed` 默认按 20% 采样。
+- 状态更新、确认、`clarify`、中间进度和非研发消息不询问。
+- 用户回复“有帮助 / 一般 / 没帮助”时不生成 RequirementContract、不检索仓库、不调用实施 Skill。
+- 用户说明“已经选中 DOM 还让我重新描述”时，可以归类为 `unnecessary_clarification`；没有明确原因时使用 `unclassified`，不猜类别。
+- 用户说“以后不再询问”后保存关闭偏好，后续 Stop Hook 不再补问。
+- 用户显式提交反馈但没有端点或没有 `AI_TALK_FEEDBACK_CONSENT=1` 时结果必须为 `queued_local`，不得声称远端上传成功。
+- flush 与另一进程并发追加时，新反馈必须留在 `feedback-spool/pending`，不得被覆盖。
+- 上报载荷不得包含源码、diff、命令、工具输出、附件、DOM 内容或完整对话。
+- 默认项目 Hook 不采集全局工具错误。只有宿主输入同时包含 `ai_talk_task_id` 和明确错误标记时，`PostToolUse` 才生成 `technical_error`；普通非零退出码本身不自动上报。
+
+结构化用例见 `skills/ai-talk/tests/feedback-cases.json`；运行时脚本回归见 `tests/feedback-core.test.mjs` 与 `tests/feedback-hook.test.mjs`。
 
 以下章节是 `route-company-skills.mjs` 的 legacy CLI 兼容验收，不属于正常 Skill 对话行为。
 

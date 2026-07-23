@@ -51,12 +51,12 @@ open_questions: []
 - Keep `write_scope` to evidence-supported files. An entry point is not automatically writable scope.
 - Express `behavior` in execution order. Keep each item short.
 - Store only decision-relevant facts in `evidence`, each with `type`, `summary`, and a concrete `source`.
-- Store observable positive and negative checks in `verification`; include ordering when timing matters.
+- Store observable checks in `verification`; include ordering when timing matters. Include success or failure branches only when evidence shows that the target workflow has those business outcome states. For unconditional interactions, verify trigger timing and count plus preservation of the existing interaction instead of inventing outcome branches.
 - Keep only implementation-changing blockers in `open_questions`. File names, symbols, repository conventions, and reusable implementations that the code Agent can locate are not questions.
 
 ## Result Selection
 
-- Gate every user message in a development conversation before routing. Non-development conversations do not invoke AI Talk. A status question, confirmation, or other message in the active development conversation that does not need contract creation or revision is released unchanged to the current Agent. Do not add a gate field to this schema.
+- When AI Talk is invoked, gate the development message before routing. Repository strict mode requires this invocation for every development message; default implicit matching remains host-dependent. Non-development conversations do not invoke AI Talk. A status question, confirmation, or other message in the active development conversation that does not need contract creation or revision is released unchanged to the current Agent. Do not add a gate field to this schema.
 - `skip`: release. Intent, authorization, target behavior, and implementation direction are already clear. Do not retrieve extra context; pass the compact contract directly to `next_skill`.
 - `handoff`: release after bounded enrichment. Retrieval found a real control point, reuse candidate, or implementation constraint that materially reduces downstream rediscovery.
 - `clarify`: hold. At least two plausible answers would produce different user-visible behavior or write scope, and repository evidence cannot resolve the choice. Ask one decisive question and do not route yet.
@@ -72,7 +72,12 @@ open_questions: []
 
 ## Continuation
 
-- Preserve the same contract when the user corrects timing, scope, behavior, or a visual target. Update the affected fields, keep the original `source_request`, and preserve stable `target_refs` IDs for unchanged targets.
+- Classify a continuation before routing it:
+  - `pass_through`: status questions, confirmations, repository locations, logs, or other context that does not change target behavior, scope, timing, visual targets, verification, or authorization. Release the message unchanged without creating or revising a contract.
+  - `revise`: corrections or additions that change target behavior, scope, timing, visual targets, verification, or authorization. Update the active contract in place; phrases such as “voice 也要改”, “第二个也一样”, and “改成动画结束后播放” are revisions, not implementation-neutral supplements.
+  - `new_task`: an independent objective that can be completed and verified without the active contract. Create a new contract and do not merge its behavior or write scope into the previous task.
+- Preserve the same contract for `revise`. Update the affected fields, keep the original `source_request`, record the revised meaning in `behavior` and `verification`, and preserve stable `target_refs` IDs for unchanged targets.
+- When `pass_through` and `revise` are both plausible, choose `revise` if the new words would change any user-visible result or allowed write scope. Do not silently discard a possible scope correction as a supplement.
 - When the user says “执行”, “开始执行”, or “按这个做” after an `inspect_only` or `plan_then_execute` result, switch to `modify_and_verify + authorized`, select the implementation Skill, and reuse confirmed evidence without repeating classification or broad retrieval.
 - Preserve `target_refs` through routing and execution. If the active browser state no longer matches, recapture or block instead of silently binding a similar element.
 - A hard blocker remains `clarify` until resolved; an execution word does not erase it.

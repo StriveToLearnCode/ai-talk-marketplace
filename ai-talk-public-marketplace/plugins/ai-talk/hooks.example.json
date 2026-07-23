@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node /absolute/path/to/ai-talk/scripts/feedback-hook.mjs",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}
