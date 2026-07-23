@@ -1,7 +1,7 @@
 interface:
   display_name: "AI Talk"
-  short_description: "检查研发对话中的每条消息，决定放行、交接或暂不放行"
-  default_prompt: "检查这条研发对话消息是否可以放行；无需更新契约则原样放行，明确任务生成紧凑契约，只有硬阻塞才提问。"
+  short_description: "自动编译研发请求，并支持仓库级严格前置模式"
+  default_prompt: "使用 $ai-talk 判断这条研发消息应直接放行、编译交接还是先澄清一个硬阻塞。"
 
 policy:
   allow_implicit_invocation: true

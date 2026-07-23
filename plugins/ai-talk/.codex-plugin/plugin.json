@@ -1,20 +1,21 @@
 {
   "name": "ai-talk",
-  "version": "0.4.0+codex.20260722095446",
-  "description": "AI Talk gates every user message in development conversations, releasing status and confirmation messages unchanged, compiling clear development work into executable RequirementContract 1.2 handoffs, and holding only implementation-changing blockers.",
+  "version": "0.4.0+codex.20260722120105",
+  "description": "AI Talk automatically matches development requests and compiles them into executable RequirementContract 1.2 handoffs, with an optional repository strict mode for per-message preflight enforcement.",
   "author": {
     "name": "sf"
   },
   "skills": "./skills/",
   "interface": {
     "displayName": "AI Talk",
-    "shortDescription": "Gate every message in development conversations",
-    "longDescription": "AI Talk is the single preflight gate for every user message in a development conversation and requires no command prefix. Non-development conversations do not invoke it. Status questions, confirmations, and updates that need no contract revision are released unchanged. Clear development work is compiled into RequirementContract 1.2 and released directly or after bounded evidence enrichment. Only blockers that change the product result or writable scope are held for one decisive question. Each message is evaluated once, so downstream Skills never loop back through AI Talk.",
+    "shortDescription": "Compile development requests with optional strict mode",
+    "longDescription": "AI Talk automatically matches development work without requiring a command prefix, then releases status updates unchanged or compiles actionable work into RequirementContract 1.2. Repository strict mode installs a managed AGENTS.md rule so every development message explicitly runs the preflight once. Only blockers that change the product result or writable scope are held for one decisive question, and downstream execution never loops back through AI Talk.",
     "developerName": "sf",
     "category": "Productivity",
     "capabilities": [
       "Original request preservation",
-      "Development-conversation preflight gating",
+      "Automatic development-request matching",
+      "Optional repository strict-mode gating",
       "Transparent pass-through for status and confirmation messages",
       "Single evaluation without downstream loops",
       "Implicit modification intent recognition",
@@ -34,7 +35,11 @@
       "DOM, geometry, occlusion, and resource inspection",
       "Evidence-preserving diagnostic handoff",
       "Verifiable frontend/backend ownership conditions",
-      "Evidence-preserving implementation continuity"
+      "Evidence-preserving implementation continuity",
+      "Sampled terminal helpfulness feedback",
+      "Concurrency-safe local feedback spool",
+      "Consent-gated HTTPS feedback delivery",
+      "Optional project-level metadata-only error hooks"
     ],
     "defaultPrompt": [
       "\u8fd9\u4e24\u5904\u6807\u6ce8\u7684\u7528\u6237\u5934\u50cf\u90fd\u9700\u8981 pag/user \u6e9c\u5149",

@@ -12,10 +12,14 @@ REQUIREMENT_CONTRACT = SKILL / "references" / "requirement-contract.md"
 REQUIREMENT_CASES = SKILL / "tests" / "requirement-contract-cases.json"
 TARGET_BINDING = SKILL / "references" / "target-binding.md"
 TARGET_CASES = SKILL / "tests" / "target-binding-cases.json"
+FEEDBACK_ENVELOPE = SKILL / "references" / "feedback-envelope.md"
+FEEDBACK_CASES = SKILL / "tests" / "feedback-cases.json"
 RUNTIME_UI_CASES = SKILL / "tests" / "runtime-ui-diagnosis-cases.json"
 GATE_CASES = SKILL / "tests" / "gate-cases.json"
 AI_TALK_AGENT = SKILL / "agents" / "openai.yaml"
 UI_SELF_CHECK_AGENT = PLUGIN / "skills" / "ui-self-check" / "agents" / "openai.yaml"
+STRICT_MODE_TEMPLATE = PLUGIN / "assets" / "strict-mode.AGENTS.md"
+STRICT_MODE_INSTALLER = PLUGIN / "scripts" / "install-strict-mode.mjs"
 
 CONTRACT_KEYS = [
     "schema_version", "result", "mode", "authorization", "source_request",
@@ -44,8 +48,8 @@ class Contract(unittest.TestCase):
         ui_self_check_agent = UI_SELF_CHECK_AGENT.read_text()
         self.assertIn("allow_implicit_invocation: true", ai_talk_agent)
         self.assertIn("allow_implicit_invocation: false", ui_self_check_agent)
-        self.assertNotIn("default_prompt: \"使用 $", ai_talk_agent)
-        self.assertNotIn("default_prompt: \"使用 $", ui_self_check_agent)
+        self.assertIn("default_prompt: \"使用 $ai-talk", ai_talk_agent)
+        self.assertIn("default_prompt: \"使用 $ui-self-check", ui_self_check_agent)
 
         skill = (SKILL / "SKILL.md").read_text()
         for text in (
@@ -60,9 +64,14 @@ class Contract(unittest.TestCase):
             "一次只问一个决定性问题",
             "普通代码修改优先 `gen-code`",
             "优先直接调用下游 Skill",
-            "研发对话中的每条用户消息都先经过门禁",
+            "默认自动模式依赖 Codex 根据 description 隐式匹配",
+            "严格模式要求每条研发消息都先经过门禁",
             "同一条消息只判定一次",
             "非研发对话不触发 AI Talk",
+            "FeedbackEnvelope 1.0",
+            "只有返回 `ask: true` 才询问一次帮助度",
+            "只有目标流程存在业务成功、失败状态时",
+            "普通交互音效检查有效交互的播放次数",
         ):
             self.assertIn(text, skill)
         for obsolete in (
@@ -76,10 +85,17 @@ class Contract(unittest.TestCase):
         self.assertTrue(LEGACY_ROUTER.is_file())
         self.assertTrue(REQUIREMENT_CONTRACT.is_file())
         self.assertTrue(TARGET_BINDING.is_file())
+        self.assertTrue(FEEDBACK_ENVELOPE.is_file())
+        self.assertTrue(STRICT_MODE_TEMPLATE.is_file())
+        self.assertTrue(STRICT_MODE_INSTALLER.is_file())
+        strict_mode = STRICT_MODE_TEMPLATE.read_text()
+        self.assertIn("$ai-talk:ai-talk", strict_mode)
+        self.assertIn("exactly once", strict_mode)
+        self.assertIn("non-development conversation", strict_mode)
         self.assertIn("TaskHandoff 1.1", LEGACY_ROUTER.read_text())
         self.assertIn("legacy CLI 路由器的冻结实现标准", SPEC.read_text())
 
-    def test_every_message_gate_releases_or_holds_once(self):
+    def test_invoked_gate_releases_or_holds_once(self):
         cases = json.loads(GATE_CASES.read_text())
         by_id = {case["id"]: case for case in cases}
         self.assertEqual(set(by_id), {
@@ -130,6 +146,7 @@ class Contract(unittest.TestCase):
             "File names, symbols, repository conventions, and reusable implementations",
             "Ask one decisive question",
             "switch to `modify_and_verify + authorized`",
+            "Include success or failure branches only when evidence shows",
         ):
             self.assertIn(instruction, reference)
 
@@ -138,11 +155,16 @@ class Contract(unittest.TestCase):
         by_id = {case["id"]: case for case in cases}
         self.assertEqual(set(by_id), {
             "implicit-modification-skip",
+            "unconditional-tab-audio-verification",
             "entry-and-control-point-handoff",
             "one-hard-question",
             "diagnosis-inspect-only",
             "diagnosis-execute",
             "hard-blocker-survives-execute",
+            "implementation-neutral-context-passes-through",
+            "scope-addition-revises-active-contract",
+            "timing-correction-revises-active-contract",
+            "independent-objective-starts-new-contract",
         })
 
         implicit = by_id["implicit-modification-skip"]["expected_contract"]
@@ -153,6 +175,18 @@ class Contract(unittest.TestCase):
         self.assertEqual(implicit["authorization"], "authorized")
         self.assertEqual(implicit["target_refs"], [])
         self.assertEqual(implicit["open_questions"], [])
+
+        tab_audio_case = by_id["unconditional-tab-audio-verification"]
+        tab_audio = tab_audio_case["expected_contract"]
+        self.assertEqual(list(tab_audio), CONTRACT_KEYS)
+        self.assertEqual(tab_audio["mode"], "modify_and_verify")
+        self.assertEqual(tab_audio["authorization"], "authorized")
+        self.assertEqual(tab_audio["next_skill"], "gen-code")
+        verification = " ".join(tab_audio["verification"])
+        for forbidden in tab_audio_case["verification_must_not_contain"]:
+            self.assertNotIn(forbidden, verification)
+        self.assertTrue(any("once" in item for item in tab_audio["verification"]))
+        self.assertTrue(any("selection and navigation" in item for item in tab_audio["verification"]))
 
         handoff = by_id["entry-and-control-point-handoff"]
         self.assertNotEqual(handoff["entry_point"]["symbol"], handoff["control_point"]["symbol"])
@@ -176,6 +210,27 @@ class Contract(unittest.TestCase):
         blocker = by_id["hard-blocker-survives-execute"]
         self.assertEqual(blocker["expected_result"], "clarify")
         self.assertEqual(blocker["expected_questions"], blocker["open_questions"])
+
+        passthrough = by_id["implementation-neutral-context-passes-through"]
+        self.assertEqual(passthrough["expected_continuation"], "pass_through")
+        self.assertFalse(passthrough["expected_contract_revision"])
+        self.assertTrue(passthrough["must_pass_unchanged"])
+
+        scope_revision = by_id["scope-addition-revises-active-contract"]
+        self.assertEqual(scope_revision["expected_continuation"], "revise")
+        self.assertTrue(scope_revision["expected_contract_revision"])
+        self.assertTrue(scope_revision["must_not_pass_unchanged"])
+
+        timing_revision = by_id["timing-correction-revises-active-contract"]
+        self.assertEqual(timing_revision["expected_continuation"], "revise")
+        self.assertEqual(timing_revision["expected_behavior_order"], [
+            "animation completed", "play audio",
+        ])
+
+        new_task = by_id["independent-objective-starts-new-contract"]
+        self.assertEqual(new_task["expected_continuation"], "new_task")
+        self.assertTrue(new_task["expected_new_contract"])
+        self.assertTrue(new_task["must_not_merge_previous_write_scope"])
 
     def test_p1_target_binding_cases_freeze_visual_context(self):
         reference = TARGET_BINDING.read_text()
@@ -254,6 +309,42 @@ class Contract(unittest.TestCase):
             by_id["browser-unavailable"]["expected_outcome"],
             "runtime_unverified",
         )
+
+    def test_feedback_sidecar_asks_once_without_changing_requirement_contract(self):
+        reference = FEEDBACK_ENVELOPE.read_text()
+        for text in (
+            "FeedbackEnvelope 1.0",
+            "must not create or revise a requirement contract",
+            "<!-- ai-talk-feedback:eligible -->",
+            "<!-- ai-talk-feedback:asked -->",
+            "AI_TALK_FEEDBACK_CONSENT=1",
+            "Never include source code, diffs, commands, tool output",
+        ):
+            self.assertIn(text, reference)
+
+        cases = json.loads(FEEDBACK_CASES.read_text())
+        by_id = {case["id"]: case for case in cases}
+        self.assertEqual(set(by_id), {
+            "terminal-task-asks-once",
+            "unsampled-completion-does-not-ask",
+            "missing-endpoint-does-not-ask",
+            "status-does-not-ask",
+            "clarify-does-not-ask",
+            "positive-feedback-report",
+            "negative-feedback-report",
+            "feedback-opt-out",
+        })
+        terminal = by_id["terminal-task-asks-once"]
+        self.assertTrue(terminal["expected_feedback_eligible"])
+        self.assertTrue(terminal["eligibility_result"]["ask"])
+        self.assertEqual(terminal["expected_question_count"], 1)
+        self.assertFalse(by_id["unsampled-completion-does-not-ask"]["eligibility_result"]["ask"])
+        self.assertEqual(by_id["missing-endpoint-does-not-ask"]["expected_question_count"], 0)
+        self.assertEqual(by_id["status-does-not-ask"]["expected_question_count"], 0)
+        self.assertEqual(by_id["clarify-does-not-ask"]["expected_question_count"], 0)
+        self.assertIsNone(by_id["positive-feedback-report"]["expected_contract"])
+        self.assertIsNone(by_id["negative-feedback-report"]["expected_contract"])
+        self.assertEqual(by_id["feedback-opt-out"]["expected_preference"], "off")
 
     def test_router_is_split_by_responsibility(self):
         expected = {
