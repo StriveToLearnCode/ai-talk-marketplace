@@ -1,20 +1,25 @@
 # FeedbackEnvelope 1.0
 
-Use this sidecar protocol to collect user feedback about AI Talk without changing `RequirementContract 1.2`. Feedback is not a development request and must not create or revise a requirement contract.
+Use this sidecar protocol to collect user feedback about AI Talk without changing `RequirementContract 1.3`. Feedback is not a development request and must not create or revise a requirement contract.
 
-## When to ask
+## Runtime ownership
 
-Before asking, run the bundled eligibility check with the real terminal outcome:
+The AI Talk Skill reads this file only when the user is replying to a feedback question or changing
+feedback preferences. It must not run an eligibility command at task completion.
+
+An installed Stop Hook or host adapter may check eligibility with the real terminal outcome:
 
 ```bash
 node ../../scripts/report-feedback.mjs --should-ask --outcome completed
 ```
 
-Ask only when it returns `{"ask":true,...}`. By default, eligibility requires an HTTPS endpoint plus `AI_TALK_FEEDBACK_CONSENT=1`; `partial`, `failed`, and `blocked` outcomes are then always eligible, while `completed` is sampled at 20%. `AI_TALK_FEEDBACK_SAMPLE_RATE` may set a value from `0` to `1`. `AI_TALK_FEEDBACK_PROMPT=1` explicitly enables local-only evaluation without an endpoint, and `AI_TALK_FEEDBACK_PROMPT=0` disables all prompts.
+Only the runtime component acts when it returns `{"ask":true,...}`. By default, eligibility requires an HTTPS endpoint plus `AI_TALK_FEEDBACK_CONSENT=1`; `partial`, `failed`, and `blocked` outcomes are then always eligible, while `completed` is sampled at 20%. `AI_TALK_FEEDBACK_SAMPLE_RATE` may set a value from `0` to `1`. `AI_TALK_FEEDBACK_PROMPT=1` explicitly enables local-only evaluation without an endpoint, and `AI_TALK_FEEDBACK_PROMPT=0` disables all prompts.
 
-Ask at most once after an eligible AI Talk-routed development task reaches a terminal user-facing outcome. Do not ask after a status update, confirmation, hard-blocker clarification, non-development message, intermediate progress update, unsampled completion, or another feedback response.
+Ask at most once after an eligible contract-path task reaches a terminal user-facing outcome. Fast Path tasks never run the reporter. Do not ask after a status update, confirmation, hard-blocker clarification, non-development message, intermediate progress update, unsampled completion, or another feedback response.
 
-Pass this hidden completion directive alongside a released contract. It is not a top-level RequirementContract field:
+The host adapter supplies `ai_talk_task_id`, `ai_talk_route: contract`, and `ai_talk_outcome` to the
+Stop Hook. The Skill and executing Agent do not append routing or eligibility markers. The Hook may
+use the following markers in its one-time append instruction for compatibility:
 
 ```text
 On the terminal response for this task, append the feedback question once and preserve both markers:
@@ -22,7 +27,11 @@ On the terminal response for this task, append the feedback question once and pr
 AI Talk 对这次需求理解和执行交接有帮助吗？回复“有帮助 / 一般 / 没帮助”，可补充原因。 <!-- ai-talk-feedback:asked -->
 ```
 
-The optional project-level `Stop` hook is only a safety net. If a terminal response contains the eligible marker but omitted the question marker, it asks the Agent to append the question. It must never infer task completion merely because a turn stopped. Codex does not discover hooks from a Skill or plugin bundle as a guaranteed configuration layer; users must explicitly install the example into the target project's `.codex/hooks.json` before relying on it.
+The optional project-level `Stop` Hook owns eligibility checks. It acts only when the host supplies the
+routed task ID, contract route, and terminal outcome; a stop event alone is not evidence of completion.
+Legacy eligible markers remain supported. Codex does not discover hooks from a Skill or plugin bundle
+as a guaranteed configuration layer; users must explicitly install it into the target project's
+`.codex/hooks.json` before relying on it.
 
 If the user says `不再询问`, `关闭反馈询问`, or an equivalent opt-out, run:
 
@@ -64,7 +73,7 @@ Write only the following keys to the temporary JSON input consumed by `report-fe
 feedback_version: "1.0"
 feedback_id: generated when omitted
 created_at: generated when omitted
-plugin_version: "0.4.0+codex.example"
+plugin_version: "0.5.0+codex.example"
 source: user_feedback
 contract_result: handoff
 mode: modify_and_verify

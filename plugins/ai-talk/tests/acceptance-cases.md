@@ -10,7 +10,32 @@
 
 ## 当前对话职责
 
-正常 `$ai-talk` 对话把自然语言、代码入口、截图标注、选中 DOM 和浏览器状态编译为 `RequirementContract 1.2`。明确行为变更首轮直接授权并路由实施；只询问会改变产品结果、数据语义或写范围的问题。有限检索只服务于视觉目标消歧、真实控制点、复用入口和实现约束。
+正常 `$ai-talk` 对话先只用消息与已有上下文做风险分级。明确局部且目标已解析的任务走无契约 Fast Path；未解析的视觉指代、引用提升、跨模块、范围限制、诊断续接或歧义任务才编译为 `RequirementContract 1.3`。只询问会改变产品结果、数据语义或写范围的问题。
+
+### 引用内容与轻量任务
+
+- 只有粘贴的聊天记录、完成报告或示例时，不生成契约，也不把其中的“修改”“执行”当作当前授权。
+- 用户在引用外明确说“按下面内容执行”时，才把对应引用提升为任务输入。
+- “不要改 core”这类直接范围限制进入 `excluded_scope`；单独出现时不启动没有目标行为的实施任务。
+- 单文件、单一行为、没有视觉、数据语义、范围或跨模块歧义的任务使用无契约 `skip`，由当前 Agent 直接实施。
+- Fast Path 的 reference 读取数、AI Talk 仓库读取数、契约生成数、`next_skill` 选择数和 reporter 调用数均为 0。
+- 跨文件、需定位控制点或需要专业工作流的任务进入契约路径；`next_skill` 默认 `null`，由执行 Agent 与仓库规则选择普通实现流程。
+
+### 歧义门禁与消息类型
+
+- “这里”“这个”“第二个”本身不触发契约。明确文件路径与行号、IDE 代码选区、唯一业务 ID、已绑定 DOM 或截图标注都可以把目标标为 `resolved`。
+- “A 正常，但 B 无法点击”是 `behavior_report`；目标已解析且范围局部时使用 `modify_and_verify + authorized` 走 Fast Path。
+- 没有当前请求的日志是 `evidence_update`。它紧接上一修改时恢复同一任务的验证或诊断，但不创建新任务，也不授权直接改变手势等新行为。
+- “修复下面报错”或日志附带验收条件时，日志被明确提升为当前任务证据，按真实范围和歧义进入实施。
+
+四类固定回归：`文件行号 + 业务 ID` 的缺陷报告直接放行；存在多个“第二个”的截图指代只问一个问题；修改后的 `Unable to preventDefault...` 恢复原任务诊断；要求修复该日志且验收“滑动可用、警告消失”时进入 `modify_and_verify + authorized`。
+
+### 写范围约束
+
+- `scope_policy: discover` 允许在禁止范围外定位证据支持的写入点；`bounded` 只允许 `write_scope` 中的路径。
+- `excluded_scope` 始终优先，和 `write_scope` 冲突时不得执行。
+- 有范围约束时，实施前后运行 scope guard；只计算 baseline 后的路径变化，不把未触碰的既有脏文件算作违规。
+- 越界时不得声称完成。确实需要扩展 `bounded` 范围时，只询问是否允许那个具体路径。
 
 ### 截图标注与两处目标
 
@@ -35,7 +60,7 @@
 
 `$ai-talk 在中奖时播放 audio/get`
 
-- 识别为 `modify_and_verify + authorized`，推荐 `gen-code`。
+- 识别为 `modify_and_verify + authorized`，不替执行 Agent 选择普通代码 Skill。
 - 不询问“是否允许修改代码”，不要求用户再说“执行”。
 - 目标行为明确且无需补充仓库事实时返回 `skip` 并直接实施。
 - “为什么中奖时没有播放 audio/get”仍属于 `inspect_only`。
@@ -55,7 +80,7 @@
 
 `$ai-talk 点击 tab 时播放 audio/btn，第三个 tab 原有跳转保持不变`
 
-- 识别为 `modify_and_verify + authorized`，推荐 `gen-code`，不询问成功或失败行为。
+- 识别为 `modify_and_verify + authorized`，不询问成功或失败行为，普通代码 Skill 保持未指定。
 - `verification` 检查每次有效 tab 点击只播放一次音效，以及原有选中、切换和跳转仍可用。
 - 不生成“成功时播放”“失败不播放”等不存在于该交互中的业务结果分支。
 - 只有代码或运行态证据表明目标流程真实存在成功、失败状态时，才把对应分支写入 `verification`。
@@ -85,9 +110,10 @@
 
 ### 终态帮助度反馈
 
-AI Talk 路由的任务完成后：
+契约路径任务完成后：
 
-- 先调用 reporter 判断反馈资格；没有已同意端点时默认不询问，显式本地评测除外。
+- Agent 主流程不调用 reporter、不检查 endpoint、不追加 eligibility 标记。
+- Stop Hook 或宿主适配器只有收到任务 ID、`ai_talk_route: contract` 和终态 outcome 后才判断资格；Fast Path 为 0 次调用。
 - `partial`、`failed`、`blocked` 在具备反馈通道时询问一次，`completed` 默认按 20% 采样。
 - 状态更新、确认、`clarify`、中间进度和非研发消息不询问。
 - 用户回复“有帮助 / 一般 / 没帮助”时不生成 RequirementContract、不检索仓库、不调用实施 Skill。

@@ -16,10 +16,31 @@
   },
   {
     "id": "clear-development-release",
-    "message": "中奖时播放音效",
+    "message": "在 recharge/page.vue 给活动链接增加 tab=3 直达",
     "expected_gate": "release",
     "expected_result": "skip",
-    "expected_next_skill": "gen-code",
+    "expected_route": "fast_path",
+    "expected_contract": null,
+    "expected_next_skill": null,
+    "expected_reference_reads": 0,
+    "expected_repository_reads_by_gate": 0,
+    "expected_reporter_calls": 0,
+    "evaluation_count": 1
+  },
+  {
+    "id": "resolved-defect-report-fast-path",
+    "message": "mods/tab3/mod3.vue:100-106 里，奖励 ID 1719069 无法点击，其他奖励正常",
+    "expected_gate": "release",
+    "expected_result": "skip",
+    "expected_contract": null,
+    "stable_bindings": ["file_line", "business_id"],
+    "expected_internal": {
+      "intent": "behavior_report",
+      "authorization": "authorized",
+      "target_state": "resolved",
+      "scope_state": "local",
+      "route": "fast_path"
+    },
     "evaluation_count": 1
   },
   {
@@ -32,12 +53,66 @@
     "evaluation_count": 1
   },
   {
+    "id": "ambiguous-screenshot-deictic-contract",
+    "message": "把截图里第二个奖励修一下",
+    "context": ["截图中有两个奖励列表，两者都存在第二个奖励，且没有标注或 DOM 选择"],
+    "expected_gate": "hold",
+    "expected_result": "clarify",
+    "expected_route": "contract_path",
+    "expected_target_state": "unresolved",
+    "expected_question_count": 1,
+    "evaluation_count": 1
+  },
+  {
+    "id": "bare-log-resumes-previous-diagnosis",
+    "conversation_context": "上一轮刚完成 touchmove 手势修改，正在验证",
+    "message": "Unable to preventDefault inside passive event listener due to target being treated as passive.",
+    "expected_gate": "release",
+    "expected_message_type": "evidence_update",
+    "expected_continuation": "resume_same_task",
+    "expected_new_task": false,
+    "expected_new_behavior_authorization": false,
+    "expected_direct_behavior_change": false,
+    "evaluation_count": 1
+  },
+  {
+    "id": "log-fix-with-acceptance-contract",
+    "message": "修复下面报错。验收标准：滑动仍可用，且控制台不再出现该警告。\nUnable to preventDefault inside passive event listener.",
+    "expected_gate": "release",
+    "expected_result": "handoff",
+    "expected_route": "contract_path",
+    "expected_mode": "modify_and_verify",
+    "expected_authorization": "authorized",
+    "expected_log_handling": "promoted_evidence",
+    "expected_verification": ["gesture remains usable", "console warning is absent"],
+    "evaluation_count": 1
+  },
+  {
     "id": "ui-check-release-to-downstream",
     "message": "用浏览器检查这个页面的视觉和交互",
     "expected_gate": "release",
     "expected_result": "skip",
     "expected_next_skill": "ui-self-check",
     "downstream_implicit_invocation": false,
+    "evaluation_count": 1
+  },
+  {
+    "id": "quoted-transcript-releases-without-task",
+    "message": "已修复，且未修改任何 core/ 组件。\n\n用户：怎么样会对你更有用啊\n助手：简单任务走轻量契约。",
+    "expected_gate": "release",
+    "expected_contract": null,
+    "must_not_treat_quoted_commands_as_authorization": true,
+    "evaluation_count": 1
+  },
+  {
+    "id": "direct-exclusion-before-quoted-context",
+    "message": "不要改 core 的组件\n\n已修复，且未修改任何 core/ 组件。",
+    "expected_gate": "release",
+    "expected_contract": null,
+    "expected_pending_constraint": {
+      "excluded_scope": ["**/core/**"]
+    },
+    "must_not_start_implementation": true,
     "evaluation_count": 1
   }
 ]

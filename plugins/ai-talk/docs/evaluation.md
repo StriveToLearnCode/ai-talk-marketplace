@@ -29,5 +29,16 @@
 | 并发 flush 丢失反馈数 | 0 |
 | 未显式安装项目 Hook 时声称 Hook 生效次数 | 0 |
 | 缺少 `ai_talk_task_id` 的工具错误归因次数 | 0 |
+| Fast Path RequirementContract 生成数 | 0 |
+| Fast Path reference 读取数 | 0 |
+| Fast Path AI Talk 仓库读取数 | 0 |
+| Fast Path `next_skill` 选择数 | 0 |
+| Fast Path reporter 调用数 | 0 |
+| 主 `SKILL.md` 行数 | <= 70 |
+| 额外读取文件数 | 分模式记录；Fast Path 为 0 |
+| 额外工具调用数 | 分模式记录；Fast Path 为 0 |
+| 首次有效修改耗时 | 分 P50 / P95 记录，不高于无门禁基线 10% |
+| 不必要澄清次数 | 0 |
+| AI Talk token 增量 | 分模式记录；Fast Path 只计主 Skill，持续回归 |
 
-默认模式和严格模式必须分开统计。每次路由评估记录原始输入、触发模式、是否实际加载 AI Talk、八字段画像、Top 1、Top 3、真实路径、冲突、阻塞项、混淆矩阵和错误案例。反馈评估只使用脱敏 `FeedbackEnvelope 1.0`，不得复用完整原始输入。扩展词单独记录，不计作用户已确认需求。
+默认模式和严格模式必须分开统计，Fast Path 与契约路径也必须分开统计。每次评估记录原始输入、触发模式、路由类型、是否加载契约、额外读取文件数、额外工具调用数、首次有效修改耗时、不必要澄清次数和 token 增量。legacy CLI 继续记录八字段画像、Top 1、Top 3、真实路径、冲突、阻塞项、混淆矩阵和错误案例。反馈评估只使用脱敏 `FeedbackEnvelope 1.0`，不得复用完整原始输入。
