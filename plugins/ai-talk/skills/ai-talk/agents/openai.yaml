@@ -1,7 +1,7 @@
 interface:
   display_name: "AI Talk"
-  short_description: "自动编译研发请求，并支持仓库级严格前置模式"
-  default_prompt: "使用 $ai-talk 判断这条研发消息应直接放行、编译交接还是先澄清一个硬阻塞。"
+  short_description: "研发请求风险分级，并支持无契约快速路径"
+  default_prompt: "使用 $ai-talk 判断这条研发消息应原样放行、走 Fast Path、创建契约还是澄清硬阻塞。"
 
 policy:
   allow_implicit_invocation: true

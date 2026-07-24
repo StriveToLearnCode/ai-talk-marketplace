@@ -37,6 +37,21 @@
     "expected_question_count": 0
   },
   {
+    "id": "fast-path-does-not-run-reporter",
+    "route": "fast_path",
+    "outcome": "completed",
+    "expected_reporter_calls": 0,
+    "expected_question_count": 0
+  },
+  {
+    "id": "contract-runtime-metadata-required",
+    "route": "contract",
+    "task_id": null,
+    "outcome": "completed",
+    "expected_reporter_calls": 0,
+    "expected_question_count": 0
+  },
+  {
     "id": "positive-feedback-report",
     "message": "有帮助",
     "expected_contract": null,

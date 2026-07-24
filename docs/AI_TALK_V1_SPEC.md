@@ -1,6 +1,6 @@
 # AI Talk V1 冻结规范
 
-> 本文是 `route-company-skills.mjs` 的 legacy CLI 兼容规范。当前 `$ai-talk` 对话行为以 `plugins/ai-talk/skills/ai-talk/SKILL.md`、`references/requirement-contract.md` 与 `references/target-binding.md` 为准：自然语言、代码入口、截图标注、选中 DOM 和浏览器状态编译为 `RequirementContract 1.2`，再通过 `skip`、`handoff` 或 `clarify` 交接。legacy `TaskHandoff 1.1` 继续冻结且不参与正常对话。
+> 本文是 `route-company-skills.mjs` 的 legacy CLI 兼容规范。当前 `$ai-talk` 对话行为以 `plugins/ai-talk/skills/ai-talk/SKILL.md` 为准：明确局部任务走无契约 Fast Path；视觉、引用提升、跨模块、范围限制、诊断续接或歧义任务才按需读取 references 并生成 `RequirementContract 1.3`。legacy `TaskHandoff 1.1` 继续冻结且不参与正常对话。
 
 状态：Frozen  
 版本：V1 / TaskHandoff 1.1  

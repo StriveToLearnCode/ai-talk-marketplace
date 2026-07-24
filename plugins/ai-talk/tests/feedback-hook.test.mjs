@@ -31,6 +31,41 @@ test("Stop blocks once when an eligible response omitted the feedback question",
   assert.match(output.reason, /AI Talk 对这次需求理解和执行交接有帮助吗/);
 });
 
+test("Stop runtime checks an identified contract task without Agent markers", async () => {
+  const result = await runHook({
+    hook_event_name: "Stop",
+    ai_talk_task_id: "task-123",
+    ai_talk_route: "contract",
+    ai_talk_outcome: "completed",
+    last_assistant_message: "任务已完成。",
+  }, {
+    AI_TALK_FEEDBACK_PROMPT: "1",
+    AI_TALK_FEEDBACK_SAMPLE_RATE: "1",
+  });
+  const output = JSON.parse(result.stdout);
+  assert.equal(output.decision, "block");
+  assert.match(output.reason, /AI Talk 对这次需求理解和执行交接有帮助吗/);
+});
+
+test("Stop does not run feedback for Fast Path or incomplete runtime metadata", async () => {
+  const fastPath = await runHook({
+    hook_event_name: "Stop",
+    ai_talk_task_id: "task-123",
+    ai_talk_route: "fast_path",
+    ai_talk_outcome: "completed",
+    last_assistant_message: "任务已完成。",
+  }, { AI_TALK_FEEDBACK_PROMPT: "1" });
+  assert.equal(fastPath.stdout, "");
+
+  const missingOutcome = await runHook({
+    hook_event_name: "Stop",
+    ai_talk_task_id: "task-123",
+    ai_talk_route: "contract",
+    last_assistant_message: "任务已完成。",
+  }, { AI_TALK_FEEDBACK_PROMPT: "1" });
+  assert.equal(missingOutcome.stdout, "");
+});
+
 test("Stop allows responses that already asked or are not eligible", async () => {
   const asked = await runHook({
     hook_event_name: "Stop",

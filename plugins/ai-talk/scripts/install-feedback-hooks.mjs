@@ -55,7 +55,7 @@ async function main() {
   const config = await readHooks(targetPath);
 
   // Tool errors cannot be attributed to AI Talk without a routed task identifier.
-  // Remove older global collectors and install only the terminal-question safety net.
+  // Remove older global collectors and install the runtime-owned terminal eligibility check.
   removeAiTalkHooks(config, "PostToolUse");
   mergeHook(config, "Stop", {
     hooks: [{ type: "command", command, timeout: 5 }],

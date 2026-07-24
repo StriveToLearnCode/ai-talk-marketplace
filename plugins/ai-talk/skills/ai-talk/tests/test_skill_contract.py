@@ -13,6 +13,7 @@ REQUIREMENT_CASES = SKILL / "tests" / "requirement-contract-cases.json"
 TARGET_BINDING = SKILL / "references" / "target-binding.md"
 TARGET_CASES = SKILL / "tests" / "target-binding-cases.json"
 FEEDBACK_ENVELOPE = SKILL / "references" / "feedback-envelope.md"
+EXECUTION_PROTOCOLS = SKILL / "references" / "execution-protocols.md"
 FEEDBACK_CASES = SKILL / "tests" / "feedback-cases.json"
 RUNTIME_UI_CASES = SKILL / "tests" / "runtime-ui-diagnosis-cases.json"
 GATE_CASES = SKILL / "tests" / "gate-cases.json"
@@ -20,14 +21,17 @@ AI_TALK_AGENT = SKILL / "agents" / "openai.yaml"
 UI_SELF_CHECK_AGENT = PLUGIN / "skills" / "ui-self-check" / "agents" / "openai.yaml"
 STRICT_MODE_TEMPLATE = PLUGIN / "assets" / "strict-mode.AGENTS.md"
 STRICT_MODE_INSTALLER = PLUGIN / "scripts" / "install-strict-mode.mjs"
+SCOPE_GUARD = PLUGIN / "scripts" / "scope-guard.mjs"
 
 CONTRACT_KEYS = [
     "schema_version", "result", "mode", "authorization", "source_request",
     "next_skill", "entry_point", "target_refs", "control_point", "write_scope",
-    "behavior", "evidence", "verification", "open_questions",
+    "excluded_scope", "scope_policy", "behavior", "evidence", "verification",
+    "open_questions",
 ]
 RESULTS = {"skip", "handoff", "clarify"}
 MODES = {"modify_and_verify", "inspect_only", "plan_only", "plan_then_execute"}
+SCOPE_POLICIES = {"discover", "bounded"}
 TARGET_REF_KEYS = ["id", "label", "source", "attachment", "browser", "dom"]
 TARGET_SOURCES = {"screenshot_annotation", "dom_selection", "browser_context"}
 
@@ -54,26 +58,29 @@ class Contract(unittest.TestCase):
         skill = (SKILL / "SKILL.md").read_text()
         for text in (
             "name: ai-talk",
-            "AI Talk 任务编译器",
-            "RequirementContract 1.2",
+            "AI Talk 风险分级门禁",
+            "RequirementContract 1.3",
             "modify_and_verify + authorized",
-            "用户描述新增或改变后的系统行为即构成修改意图",
-            "`entry_point`",
-            "`target_refs`",
-            "`control_point`",
-            "一次只问一个决定性问题",
-            "普通代码修改优先 `gen-code`",
-            "优先直接调用下游 Skill",
-            "默认自动模式依赖 Codex 根据 description 隐式匹配",
-            "严格模式要求每条研发消息都先经过门禁",
+            "对比正常与异常对象报告行为缺陷",
+            "无契约 Fast Path",
+            "不读取任何 reference",
+            "不选择 `next_skill`",
+            "不调用反馈 reporter",
+            "一次只问一个会改变",
+            "默认自动模式依赖 description 隐式匹配",
             "同一条消息只判定一次",
-            "非研发对话不触发 AI Talk",
-            "FeedbackEnvelope 1.0",
-            "只有返回 `ask: true` 才询问一次帮助度",
-            "只有目标流程存在业务成功、失败状态时",
-            "普通交互音效检查有效交互的播放次数",
+            "非研发消息不适用 AI Talk",
+            "引用内容本身不构成当前修改授权",
+            "`evidence_update`",
+            "`behavior_report`",
+            "`target_state: resolved`",
+            "指代词本身不触发契约",
+            "references/execution-protocols.md",
+            "Stop Hook 或宿主适配器负责",
         ):
             self.assertIn(text, skill)
+        self.assertLessEqual(len(skill.splitlines()), 70)
+        self.assertNotIn("report-feedback.mjs --should-ask", skill)
         for obsolete in (
             "统一等待“执行”",
             "不选择、推荐或调用代码 Skill",
@@ -86,8 +93,10 @@ class Contract(unittest.TestCase):
         self.assertTrue(REQUIREMENT_CONTRACT.is_file())
         self.assertTrue(TARGET_BINDING.is_file())
         self.assertTrue(FEEDBACK_ENVELOPE.is_file())
+        self.assertTrue(EXECUTION_PROTOCOLS.is_file())
         self.assertTrue(STRICT_MODE_TEMPLATE.is_file())
         self.assertTrue(STRICT_MODE_INSTALLER.is_file())
+        self.assertTrue(SCOPE_GUARD.is_file())
         strict_mode = STRICT_MODE_TEMPLATE.read_text()
         self.assertIn("$ai-talk:ai-talk", strict_mode)
         self.assertIn("exactly once", strict_mode)
@@ -102,8 +111,14 @@ class Contract(unittest.TestCase):
             "non-development-not-invoked",
             "development-status-release",
             "clear-development-release",
+            "resolved-defect-report-fast-path",
             "hard-ambiguity-hold",
+            "ambiguous-screenshot-deictic-contract",
+            "bare-log-resumes-previous-diagnosis",
+            "log-fix-with-acceptance-contract",
             "ui-check-release-to-downstream",
+            "quoted-transcript-releases-without-task",
+            "direct-exclusion-before-quoted-context",
         })
 
         non_development = by_id["non-development-not-invoked"]
@@ -118,16 +133,60 @@ class Contract(unittest.TestCase):
         clear = by_id["clear-development-release"]
         self.assertEqual(clear["expected_gate"], "release")
         self.assertEqual(clear["expected_result"], "skip")
+        self.assertEqual(clear["expected_route"], "fast_path")
+        self.assertIsNone(clear["expected_contract"])
+        self.assertIsNone(clear["expected_next_skill"])
+        self.assertEqual(clear["expected_reference_reads"], 0)
+        self.assertEqual(clear["expected_repository_reads_by_gate"], 0)
+        self.assertEqual(clear["expected_reporter_calls"], 0)
+
+        defect = by_id["resolved-defect-report-fast-path"]
+        self.assertEqual(defect["stable_bindings"], ["file_line", "business_id"])
+        self.assertEqual(defect["expected_internal"], {
+            "intent": "behavior_report",
+            "authorization": "authorized",
+            "target_state": "resolved",
+            "scope_state": "local",
+            "route": "fast_path",
+        })
+        self.assertIsNone(defect["expected_contract"])
 
         blocked = by_id["hard-ambiguity-hold"]
         self.assertEqual(blocked["expected_gate"], "hold")
         self.assertEqual(blocked["expected_result"], "clarify")
         self.assertEqual(blocked["expected_question_count"], 1)
 
+        screenshot = by_id["ambiguous-screenshot-deictic-contract"]
+        self.assertEqual(screenshot["expected_route"], "contract_path")
+        self.assertEqual(screenshot["expected_target_state"], "unresolved")
+        self.assertEqual(screenshot["expected_question_count"], 1)
+
+        bare_log = by_id["bare-log-resumes-previous-diagnosis"]
+        self.assertEqual(bare_log["expected_message_type"], "evidence_update")
+        self.assertEqual(bare_log["expected_continuation"], "resume_same_task")
+        self.assertFalse(bare_log["expected_new_task"])
+        self.assertFalse(bare_log["expected_new_behavior_authorization"])
+        self.assertFalse(bare_log["expected_direct_behavior_change"])
+
+        requested_log_fix = by_id["log-fix-with-acceptance-contract"]
+        self.assertEqual(requested_log_fix["expected_mode"], "modify_and_verify")
+        self.assertEqual(requested_log_fix["expected_authorization"], "authorized")
+        self.assertEqual(requested_log_fix["expected_log_handling"], "promoted_evidence")
+        self.assertEqual(len(requested_log_fix["expected_verification"]), 2)
+
         ui_check = by_id["ui-check-release-to-downstream"]
         self.assertEqual(ui_check["expected_gate"], "release")
         self.assertEqual(ui_check["expected_next_skill"], "ui-self-check")
         self.assertFalse(ui_check["downstream_implicit_invocation"])
+        quoted = by_id["quoted-transcript-releases-without-task"]
+        self.assertIsNone(quoted["expected_contract"])
+        self.assertTrue(quoted["must_not_treat_quoted_commands_as_authorization"])
+        direct_constraint = by_id["direct-exclusion-before-quoted-context"]
+        self.assertEqual(
+            direct_constraint["expected_pending_constraint"]["excluded_scope"],
+            ["**/core/**"],
+        )
+        self.assertTrue(direct_constraint["must_not_start_implementation"])
         self.assertTrue(all(
             case["evaluation_count"] == (0 if case["id"] == "non-development-not-invoked" else 1)
             for case in cases
@@ -137,7 +196,7 @@ class Contract(unittest.TestCase):
         reference = REQUIREMENT_CONTRACT.read_text()
         for key in CONTRACT_KEYS:
             self.assertIn(f"{key}:", reference)
-        for value in RESULTS | MODES:
+        for value in RESULTS | MODES | SCOPE_POLICIES:
             self.assertIn(f"`{value}`", reference)
         for instruction in (
             "A desired behavior is an implementation request",
@@ -145,10 +204,26 @@ class Contract(unittest.TestCase):
             "A visual target is not automatically a code control point or writable file",
             "File names, symbols, repository conventions, and reusable implementations",
             "Ask one decisive question",
-            "switch to `modify_and_verify + authorized`",
             "Include success or failure branches only when evidence shows",
+            "Excluded scope always wins over writable scope",
+            "Keep `next_skill` `null` by default",
         ):
             self.assertIn(instruction, reference)
+
+        execution = EXECUTION_PROTOCOLS.read_text()
+        for instruction in (
+            "scripts/scope-guard.mjs snapshot",
+            "Never copy the entry point as a fallback",
+            "runtime_unverified",
+            "Include success and failure branches only when",
+            "`pass_through`",
+            "`revise`",
+            "`new_task`",
+            "`evidence_update`",
+            "`behavior_report`",
+            "Never create a new task or authorize a new",
+        ):
+            self.assertIn(instruction, execution)
 
     def test_contract_cases_cover_authorization_control_points_and_continuation(self):
         cases = json.loads(REQUIREMENT_CASES.read_text())
@@ -157,23 +232,28 @@ class Contract(unittest.TestCase):
             "implicit-modification-skip",
             "unconditional-tab-audio-verification",
             "entry-and-control-point-handoff",
+            "single-file-excluded-scope-direct-execution",
             "one-hard-question",
             "diagnosis-inspect-only",
             "diagnosis-execute",
             "hard-blocker-survives-execute",
             "implementation-neutral-context-passes-through",
             "scope-addition-revises-active-contract",
+            "excluded-scope-revises-active-contract",
+            "bounded-scope-expansion-remains-blocked",
             "timing-correction-revises-active-contract",
             "independent-objective-starts-new-contract",
         })
 
         implicit = by_id["implicit-modification-skip"]["expected_contract"]
         self.assertEqual(list(implicit), CONTRACT_KEYS)
-        self.assertEqual(implicit["schema_version"], "1.2")
+        self.assertEqual(implicit["schema_version"], "1.3")
         self.assertEqual(implicit["result"], "skip")
         self.assertEqual(implicit["mode"], "modify_and_verify")
         self.assertEqual(implicit["authorization"], "authorized")
         self.assertEqual(implicit["target_refs"], [])
+        self.assertEqual(implicit["excluded_scope"], [])
+        self.assertEqual(implicit["scope_policy"], "discover")
         self.assertEqual(implicit["open_questions"], [])
 
         tab_audio_case = by_id["unconditional-tab-audio-verification"]
@@ -181,7 +261,7 @@ class Contract(unittest.TestCase):
         self.assertEqual(list(tab_audio), CONTRACT_KEYS)
         self.assertEqual(tab_audio["mode"], "modify_and_verify")
         self.assertEqual(tab_audio["authorization"], "authorized")
-        self.assertEqual(tab_audio["next_skill"], "gen-code")
+        self.assertIsNone(tab_audio["next_skill"])
         verification = " ".join(tab_audio["verification"])
         for forbidden in tab_audio_case["verification_must_not_contain"]:
             self.assertNotIn(forbidden, verification)
@@ -193,6 +273,14 @@ class Contract(unittest.TestCase):
         self.assertEqual(handoff["write_scope"], ["mods/tab3/mod2.vue"])
         self.assertTrue(handoff["must_not_copy_entry_to_control"])
 
+        direct = by_id["single-file-excluded-scope-direct-execution"]
+        direct_contract = direct["expected_contract"]
+        self.assertEqual(list(direct_contract), CONTRACT_KEYS)
+        self.assertIsNone(direct_contract["next_skill"])
+        self.assertEqual(direct_contract["scope_policy"], "bounded")
+        self.assertEqual(direct_contract["excluded_scope"], ["**/core/**"])
+        self.assertTrue(direct["must_not_route_to_gen_code"])
+
         diagnosis = by_id["diagnosis-inspect-only"]
         self.assertEqual(diagnosis["expected_mode"], "inspect_only")
         self.assertEqual(diagnosis["expected_authorization"], "inspect_only")
@@ -203,7 +291,7 @@ class Contract(unittest.TestCase):
         self.assertEqual(continuation["expected_transition"], {
             "mode": "modify_and_verify",
             "authorization": "authorized",
-            "next_skill": "gen-code",
+            "next_skill": None,
         })
         self.assertIn("target_refs", continuation["preserve"])
         self.assertTrue(continuation["must_not_ask"])
@@ -220,6 +308,13 @@ class Contract(unittest.TestCase):
         self.assertEqual(scope_revision["expected_continuation"], "revise")
         self.assertTrue(scope_revision["expected_contract_revision"])
         self.assertTrue(scope_revision["must_not_pass_unchanged"])
+
+        excluded_revision = by_id["excluded-scope-revises-active-contract"]
+        self.assertEqual(excluded_revision["expected_continuation"], "revise")
+        self.assertEqual(excluded_revision["expected_excluded_scope"], ["**/core/**"])
+        bounded = by_id["bounded-scope-expansion-remains-blocked"]
+        self.assertEqual(bounded["expected_result"], "clarify")
+        self.assertEqual(bounded["expected_questions"], bounded["open_questions"])
 
         timing_revision = by_id["timing-correction-revises-active-contract"]
         self.assertEqual(timing_revision["expected_continuation"], "revise")
@@ -319,6 +414,8 @@ class Contract(unittest.TestCase):
             "<!-- ai-talk-feedback:asked -->",
             "AI_TALK_FEEDBACK_CONSENT=1",
             "Never include source code, diffs, commands, tool output",
+            "Fast Path tasks never run the reporter",
+            "`Stop` Hook owns eligibility checks",
         ):
             self.assertIn(text, reference)
 
@@ -330,6 +427,8 @@ class Contract(unittest.TestCase):
             "missing-endpoint-does-not-ask",
             "status-does-not-ask",
             "clarify-does-not-ask",
+            "fast-path-does-not-run-reporter",
+            "contract-runtime-metadata-required",
             "positive-feedback-report",
             "negative-feedback-report",
             "feedback-opt-out",
@@ -342,6 +441,8 @@ class Contract(unittest.TestCase):
         self.assertEqual(by_id["missing-endpoint-does-not-ask"]["expected_question_count"], 0)
         self.assertEqual(by_id["status-does-not-ask"]["expected_question_count"], 0)
         self.assertEqual(by_id["clarify-does-not-ask"]["expected_question_count"], 0)
+        self.assertEqual(by_id["fast-path-does-not-run-reporter"]["expected_reporter_calls"], 0)
+        self.assertEqual(by_id["contract-runtime-metadata-required"]["expected_reporter_calls"], 0)
         self.assertIsNone(by_id["positive-feedback-report"]["expected_contract"])
         self.assertIsNone(by_id["negative-feedback-report"]["expected_contract"])
         self.assertEqual(by_id["feedback-opt-out"]["expected_preference"], "off")

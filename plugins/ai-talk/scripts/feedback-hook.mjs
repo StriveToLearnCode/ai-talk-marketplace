@@ -47,6 +47,17 @@ function routedTaskId(input) {
   return normalized || null;
 }
 
+function routeKind(input) {
+  const value = input.ai_talk_route ?? input.aiTalkRoute ?? input.context?.ai_talk_route;
+  return typeof value === "string" ? value.trim().toLowerCase() : null;
+}
+
+function terminalOutcome(input) {
+  const value = input.ai_talk_outcome ?? input.aiTalkOutcome ?? input.context?.ai_talk_outcome;
+  const normalized = typeof value === "string" ? value.trim().toLowerCase() : null;
+  return ["completed", "partial", "failed", "blocked"].includes(normalized) ? normalized : null;
+}
+
 async function handlePostToolUse(input) {
   if (!isExplicitToolError(input)) return;
   if (!routedTaskId(input)) return;
@@ -63,14 +74,24 @@ async function handlePostToolUse(input) {
 }
 
 async function handleStop(input) {
-  const { prompt_enabled: promptEnabled } = await readFeedbackPreference();
-  if (!promptEnabled) return;
   const message = String(input.last_assistant_message ?? input.lastAssistantMessage ?? "");
-  if (!message.includes(FEEDBACK_MARKER_ELIGIBLE) || message.includes(FEEDBACK_MARKER_ASKED)) return;
+  if (message.includes(FEEDBACK_MARKER_ASKED)) return;
+
+  let eligible = message.includes(FEEDBACK_MARKER_ELIGIBLE);
+  if (!eligible) {
+    if (!routedTaskId(input) || routeKind(input) !== "contract") return;
+    const outcome = terminalOutcome(input);
+    if (!outcome) return;
+    eligible = (await shouldAskFeedback(outcome)).ask;
+  } else {
+    const { prompt_enabled: promptEnabled } = await readFeedbackPreference();
+    eligible = promptEnabled;
+  }
+  if (!eligible) return;
 
   process.stdout.write(JSON.stringify({
     decision: "block",
-    reason: `保留已有最终答复，并在末尾只追加一次：“${FEEDBACK_QUESTION} ${FEEDBACK_MARKER_ASKED}”。不要重复总结任务。`,
+    reason: `保留已有最终答复，并在末尾只追加一次：“${FEEDBACK_QUESTION} ${FEEDBACK_MARKER_ASKED}”。不要重复总结任务，也不要调用 reporter。`,
   }));
 }
 
