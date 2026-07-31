@@ -1,6 +1,6 @@
 # AI Talk V1 冻结规范
 
-> 本文是 `route-company-skills.mjs` 的 legacy CLI 兼容规范。当前 `$ai-talk` 对话行为以 `plugins/ai-talk/skills/ai-talk/SKILL.md` 为准：明确局部任务走无契约 Fast Path；视觉、引用提升、跨模块、范围限制、诊断续接或歧义任务才按需读取 references 并生成 `RequirementContract 1.3`。legacy `TaskHandoff 1.1` 继续冻结且不参与正常对话。
+> 本文是 `route-company-skills.mjs` 的 legacy CLI 兼容规范。当前 `$ai-talk` 对话行为以 `plugins/ai-talk/skills/ai-talk/SKILL.md` 为准：稳定单一目标且没有跨模块或范围扩张信号的任务走无契约 Fast Path；视觉、引用提升、跨模块、范围限制、诊断续接、外部写入或歧义任务才按需读取 references 并生成 `RequirementContract 1.4`。legacy `TaskHandoff 1.1` 继续冻结且不参与正常对话。
 
 状态：Frozen  
 版本：V1 / TaskHandoff 1.1  

@@ -1,11 +1,12 @@
 # FeedbackEnvelope 1.0
 
-Use this sidecar protocol to collect user feedback about AI Talk without changing `RequirementContract 1.3`. Feedback is not a development request and must not create or revise a requirement contract.
+This runtime-only sidecar collects user feedback about AI Talk without changing `RequirementContract 1.4`. Feedback is not a development request and must not create or revise a requirement contract. The AI Talk Skill does not read this file; only an installed Stop Hook or host adapter uses this protocol.
 
 ## Runtime ownership
 
-The AI Talk Skill reads this file only when the user is replying to a feedback question or changing
-feedback preferences. It must not run an eligibility command at task completion.
+The AI Talk Skill passes feedback replies and preference changes through unchanged. The installed Stop Hook or host
+adapter owns classification, preference changes, and delivery. The executing Agent must not run an eligibility command
+at task completion.
 
 An installed Stop Hook or host adapter may check eligibility with the real terminal outcome:
 

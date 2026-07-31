@@ -5,8 +5,13 @@ from pathlib import Path
 
 SKILL = Path(__file__).resolve().parents[1]
 PLUGIN = SKILL.parents[1]
+ROOT = PLUGIN.parents[1]
 ROUTER = SKILL / "scripts/route-company-skills"
-SPEC = PLUGIN.parents[1] / "docs" / "AI_TALK_V1_SPEC.md"
+SPEC = ROOT / "docs" / "AI_TALK_V1_SPEC.md"
+ROOT_README = ROOT / "README.md"
+USAGE = ROOT / "USAGE.md"
+EVALUATION = PLUGIN / "docs" / "evaluation.md"
+TRIAL_RECORD = PLUGIN / "docs" / "trial-record.csv"
 LEGACY_ROUTER = SKILL / "references" / "legacy-router.md"
 REQUIREMENT_CONTRACT = SKILL / "references" / "requirement-contract.md"
 REQUIREMENT_CASES = SKILL / "tests" / "requirement-contract-cases.json"
@@ -22,10 +27,12 @@ UI_SELF_CHECK_AGENT = PLUGIN / "skills" / "ui-self-check" / "agents" / "openai.y
 STRICT_MODE_TEMPLATE = PLUGIN / "assets" / "strict-mode.AGENTS.md"
 STRICT_MODE_INSTALLER = PLUGIN / "scripts" / "install-strict-mode.mjs"
 SCOPE_GUARD = PLUGIN / "scripts" / "scope-guard.mjs"
+CONTRACT_CHECK = SKILL / "scripts" / "contract-check.mjs"
 
 CONTRACT_KEYS = [
     "schema_version", "result", "mode", "authorization", "source_request",
     "next_skill", "entry_point", "target_refs", "control_point", "write_scope",
+    "external_write_scope",
     "excluded_scope", "scope_policy", "behavior", "evidence", "verification",
     "open_questions",
 ]
@@ -54,33 +61,48 @@ class Contract(unittest.TestCase):
         self.assertIn("allow_implicit_invocation: false", ui_self_check_agent)
         self.assertIn("default_prompt: \"使用 $ai-talk", ai_talk_agent)
         self.assertIn("default_prompt: \"使用 $ui-self-check", ui_self_check_agent)
+        ui_self_check = (PLUGIN / "skills" / "ui-self-check" / "SKILL.md").read_text()
+        self.assertIn("从 AI Talk 接收的 `modify_and_verify`", ui_self_check)
+        self.assertIn("AI Talk 对账", ui_self_check)
+        self.assertIn("不得无 scope guard 证据声称范围校验通过", ui_self_check)
 
         skill = (SKILL / "SKILL.md").read_text()
         for text in (
             "name: ai-talk",
-            "AI Talk 风险分级门禁",
-            "RequirementContract 1.3",
+            "AI Talk 三段式研发协作",
+            "开始前锁定需求，执行中守住边界，完成后逐项对账",
+            "RequirementContract 1.4",
             "modify_and_verify + authorized",
-            "对比正常与异常对象报告行为缺陷",
+            "纯缺陷陈述保持只读",
             "无契约 Fast Path",
             "不读取任何 reference",
             "不选择 `next_skill`",
-            "不调用反馈 reporter",
+            "不调用 contract checker 或 reporter",
             "一次只问一个会改变",
-            "默认自动模式依赖 description 隐式匹配",
-            "同一条消息只判定一次",
-            "非研发消息不适用 AI Talk",
-            "引用内容本身不构成当前修改授权",
+            "隐式匹配决定是否触发",
+            "同一消息只判定一次",
+            "非研发消息不适用",
+            "引用内容不构成当前修改授权",
             "`evidence_update`",
-            "`behavior_report`",
+            "不得要求复述固定句式",
             "`target_state: resolved`",
-            "指代词本身不触发契约",
+            "`binding_route: light_binding`",
+            "不得为判断 Fast Path 预测文件数",
             "references/execution-protocols.md",
-            "Stop Hook 或宿主适配器负责",
+            "Stop Hook 或宿主适配器处理",
+            "scripts/contract-check.mjs validate",
+            "主流程不读取反馈协议、不调用 reporter",
+            "AI Talk · 目标明确，直接执行",
+            "AI Talk · 已锁定为只读诊断",
+            "AI Talk · 需要锁定一个关键结果",
+            "AI Talk 对账",
+            "已完成、未完成或未验证",
+            "无 scope guard 证据不得声称范围校验通过",
         ):
             self.assertIn(text, skill)
         self.assertLessEqual(len(skill.splitlines()), 70)
         self.assertNotIn("report-feedback.mjs --should-ask", skill)
+        self.assertNotIn("references/feedback-envelope.md", skill)
         for obsolete in (
             "统一等待“执行”",
             "不选择、推荐或调用代码 Skill",
@@ -97,21 +119,59 @@ class Contract(unittest.TestCase):
         self.assertTrue(STRICT_MODE_TEMPLATE.is_file())
         self.assertTrue(STRICT_MODE_INSTALLER.is_file())
         self.assertTrue(SCOPE_GUARD.is_file())
+        self.assertTrue(CONTRACT_CHECK.is_file())
         strict_mode = STRICT_MODE_TEMPLATE.read_text()
         self.assertIn("$ai-talk:ai-talk", strict_mode)
         self.assertIn("exactly once", strict_mode)
         self.assertIn("non-development conversation", strict_mode)
+        self.assertIn("only guarantees invocation coverage", strict_mode)
+        self.assertIn("same user-visible lock, boundary", strict_mode)
         self.assertIn("TaskHandoff 1.1", LEGACY_ROUTER.read_text())
         self.assertIn("legacy CLI 路由器的冻结实现标准", SPEC.read_text())
+
+        positioning = "开始前锁定需求，执行中守住边界，完成后逐项对账"
+        self.assertIn(positioning, ROOT_README.read_text())
+        self.assertIn(positioning, USAGE.read_text())
+        self.assertIn(positioning, skill)
+        self.assertIn("只提高触发覆盖率", USAGE.read_text())
+        self.assertIn("不向用户展示 YAML", USAGE.read_text())
+
+        evaluation = EVALUATION.read_text()
+        for metric in (
+            "修改任务终态对账覆盖率",
+            "错误成功或运行验证声明",
+            "目标对账覆盖率",
+            "两轮内返工率",
+            "首次交付通过率",
+        ):
+            self.assertIn(metric, evaluation)
+        trial_header = TRIAL_RECORD.read_text().splitlines()[0]
+        for column in (
+            "开始提示", "边界事件", "已完成目标数", "未验证目标数",
+            "范围检查结果", "首次交付是否通过", "两轮内是否返工",
+            "错误成功声明", "虚假运行验证", "未授权写入",
+        ):
+            self.assertIn(column, trial_header)
 
     def test_invoked_gate_releases_or_holds_once(self):
         cases = json.loads(GATE_CASES.read_text())
         by_id = {case["id"]: case for case in cases}
         self.assertEqual(set(by_id), {
             "non-development-not-invoked",
+            "feedback-meta-not-invoked",
             "development-status-release",
             "clear-development-release",
-            "resolved-defect-report-fast-path",
+            "resolved-defect-report-is-read-only-fast-path",
+            "explicit-defect-fix-fast-path",
+            "resolved-visual-target-light-binding-fast-path",
+            "direct-target-behavior-fast-path",
+            "resolved-dom-light-binding-fast-path",
+            "find-defect-is-read-only-contract",
+            "external-write-needs-separate-authorization",
+            "exact-pagecenter-proposal-accepts-short-affirmative",
+            "ambiguous-external-choice-rejects-short-affirmative",
+            "bounded-scope-contract-experience",
+            "cross-module-signal-uses-contract",
             "hard-ambiguity-hold",
             "ambiguous-screenshot-deictic-contract",
             "bare-log-resumes-previous-diagnosis",
@@ -121,14 +181,19 @@ class Contract(unittest.TestCase):
             "direct-exclusion-before-quoted-context",
         })
 
-        non_development = by_id["non-development-not-invoked"]
-        self.assertEqual(non_development["expected_gate"], "not_applicable")
-        self.assertEqual(non_development["evaluation_count"], 0)
+        for case_id in ("non-development-not-invoked", "feedback-meta-not-invoked"):
+            self.assertEqual(by_id[case_id]["expected_gate"], "not_applicable")
+            self.assertEqual(by_id[case_id]["evaluation_count"], 0)
+            self.assertIsNone(by_id[case_id]["expected_experience"])
+        feedback = by_id["feedback-meta-not-invoked"]
+        self.assertEqual(feedback["expected_runtime_owner"], "host_adapter")
+        self.assertEqual(feedback["expected_skill_reads"], 0)
 
         status = by_id["development-status-release"]
         self.assertEqual(status["expected_gate"], "release")
         self.assertIsNone(status["expected_contract"])
         self.assertTrue(status["must_pass_unchanged"])
+        self.assertIsNone(status["expected_experience"])
 
         clear = by_id["clear-development-release"]
         self.assertEqual(clear["expected_gate"], "release")
@@ -139,22 +204,98 @@ class Contract(unittest.TestCase):
         self.assertEqual(clear["expected_reference_reads"], 0)
         self.assertEqual(clear["expected_repository_reads_by_gate"], 0)
         self.assertEqual(clear["expected_reporter_calls"], 0)
+        self.assertEqual(clear["expected_experience"], {
+            "start": "AI Talk · 目标明确，直接执行",
+            "terminal_reconciliation": True,
+        })
 
-        defect = by_id["resolved-defect-report-fast-path"]
+        defect = by_id["resolved-defect-report-is-read-only-fast-path"]
         self.assertEqual(defect["stable_bindings"], ["file_line", "business_id"])
         self.assertEqual(defect["expected_internal"], {
             "intent": "behavior_report",
-            "authorization": "authorized",
+            "authorization": "inspect_only",
             "target_state": "resolved",
             "scope_state": "local",
             "route": "fast_path",
         })
         self.assertIsNone(defect["expected_contract"])
+        self.assertEqual(
+            defect["expected_experience"]["start"],
+            "AI Talk · 已锁定为只读诊断",
+        )
+        self.assertFalse(defect["expected_experience"]["terminal_reconciliation"])
 
+        explicit_fix = by_id["explicit-defect-fix-fast-path"]
+        self.assertEqual(explicit_fix["expected_internal"]["authorization"], "authorized")
+        self.assertIsNone(explicit_fix["expected_contract"])
+        self.assertTrue(explicit_fix["expected_experience"]["terminal_reconciliation"])
+        visual = by_id["resolved-visual-target-light-binding-fast-path"]
+        self.assertEqual(visual["expected_binding_route"], "light_binding")
+        self.assertEqual(visual["expected_target_state"], "resolved")
+        self.assertEqual(visual["expected_route"], "fast_path")
+        self.assertIsNone(visual["expected_contract"])
+        self.assertEqual(visual["stable_bindings"], ["screenshot_annotation"])
+        self.assertEqual(visual["expected_reference_reads"], 0)
+        self.assertEqual(visual["expected_repository_reads_by_gate"], 0)
+        self.assertEqual(visual["expected_browser_calls_by_gate"], 0)
+        self.assertEqual(visual["expected_contract_checker_calls"], 0)
+        direct_behavior = by_id["direct-target-behavior-fast-path"]
+        self.assertEqual(direct_behavior["expected_authorization"], "authorized")
+        light_binding = by_id["resolved-dom-light-binding-fast-path"]
+        self.assertEqual(light_binding["expected_binding_route"], "light_binding")
+        self.assertEqual(light_binding["expected_target_state"], "resolved")
+        self.assertIsNone(light_binding["expected_contract"])
+        self.assertEqual(light_binding["expected_reference_reads"], 0)
+
+        find_defect = by_id["find-defect-is-read-only-contract"]
+        self.assertEqual(find_defect["expected_mode"], "inspect_only")
+        self.assertEqual(find_defect["expected_authorization"], "inspect_only")
+        self.assertEqual(find_defect["expected_external_write_scope"], [])
+        self.assertTrue(find_defect["must_not_infer_authorization_from_behavior_report"])
+        self.assertEqual(
+            find_defect["expected_experience"]["lock_fields"],
+            ["目标", "边界", "完成标准"],
+        )
+
+        external = by_id["external-write-needs-separate-authorization"]
+        self.assertEqual(external["expected_mode"], "inspect_only")
+        self.assertEqual(external["expected_external_write_scope"], [])
+        self.assertTrue(external["must_not_infer_authorization_from_desired_state"])
+        affirmative = by_id["exact-pagecenter-proposal-accepts-short-affirmative"]
+        self.assertEqual(affirmative["expected_continuation"], "revise")
+        self.assertEqual(affirmative["expected_authorization_quote"], "是的")
+        self.assertEqual(
+            affirmative["expected_external_write_targets"],
+            ["7AIKIjzi", "yInAf8hk", "T9mmxWeI"],
+        )
+        self.assertTrue(affirmative["must_not_require_restated_command"])
+        self.assertEqual(
+            affirmative["expected_experience"]["lock_fields"],
+            ["目标", "边界", "验收"],
+        )
+        self.assertTrue(affirmative["expected_experience"]["terminal_reconciliation"])
+        ambiguous_affirmative = by_id["ambiguous-external-choice-rejects-short-affirmative"]
+        self.assertEqual(ambiguous_affirmative["expected_result"], "clarify")
+        self.assertEqual(ambiguous_affirmative["expected_external_write_scope"], [])
+        self.assertTrue(ambiguous_affirmative["must_not_infer_targets_from_affirmative"])
+        bounded_experience = by_id["bounded-scope-contract-experience"]
+        self.assertEqual(bounded_experience["expected_scope_policy"], "bounded")
+        self.assertEqual(
+            bounded_experience["expected_experience"]["boundary_events"],
+            ["scope_guard_activated", "scope_violation_reported_if_present"],
+        )
+        self.assertTrue(
+            bounded_experience["expected_experience"]["terminal_reconciliation"]
+        )
+        self.assertTrue(by_id["cross-module-signal-uses-contract"]["expected_contract_required"])
         blocked = by_id["hard-ambiguity-hold"]
         self.assertEqual(blocked["expected_gate"], "hold")
         self.assertEqual(blocked["expected_result"], "clarify")
         self.assertEqual(blocked["expected_question_count"], 1)
+        self.assertEqual(
+            blocked["expected_experience"]["start"],
+            "AI Talk · 需要锁定一个关键结果",
+        )
 
         screenshot = by_id["ambiguous-screenshot-deictic-contract"]
         self.assertEqual(screenshot["expected_route"], "contract_path")
@@ -167,17 +308,27 @@ class Contract(unittest.TestCase):
         self.assertFalse(bare_log["expected_new_task"])
         self.assertFalse(bare_log["expected_new_behavior_authorization"])
         self.assertFalse(bare_log["expected_direct_behavior_change"])
+        self.assertIsNone(bare_log["expected_experience"]["start"])
+        self.assertEqual(
+            bare_log["expected_experience"]["terminal_reconciliation"],
+            "inherit_active_task",
+        )
 
         requested_log_fix = by_id["log-fix-with-acceptance-contract"]
         self.assertEqual(requested_log_fix["expected_mode"], "modify_and_verify")
         self.assertEqual(requested_log_fix["expected_authorization"], "authorized")
         self.assertEqual(requested_log_fix["expected_log_handling"], "promoted_evidence")
         self.assertEqual(len(requested_log_fix["expected_verification"]), 2)
+        self.assertTrue(requested_log_fix["expected_experience"]["terminal_reconciliation"])
 
         ui_check = by_id["ui-check-release-to-downstream"]
         self.assertEqual(ui_check["expected_gate"], "release")
         self.assertEqual(ui_check["expected_next_skill"], "ui-self-check")
         self.assertFalse(ui_check["downstream_implicit_invocation"])
+        self.assertEqual(
+            ui_check["expected_experience"]["terminal_reconciliation"],
+            "if_modified",
+        )
         quoted = by_id["quoted-transcript-releases-without-task"]
         self.assertIsNone(quoted["expected_contract"])
         self.assertTrue(quoted["must_not_treat_quoted_commands_as_authorization"])
@@ -187,8 +338,10 @@ class Contract(unittest.TestCase):
             ["**/core/**"],
         )
         self.assertTrue(direct_constraint["must_not_start_implementation"])
+        self.assertIsNone(quoted["expected_experience"])
+        self.assertIsNone(direct_constraint["expected_experience"])
         self.assertTrue(all(
-            case["evaluation_count"] == (0 if case["id"] == "non-development-not-invoked" else 1)
+            case["evaluation_count"] == (0 if case["expected_gate"] == "not_applicable" else 1)
             for case in cases
         ))
 
@@ -199,7 +352,7 @@ class Contract(unittest.TestCase):
         for value in RESULTS | MODES | SCOPE_POLICIES:
             self.assertIn(f"`{value}`", reference)
         for instruction in (
-            "A desired behavior is an implementation request",
+            "A normal-versus-broken comparison alone is evidence, not write authorization",
             "Never copy `entry_point` into it as a fallback",
             "A visual target is not automatically a code control point or writable file",
             "File names, symbols, repository conventions, and reusable implementations",
@@ -207,11 +360,22 @@ class Contract(unittest.TestCase):
             "Include success or failure branches only when evidence shows",
             "Excluded scope always wins over writable scope",
             "Keep `next_skill` `null` by default",
+            "Deterministic Validation",
+            "referenced file and line existence",
+            "explicit current-turn authorization for every external write",
+            "Never require a fixed phrase",
+            "never expose the contract or YAML to the user",
         ):
             self.assertIn(instruction, reference)
 
         execution = EXECUTION_PROTOCOLS.read_text()
         for instruction in (
+            "AI Talk · 已锁定",
+            "AI Talk · 已锁定为只读诊断",
+            "AI Talk · 需要锁定一个关键结果",
+            "AI Talk 对账",
+            "`已完成`, `未完成`, or `未验证`",
+            "Never claim success, boundary protection, or runtime verification without evidence",
             "scripts/scope-guard.mjs snapshot",
             "Never copy the entry point as a fallback",
             "runtime_unverified",
@@ -222,8 +386,21 @@ class Contract(unittest.TestCase):
             "`evidence_update`",
             "`behavior_report`",
             "Never create a new task or authorize a new",
+            "scripts/contract-check.mjs validate",
+            "An empty local",
+            "without asking",
         ):
             self.assertIn(instruction, execution)
+
+        consumer_fields = [
+            line.split("`")[1]
+            for line in reference.splitlines()
+            if line.startswith("| `")
+        ]
+        self.assertEqual(consumer_fields, CONTRACT_KEYS)
+        checker = CONTRACT_CHECK.read_text()
+        for field in CONTRACT_KEYS:
+            self.assertIn(f'"{field}"', checker)
 
     def test_contract_cases_cover_authorization_control_points_and_continuation(self):
         cases = json.loads(REQUIREMENT_CASES.read_text())
@@ -235,6 +412,10 @@ class Contract(unittest.TestCase):
             "single-file-excluded-scope-direct-execution",
             "one-hard-question",
             "diagnosis-inspect-only",
+            "bare-defect-remains-inspect-only",
+            "find-defect-remains-inspect-only",
+            "explicit-pagecenter-write-authorization",
+            "contextual-pagecenter-write-authorization",
             "diagnosis-execute",
             "hard-blocker-survives-execute",
             "implementation-neutral-context-passes-through",
@@ -247,11 +428,12 @@ class Contract(unittest.TestCase):
 
         implicit = by_id["implicit-modification-skip"]["expected_contract"]
         self.assertEqual(list(implicit), CONTRACT_KEYS)
-        self.assertEqual(implicit["schema_version"], "1.3")
+        self.assertEqual(implicit["schema_version"], "1.4")
         self.assertEqual(implicit["result"], "skip")
         self.assertEqual(implicit["mode"], "modify_and_verify")
         self.assertEqual(implicit["authorization"], "authorized")
         self.assertEqual(implicit["target_refs"], [])
+        self.assertEqual(implicit["external_write_scope"], [])
         self.assertEqual(implicit["excluded_scope"], [])
         self.assertEqual(implicit["scope_policy"], "discover")
         self.assertEqual(implicit["open_questions"], [])
@@ -285,6 +467,27 @@ class Contract(unittest.TestCase):
         self.assertEqual(diagnosis["expected_mode"], "inspect_only")
         self.assertEqual(diagnosis["expected_authorization"], "inspect_only")
         self.assertIsNone(diagnosis["expected_next_skill"])
+        bare_defect = by_id["bare-defect-remains-inspect-only"]
+        self.assertEqual(bare_defect["expected_mode"], "inspect_only")
+        self.assertEqual(bare_defect["expected_authorization"], "inspect_only")
+        find_defect = by_id["find-defect-remains-inspect-only"]
+        self.assertEqual(find_defect["expected_mode"], "inspect_only")
+        self.assertEqual(find_defect["expected_external_write_scope"], [])
+        pagecenter = by_id["explicit-pagecenter-write-authorization"]
+        self.assertEqual(pagecenter["expected_write_scope"], [])
+        self.assertEqual(pagecenter["expected_external_write_scope"][0]["system"], "Pagecenter")
+        self.assertIn("更新", pagecenter["expected_external_write_scope"][0]["authorization_quote"])
+        contextual_pagecenter = by_id["contextual-pagecenter-write-authorization"]
+        contextual_scope = contextual_pagecenter["expected_transition"]["external_write_scope"]
+        self.assertEqual(
+            [item["target"] for item in contextual_scope],
+            ["7AIKIjzi", "yInAf8hk", "T9mmxWeI"],
+        )
+        self.assertTrue(all(
+            item["authorization_quote"] == "是的" for item in contextual_scope
+        ))
+        self.assertTrue(contextual_pagecenter["must_not_ask"])
+        self.assertTrue(contextual_pagecenter["must_not_require_restated_command"])
         self.assertEqual(by_id["one-hard-question"]["expected_question_count"], 1)
 
         continuation = by_id["diagnosis-execute"]
@@ -409,6 +612,8 @@ class Contract(unittest.TestCase):
         reference = FEEDBACK_ENVELOPE.read_text()
         for text in (
             "FeedbackEnvelope 1.0",
+            "runtime-only sidecar",
+            "AI Talk Skill does not read this file",
             "must not create or revise a requirement contract",
             "<!-- ai-talk-feedback:eligible -->",
             "<!-- ai-talk-feedback:asked -->",

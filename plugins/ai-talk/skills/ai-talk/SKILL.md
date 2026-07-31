@@ -1,70 +1,55 @@
 ---
 name: ai-talk
-description: 自动匹配发起或继续软件研发工作的用户消息，无需用户输入 $ai-talk；明确、可逆、局部且目标已解析的任务走无契约 Fast Path，只有未解析的视觉指代、引用提升、跨模块、范围限制、诊断续接或产品歧义才加载完整协议。状态询问、确认和无需更新任务的上下文原样放行，只有会改变产品结果或写范围的硬阻塞才询问一个决定性问题。
+description: 自动匹配发起或继续软件研发工作的用户消息，无需用户输入 $ai-talk；开始前锁定需求，执行中守住只读、范围和外部写入边界，修改完成后逐项对账。明确、可逆、局部或已由当前上下文唯一绑定的任务走无契约 Fast Path；诊断请求和纯缺陷陈述保持只读；复杂、受限或歧义任务使用 RequirementContract 1.4。
 ---
 
-# AI Talk 风险分级门禁
+# AI Talk 三段式研发协作
 
-AI Talk 只判断当前研发消息是否需要门禁增强。它不润色用户请求，不替代码 Agent
-选择普通实现 Skill，也不重复下游分析。默认自动模式依赖 description 隐式匹配；仓库严格
-模式通过根 `AGENTS.md` 要求每条研发消息在检索、规划或实施前恰好应用一次。
+AI Talk 为所有触发后的研发任务提供同一套体验：开始前锁定需求，执行中守住边界，完成后逐项对账。它不替代码 Agent 选择普通实现 Skill，也不重复下游分析。隐式匹配决定是否触发；仓库 Strict Mode 只是确保逐轮触发的高级选项，不改变行为。
 
 ## 首先分类
 
-先只使用当前消息和已有对话分类。分类完成前不得读取 reference、检索仓库、生成契约或调用
-reporter。
+先只使用当前消息和已有对话分类；分类前不得读取 reference、检索仓库、生成契约或调用 reporter。
 
-1. 非研发消息不适用 AI Talk。
-2. 状态询问、确认、文件位置和不改变行为或范围的补充原样放行，不创建契约。裸日志属于
-   `evidence_update`：紧接上一修改时恢复同一任务的验证或诊断，否则原样放行；它不授权新行为。
-3. 先区分直接表达与引用记录。只有引用、没有当前请求时原样放行；引用内容本身不构成当前修改授权。
-4. 用户描述目标行为，或对比正常与异常对象报告行为缺陷，即构成 `behavior_report` 与
-   `modify_and_verify + authorized`，无需再次确认修改授权。
-5. 明确的诊断、解释、归属判断或“只分析”保持 `inspect_only`。
-6. 紧接帮助度问题的反馈或反馈偏好只读取 `references/feedback-envelope.md`，处理后停止。
+1. 非研发消息不适用；状态、文件位置和不改变行为或范围的普通确认原样放行且不显示 AI Talk 提示。
+2. 只有引用、没有当前请求时原样放行；引用内容不构成当前修改授权。裸日志属于 `evidence_update`：紧接上一修改时恢复验证或诊断，否则原样放行；它不授权新行为。
+3. “找到/定位/为什么/排查/分析/解释”或只陈述正常与异常对比时使用 `inspect_only`；缺陷证据不构成修改授权。
+4. “修复/修改/改成/实现”等命令或直接目标行为才使用 `modify_and_verify + authorized`；它只授权证据支持的本地写入。
+5. 外部写入必须由当前消息直接授权，或由“是的/确认/执行”紧邻确认上一轮已列清系统、单一动作和全部目标的提议；不得要求复述固定句式。
+6. 帮助度回答、AI Talk 元讨论和反馈偏好不适用本 Skill；由 Stop Hook 或宿主适配器处理。
+
+## 轻量目标绑定
+
+视觉请求只检查当前消息和已有对话中的新鲜证据。唯一截图标注、已选 DOM、IDE 选区、明确文件行号或唯一业务 ID 得到 `binding_route: light_binding` 与 `target_state: resolved`，随后按 Fast Path 判断；不读取 reference、不调用浏览器或仓库工具、不持久化 `target_refs`。证据缺失、陈旧或仍有多个候选时才标为 `unresolved`。
 
 ## 无契约 Fast Path
 
-以下条件全部满足时直接放行原消息，由当前 Agent 实施并验证：
+以下条件全部满足时直接放行，由当前 Agent 处理并验证：
 
-- 一个明确、可逆、局部目标，预计只影响一个组件、配置项或文件；
-- 一个可观察行为，`target_state: resolved`，无数据语义歧义或跨模块时序；
-- 没有明确禁止范围、bounded 写范围、活动契约修订或诊断后续执行；
-- 用户未要求专用流程，当前上下文也没有已知仓库规则要求专用流程。
+- 当前消息或已有对话稳定绑定一个目标，并表达一个明确、可逆的局部结果；
+- 没有多目标、跨模块、跨文件时序、数据语义、范围扩张、明确禁止范围或 bounded 写范围；
+- 不涉及活动契约修订、诊断后续执行、外部系统变更或已知专用流程。
 
-Fast Path 的内部结果是 `skip`，但不生成 `RequirementContract`、YAML、代码清单或知识沉淀，
-不读取任何 reference，不为 AI Talk 检索仓库，不选择 `next_skill`，也不调用反馈 reporter。
-仓库规则和实现 Skill 由继续执行的 Agent 自行决定。典型任务包括单点条件、参数、文案或映射修改。
-放行前只在内部得到 `intent`、`authorization`、`target_state`、`scope_state` 和 `route`；不输出这些字段。
+内部结果为 `skip`，但不生成契约、YAML、代码清单或知识沉淀，不读取任何 reference，不为 AI Talk 检索仓库，不选择 `next_skill`，也不调用 contract checker 或 reporter。不得为判断 Fast Path 预测文件数或猜测改动面。
 
 ## 契约路径
 
-出现任一情况才读取 `references/requirement-contract.md` 并创建或修订
-`RequirementContract 1.3`：
+出现任一情况才读取 `references/requirement-contract.md` 并创建或修订 `RequirementContract 1.4`：
 
-- 未解析的截图、标注、选中 DOM、当前页面或“这里/第二个”等视觉指代；
-- 用户明确把聊天记录、日志或方案提升为当前任务输入；
-- 多目标、跨模块、跨文件行为或需要确认控制点与执行时序；
-- 明确禁止修改范围、bounded 写范围或其他需要硬校验的边界；
-- 诊断后转实施、活动契约修订，或需要保留已有证据；
-- 会改变产品结果、数据语义或允许写范围的歧义。
+- 未解析的视觉指代，或用户明确提升聊天记录、日志或方案；
+- 多目标、跨模块、跨文件行为、控制点时序或产品与数据语义歧义；
+- 明确禁止范围、bounded 写范围、诊断后转实施或需要跨轮保留证据；
+- 请求或可能需要 Pagecenter、数据库、GitHub、云服务或其他外部系统写入。
 
-指代词本身不触发契约。明确文件路径与行号、IDE 代码选区、唯一业务 ID、已绑定 DOM 或截图标注
-都可稳定绑定目标；只有仍有多个合理候选时，目标才是 `unresolved` 并进入视觉协议或澄清。
+视觉目标再读取 `references/target-binding.md`；所有契约任务读取 `references/execution-protocols.md` 的三段式体验，范围、控制点、诊断和验证仅按需读取对应章节。构造或修订后必须把等价 JSON 通过 stdin 交给 `scripts/contract-check.mjs validate --project <root>`；修正错误后才能交接。`next_skill` 默认 `null`。
 
-视觉目标再读取 `references/target-binding.md`；范围、控制点、诊断和验证细则再读取
-`references/execution-protocols.md`。只读当前场景需要的 reference，不为了充实摘要扩大搜索。
+`skip` 和 `handoff` 都立即放行；只有存在实施级硬分歧时使用 `clarify`，一次只问一个会改变产品结果或写范围的问题。同一消息只判定一次，下游不得回调 AI Talk。
 
-契约只确定 `mode`、授权、范围、证据和 blocker。`next_skill` 默认 `null`；只有用户明确指定，
-或当前环境已有确定的专用流程时才填写。普通代码 Skill 与项目工作流交给执行 Agent 和仓库规则决定。
+## 用户可见体验
 
-`skip` 和 `handoff` 都立即放行；只有存在实施级硬分歧时使用 `clarify`，一次只问一个会改变
-产品结果或写范围的问题。同一条消息只判定一次，下游不得回调 AI Talk。
+- Fast Path 修改任务在执行前只显示 `AI Talk · 目标明确，直接执行`；Fast Path 诊断只显示 `AI Talk · 已锁定为只读诊断`。原样放行不显示提示。
+- Contract Path 按执行协议显示最多三项锁定摘要；`clarify` 显示 `AI Talk · 需要锁定一个关键结果` 后只问一个问题。不得暴露 route、authorization、内部字段或 YAML。
+- 执行中只提示真实生效、冲突或变化的边界；不得给普通搜索、分析或工具调用增加 AI Talk 文案。
+- 所有 `modify_and_verify` 终态回复必须包含 `AI Talk 对账`，逐项标记目标为已完成、未完成或未验证，并如实报告改动范围和验证证据。Fast Path 从原始请求与实际结果对账，Contract Path 从 `behavior`、scope 和 `verification` 对账；静态推断不得冒充运行验证，无 scope guard 证据不得声称范围校验通过。
 
-## 输出与反馈
-
-Fast Path 和原样放行不显示协议。契约路径优先在后台交接；宿主不能交接时才输出紧凑 YAML。
-AI Talk 主流程不在终态调用 reporter、不检查 endpoint，也不追加反馈标记。帮助度抽样由已安装的
-Stop Hook 或宿主适配器负责；未提供路由任务 ID、契约路径和终态结果时不得猜测任务归属。
-
-示例：已明确页面入口的“给活动链接增加 `tab=3` 直达”走 Fast Path；“根据这张截图把第二个头像也改掉”读取视觉协议；“只改 `page.vue`，不要改 core”读取契约与范围校验协议。
+主流程不读取反馈协议、不调用 reporter；帮助度抽样与反馈偏好仍由 Stop Hook 或宿主适配器负责。

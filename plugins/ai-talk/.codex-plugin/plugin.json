@@ -1,22 +1,25 @@
 {
   "name": "ai-talk",
-  "version": "0.5.0+codex.20260724020711",
-  "description": "AI Talk is a risk-tiered development gate with a zero-contract Fast Path and evidence-backed RequirementContract 1.3 handoffs for complex work.",
+  "version": "0.5.0+codex.20260731032357",
+  "description": "AI Talk locks development requirements, enforces execution boundaries, and reconciles completed work with evidence.",
   "author": {
     "name": "sf"
   },
   "skills": "./skills/",
   "interface": {
     "displayName": "AI Talk",
-    "shortDescription": "Compile development requests with optional strict mode",
-    "longDescription": "AI Talk automatically matches development work without requiring a command prefix. Clear, reversible, local changes with resolved targets use a no-contract Fast Path with no reference reads or feedback reporter calls. Unresolved visual references, quoted, cross-module, scope-bounded, diagnostic, and ambiguous work uses RequirementContract 1.3 with progressive evidence loading. Repository strict mode installs a managed AGENTS.md rule so every development message runs the gate once.",
+    "shortDescription": "Lock requirements, guard boundaries, reconcile results",
+    "longDescription": "AI Talk gives development tasks one consistent experience: lock observable goals, boundaries, and acceptance checks before implementation; surface only real boundary events during execution; and reconcile every modification against evidence at completion. Clear local work keeps the zero-contract Fast Path. Complex work uses RequirementContract 1.4, deterministic scope checks, stable visual binding, and explicit external-write authorization. Strict Mode remains an advanced invocation-coverage option and does not change behavior.",
     "developerName": "sf",
     "category": "Productivity",
     "capabilities": [
       "Original request preservation",
+      "Visible requirement locking",
+      "Boundary-event reporting",
+      "Evidence-backed terminal reconciliation",
       "Automatic development-request matching",
       "Optional repository strict-mode gating",
-      "Transparent pass-through for status and confirmation messages",
+      "Transparent pass-through for status and ordinary confirmation messages",
       "No-contract Fast Path for clear local work",
       "Zero reference and reporter calls on Fast Path",
       "Quoted transcript and current-instruction separation",
@@ -25,9 +28,12 @@
       "Intent-driven implementation authorization",
       "Skip, handoff, or clarify routing",
       "Single-question hard-blocker clarification",
-      "RequirementContract 1.3 compact handoff",
+      "RequirementContract 1.4 compact handoff",
+      "Deterministic contract schema and reference validation",
+      "Source-specific visual evidence validation",
       "Progressive protocol loading for complex work",
       "Explicit excluded scope and bounded write policy",
+      "Direct or exact-proposal authorization for external writes",
       "Baseline-aware write scope verification",
       "Screenshot annotation target binding",
       "Selected DOM target binding",
@@ -48,9 +54,9 @@
       "Optional project-level metadata-only error hooks"
     ],
     "defaultPrompt": [
-      "\u8fd9\u4e24\u5904\u6807\u6ce8\u7684\u7528\u6237\u5934\u50cf\u90fd\u9700\u8981 pag/user \u6e9c\u5149",
-      "\u7b2c\u4e8c\u4e2a\u5934\u50cf\u4e5f\u52a0\u4e0a\u540c\u6837\u7684\u52a8\u6548",
-      "\u8fd9\u91cc\u7684\u5f39\u7a97\u6539\u6210\u534a\u5c4f\u5c55\u793a"
+      "\u53ea\u5206\u6790 mod3.vue \u4e2d\u6700\u540e\u4e00\u4e2a\u5956\u52b1\u4e3a\u4ec0\u4e48\u65e0\u6cd5\u70b9\u51fb\uff0c\u4e0d\u8981\u4fee\u6539",
+      "\u53ea\u6539 mod4.vue\uff0c\u628a number \u6620\u5c04\u4e3a unit\uff0c\u4e0d\u8981\u6539 core",
+      "\u8fd9\u4e24\u5904\u6807\u6ce8\u7684\u7528\u6237\u5934\u50cf\u90fd\u52a0\u4e0a\u76f8\u540c\u52a8\u6548"
     ]
   }
 }

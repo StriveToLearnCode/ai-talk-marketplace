@@ -1,7 +1,7 @@
 interface:
   display_name: "AI Talk"
-  short_description: "研发请求风险分级，并支持无契约快速路径"
-  default_prompt: "使用 $ai-talk 判断这条研发消息应原样放行、走 Fast Path、创建契约还是澄清硬阻塞。"
+  short_description: "开始前锁定需求，执行中守住边界，完成后用证据逐项对账"
+  default_prompt: "使用 $ai-talk 锁定这条研发任务的目标与边界，并在完成后逐项对账。"
 
 policy:
   allow_implicit_invocation: true

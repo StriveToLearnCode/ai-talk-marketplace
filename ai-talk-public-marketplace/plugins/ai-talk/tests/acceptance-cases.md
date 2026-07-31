@@ -4,31 +4,48 @@
 
 - 默认模式依赖 Codex 对 Skill description 的隐式匹配，测试记录真实触发率，不得把 fixture 中的期望路由写成 100% 宿主保证。
 - 严格模式通过根 `AGENTS.md` 托管区块显式要求每条研发消息先应用 `$ai-talk:ai-talk`，同一条消息只执行一次。
+- 两种触发方式使用完全相同的锁定、边界和对账体验；严格模式只保证触发覆盖，不形成第二套产品模式。
 - `install-strict-mode.mjs` 重复执行不得产生重复区块，`--remove` 只能移除托管区块，其他项目规则保持不变。
 - 严格模式下 Skill 不可用时必须报告门禁未运行，不得静默声称已经放行。
 - 非研发消息在两种模式下都不触发 AI Talk。
 
 ## 当前对话职责
 
-正常 `$ai-talk` 对话先只用消息与已有上下文做风险分级。明确局部且目标已解析的任务走无契约 Fast Path；未解析的视觉指代、引用提升、跨模块、范围限制、诊断续接或歧义任务才编译为 `RequirementContract 1.3`。只询问会改变产品结果、数据语义或写范围的问题。
+正常 `$ai-talk` 对话先只用消息与已有上下文做风险分级。目标已稳定绑定且消息没有跨模块或范围扩张信号的任务走无契约 Fast Path；未解析的视觉指代、引用提升、跨模块、范围限制、诊断续接、外部写入或歧义任务才编译为 `RequirementContract 1.4`。只询问会改变产品结果、数据语义或写范围的问题。
+
+### 三段式用户体验
+
+- Fast Path 修改任务开始前只显示 `AI Talk · 目标明确，直接执行`；Fast Path 只读诊断只显示 `AI Talk · 已锁定为只读诊断`。
+- Contract Path 通过校验后、实施前显示 `AI Talk · 已锁定`，并最多展示 `目标`、`边界`、`验收` 三项；只读诊断将 `验收` 替换为 `完成标准`。
+- 硬歧义显示 `AI Talk · 需要锁定一个关键结果` 后只问一个决定性问题，不展示临时契约摘要。
+- 状态询问、非研发消息、反馈元对话、纯引用和不启动任务的范围补充不显示任何 AI Talk 提示。
+- 执行中只有 scope guard 启用或冲突、只读边界生效、范围扩张受阻、外部写入目标匹配或拒绝时才显示边界事件；普通搜索、分析、工具调用和进度更新不加品牌前缀。
+- 所有 `modify_and_verify` 终态回复包含 `AI Talk 对账`，逐项使用 `已完成`、`未完成` 或 `未验证`，并报告真实改动范围、外部写入和验证证据。
+- 没有 scope guard 证据时只列实际改动文件或模块，不得声称范围校验通过；静态检查不得冒充运行验证。
+- `inspect_only` 终态继续报告证据、结论和未验证项，不使用修改型对账。
+- 不向用户展示 route、authorization、schema 字段、validator 输出或 RequirementContract YAML。
 
 ### 引用内容与轻量任务
 
 - 只有粘贴的聊天记录、完成报告或示例时，不生成契约，也不把其中的“修改”“执行”当作当前授权。
 - 用户在引用外明确说“按下面内容执行”时，才把对应引用提升为任务输入。
 - “不要改 core”这类直接范围限制进入 `excluded_scope`；单独出现时不启动没有目标行为的实施任务。
-- 单文件、单一行为、没有视觉、数据语义、范围或跨模块歧义的任务使用无契约 `skip`，由当前 Agent 直接实施。
+- 单一稳定目标、单一局部结果、没有视觉、数据语义、范围或跨模块信号的任务使用无契约 `skip`。门禁不得先检索仓库或预测文件数。
+- 新鲜且唯一的截图标注、DOM 选择、IDE 选区、文件行号或业务 ID 使用 `light_binding` 标为 `resolved` 后进入 Fast Path；不读取 reference、不调用浏览器或仓库工具、不创建 `target_refs`。
+- 视觉证据缺失、陈旧或仍有多个合理候选时不得使用 `light_binding`，必须进入视觉契约。
 - Fast Path 的 reference 读取数、AI Talk 仓库读取数、契约生成数、`next_skill` 选择数和 reporter 调用数均为 0。
+- Fast Path 的一行开始提示和终态对账不得触发 reference、仓库、contract checker 或 reporter 调用。
 - 跨文件、需定位控制点或需要专业工作流的任务进入契约路径；`next_skill` 默认 `null`，由执行 Agent 与仓库规则选择普通实现流程。
 
 ### 歧义门禁与消息类型
 
 - “这里”“这个”“第二个”本身不触发契约。明确文件路径与行号、IDE 代码选区、唯一业务 ID、已绑定 DOM 或截图标注都可以把目标标为 `resolved`。
-- “A 正常，但 B 无法点击”是 `behavior_report`；目标已解析且范围局部时使用 `modify_and_verify + authorized` 走 Fast Path。
+- 唯一且新鲜的截图标注或 DOM 选择使用 `light_binding` 后继续判断 Fast Path；此步骤不读取 reference、不调用浏览器或仓库工具，也不持久化契约 `target_refs`。
+- “A 正常，但 B 无法点击”是只读 `behavior_report`；目标已解析且范围局部时走无契约 `inspect_only`。只有“修复 B”或直接目标行为才授权本地修改。
 - 没有当前请求的日志是 `evidence_update`。它紧接上一修改时恢复同一任务的验证或诊断，但不创建新任务，也不授权直接改变手势等新行为。
 - “修复下面报错”或日志附带验收条件时，日志被明确提升为当前任务证据，按真实范围和歧义进入实施。
 
-四类固定回归：`文件行号 + 业务 ID` 的缺陷报告直接放行；存在多个“第二个”的截图指代只问一个问题；修改后的 `Unable to preventDefault...` 恢复原任务诊断；要求修复该日志且验收“滑动可用、警告消失”时进入 `modify_and_verify + authorized`。
+固定回归至少覆盖：`文件行号 + 业务 ID` 的纯缺陷报告只读放行；同一目标明确要求修复时授权；唯一截图标注通过 `light_binding` 直接放行；存在多个“第二个”的截图指代只问一个问题；修改后的 `Unable to preventDefault...` 恢复原任务诊断；要求修复该日志且验收“滑动可用、警告消失”时进入 `modify_and_verify + authorized`。
 
 ### 写范围约束
 
@@ -36,6 +53,13 @@
 - `excluded_scope` 始终优先，和 `write_scope` 冲突时不得执行。
 - 有范围约束时，实施前后运行 scope guard；只计算 baseline 后的路径变化，不把未触碰的既有脏文件算作违规。
 - 越界时不得声称完成。确实需要扩展 `bounded` 范围时，只询问是否允许那个具体路径。
+
+### 外部写入的上下文确认
+
+- 用户直接命令精确外部写入时不追加重复确认。用户要求先核对派生出的 ID 或目标时，Agent 只完整复述一次系统、单一动作和每个目标。
+- 该精确提议后紧接的“是的”“确认”或“执行”授权且只授权所列范围；`authorization_quote` 保留简短肯定原话，随后直接校验并执行，不要求固定句式。
+- 多选问题、遗漏目标、陈旧上下文或仍有 blocker 的提议不能由简短肯定补全，也不能从期望状态、本地写授权或空 `write_scope` 推导外部权限。
+- 固定回归覆盖：向 Pagecenter 页面 `7AIKIjzi`、`yInAf8hk`、`T9mmxWeI` 写入 `agreementLinkStyles` 的完整提议后，“是的”直接放行；“F/G/Y 里写哪些？”后的“是的”仍保持 `clarify`。
 
 ### 截图标注与两处目标
 
@@ -116,7 +140,7 @@
 - Stop Hook 或宿主适配器只有收到任务 ID、`ai_talk_route: contract` 和终态 outcome 后才判断资格；Fast Path 为 0 次调用。
 - `partial`、`failed`、`blocked` 在具备反馈通道时询问一次，`completed` 默认按 20% 采样。
 - 状态更新、确认、`clarify`、中间进度和非研发消息不询问。
-- 用户回复“有帮助 / 一般 / 没帮助”时不生成 RequirementContract、不检索仓库、不调用实施 Skill。
+- 用户回复“有帮助 / 一般 / 没帮助”时由运行时直接处理，不触发 AI Talk Skill、不生成 RequirementContract、不检索仓库。
 - 用户说明“已经选中 DOM 还让我重新描述”时，可以归类为 `unnecessary_clarification`；没有明确原因时使用 `unclassified`，不猜类别。
 - 用户说“以后不再询问”后保存关闭偏好，后续 Stop Hook 不再补问。
 - 用户显式提交反馈但没有端点或没有 `AI_TALK_FEEDBACK_CONSENT=1` 时结果必须为 `queued_local`，不得声称远端上传成功。

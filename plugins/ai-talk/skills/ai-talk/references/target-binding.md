@@ -1,6 +1,6 @@
 # Target Binding
 
-Bind visual references to `RequirementContract 1.3.target_refs` so the executing Agent does not need to guess what “这里”, “这两部分”, or “第二个头像” means.
+Bind visual references to `RequirementContract 1.4.target_refs` so the executing Agent does not need to guess what “这里”, “这两部分”, or “第二个头像” means.
 
 ## Shape
 

@@ -3,7 +3,7 @@
     "id": "implicit-modification-skip",
     "input": "中奖时播放 audio/get，动画结束后再打开 normalReward",
     "expected_contract": {
-      "schema_version": "1.3",
+      "schema_version": "1.4",
       "result": "skip",
       "mode": "modify_and_verify",
       "authorization": "authorized",
@@ -13,6 +13,7 @@
       "target_refs": [],
       "control_point": null,
       "write_scope": [],
+      "external_write_scope": [],
       "excluded_scope": [],
       "scope_policy": "discover",
       "behavior": [
@@ -33,7 +34,7 @@
     "id": "unconditional-tab-audio-verification",
     "input": "点击 tab 时播放 audio/btn，第三个 tab 原有跳转保持不变",
     "expected_contract": {
-      "schema_version": "1.3",
+      "schema_version": "1.4",
       "result": "skip",
       "mode": "modify_and_verify",
       "authorization": "authorized",
@@ -43,6 +44,7 @@
       "target_refs": [],
       "control_point": null,
       "write_scope": [],
+      "external_write_scope": [],
       "excluded_scope": [],
       "scope_policy": "discover",
       "behavior": [
@@ -72,7 +74,7 @@
     "id": "single-file-excluded-scope-direct-execution",
     "input": "在 apps/short/recharge/mods/tab1/mod4.vue 把礼包奖励 number 映射为 unit，只改这个文件，不要改 core",
     "expected_contract": {
-      "schema_version": "1.3",
+      "schema_version": "1.4",
       "result": "skip",
       "mode": "modify_and_verify",
       "authorization": "authorized",
@@ -86,6 +88,7 @@
       "target_refs": [],
       "control_point": null,
       "write_scope": ["apps/short/recharge/mods/tab1/mod4.vue"],
+      "external_write_scope": [],
       "excluded_scope": ["**/core/**"],
       "scope_policy": "bounded",
       "behavior": [
@@ -118,6 +121,86 @@
     "expected_mode": "inspect_only",
     "expected_authorization": "inspect_only",
     "expected_next_skill": null
+  },
+  {
+    "id": "bare-defect-remains-inspect-only",
+    "input": "mods/tab3/mod3.vue 的奖励 1719069 无法点击，其他奖励正常",
+    "expected_result": "skip",
+    "expected_mode": "inspect_only",
+    "expected_authorization": "inspect_only",
+    "expected_external_write_scope": []
+  },
+  {
+    "id": "find-defect-remains-inspect-only",
+    "input": "帮我找到这个页面背景图为什么不对，Pagecenter 里看起来是另一张图",
+    "expected_result": "handoff",
+    "expected_mode": "inspect_only",
+    "expected_authorization": "inspect_only",
+    "expected_external_write_scope": []
+  },
+  {
+    "id": "explicit-pagecenter-write-authorization",
+    "input": "把 Pagecenter 的活动 123 背景图更新为 bg-v2.png",
+    "expected_result": "handoff",
+    "expected_mode": "modify_and_verify",
+    "expected_authorization": "authorized",
+    "expected_write_scope": [],
+    "expected_external_write_scope": [
+      {
+        "system": "Pagecenter",
+        "operation": "update asset",
+        "target": "activity 123 background",
+        "authorization_quote": "把 Pagecenter 的活动 123 背景图更新为 bg-v2.png"
+      }
+    ]
+  },
+  {
+    "id": "contextual-pagecenter-write-authorization",
+    "input": "是的",
+    "previous_assistant_proposal": "确认将 agreementLinkStyles 分别写入以下三个 Pagecenter 页面吗？F：7AIKIjzi，G：yInAf8hk，Y：T9mmxWeI。",
+    "previous_external_write_proposal": [
+      {
+        "system": "Pagecenter",
+        "operation": "write agreementLinkStyles",
+        "target": "7AIKIjzi"
+      },
+      {
+        "system": "Pagecenter",
+        "operation": "write agreementLinkStyles",
+        "target": "yInAf8hk"
+      },
+      {
+        "system": "Pagecenter",
+        "operation": "write agreementLinkStyles",
+        "target": "T9mmxWeI"
+      }
+    ],
+    "expected_transition": {
+      "mode": "modify_and_verify",
+      "authorization": "authorized",
+      "external_write_scope": [
+        {
+          "system": "Pagecenter",
+          "operation": "write agreementLinkStyles",
+          "target": "7AIKIjzi",
+          "authorization_quote": "是的"
+        },
+        {
+          "system": "Pagecenter",
+          "operation": "write agreementLinkStyles",
+          "target": "yInAf8hk",
+          "authorization_quote": "是的"
+        },
+        {
+          "system": "Pagecenter",
+          "operation": "write agreementLinkStyles",
+          "target": "T9mmxWeI",
+          "authorization_quote": "是的"
+        }
+      ]
+    },
+    "must_not_ask": true,
+    "must_not_require_restated_command": true
   },
   {
     "id": "diagnosis-execute",

@@ -1,8 +1,8 @@
 # AI Talk 使用指南
 
-> 适用于 AI Talk `0.5.x` 与 `RequirementContract 1.3`
+> 适用于 AI Talk `0.5.x` 与 `RequirementContract 1.4`
 
-AI Talk 自动匹配研发请求。安装后，你只需要像平时一样描述需求，不必记住命令、Skill 名称或契约格式。默认模式由 Codex 进行隐式 Skill 匹配；需要每条研发消息都先经过 AI Talk 时，为目标仓库启用 Strict Mode。
+AI Talk 自动匹配研发请求，并用一套统一体验处理任务：**开始前锁定需求，执行中守住边界，完成后逐项对账。** 安装后只需像平时一样描述需求，不必记住命令、Skill 名称或契约格式。
 
 非研发对话不会触发 AI Talk。
 
@@ -10,36 +10,57 @@ AI Talk 自动匹配研发请求。安装后，你只需要像平时一样描述
 
 ### 1. 安装插件
 
-将下面的 marketplace 路径替换为本机 `ai-talk-public-marketplace` 的绝对路径：
-
 ```bash
-codex plugin marketplace add /绝对路径/ai-talk-public-marketplace
+codex plugin marketplace add StriveToLearnCode/ai-talk-marketplace --ref marketplace
 codex plugin add ai-talk@ai-talk-marketplace
 ```
 
-安装或更新后，新建一个 Codex 任务，使最新 Skill 指令生效。
+`marketplace` 是自动发布分支：`master` 的测试通过后，GitHub Actions 会同步 public marketplace、以源提交 SHA 生成唯一插件版本并发布该分支。安装或更新后，新建一个 Codex 任务，使最新 Skill 指令生效。
 
-### 2. 选择自动模式
+### 自动更新
 
-默认模式不需要额外配置，适合希望 AI Talk 在相关研发请求中自动出现、但不要求机械强制的场景。
-
-严格模式会在目标仓库根 `AGENTS.md` 中安装一个带边界标记的托管区块，要求每条研发消息在分析、检索或执行前先应用 AI Talk：
+自动更新是用户主动安装的本机定时任务，不由 AI Talk Hook 静默创建。先按上面的方式安装 Git marketplace，再克隆仓库并运行当前平台的安装器：
 
 ```bash
-node /绝对路径/ai-talk/scripts/install-strict-mode.mjs --project /绝对项目路径
+git clone https://github.com/StriveToLearnCode/ai-talk-marketplace.git
+cd ai-talk-marketplace
+
+# macOS LaunchAgent
+./scripts/install-auto-update-macos.sh
+
+# Linux systemd user timer
+./scripts/install-auto-update-linux.sh
 ```
 
-检查、预览和移除：
+Windows PowerShell：
+
+```powershell
+git clone https://github.com/StriveToLearnCode/ai-talk-marketplace.git
+Set-Location ai-talk-marketplace
+.\scripts\install-auto-update-windows.ps1
+```
+
+默认每 6 小时执行一次：
 
 ```bash
-node /绝对路径/ai-talk/scripts/install-strict-mode.mjs --project /绝对项目路径 --check
-node /绝对路径/ai-talk/scripts/install-strict-mode.mjs --project /绝对项目路径 --dry-run
-node /绝对路径/ai-talk/scripts/install-strict-mode.mjs --project /绝对项目路径 --remove
+codex plugin marketplace upgrade ai-talk-marketplace
+codex plugin add ai-talk@ai-talk-marketplace
 ```
 
-安装器只新增或更新 `<!-- ai-talk-strict-mode:start -->` 与 `<!-- ai-talk-strict-mode:end -->` 之间的内容，保留其他项目规则。启用或更新后需要新建 Codex 任务。
+macOS 可以用 `--interval-seconds` 调整周期，Linux 可以用 `--interval` 调整周期，Windows 可以用 `-IntervalHours` 调整周期。卸载时分别使用：
 
-### 3. 直接描述研发需求
+```bash
+./scripts/install-auto-update-macos.sh --uninstall
+./scripts/install-auto-update-linux.sh --uninstall
+```
+
+```powershell
+.\scripts\install-auto-update-windows.ps1 -Uninstall
+```
+
+自动更新只替换 Codex 的插件缓存，不会热替换当前任务；新版本从下一个任务开始生效。维护者需要本地测试时，仍可将 `/绝对路径/ai-talk-public-marketplace` 作为 local marketplace 添加。
+
+### 2. 直接描述研发需求
 
 无需添加 `$ai-talk` 前缀，直接输入目标行为：
 
@@ -49,9 +70,107 @@ node /绝对路径/ai-talk/scripts/install-strict-mode.mjs --project /绝对项�
 
 明确的目标行为会被视为实施请求。AI Talk 不会再追问“是否允许修改代码”；局部任务直接放行，复杂任务只补充范围、证据和 blocker，普通实现 Skill 由执行 Agent 与仓库规则决定。
 
-### 4. 查看执行结果
+### 3. 查看执行结果
 
-通常情况下，AI Talk 在后台完成判断和交接，你看到的是下游 Agent 的实施过程与验证结果。只有目标存在会改变产品行为或写入范围的分歧时，它才会暂缓执行并只问一个关键问题。
+明确的局部修改开始时只显示 `AI Talk · 目标明确，直接执行`。复杂任务在实施前最多显示目标、边界、验收三项；执行中只有真实边界生效或冲突时才提示；所有修改任务完成后逐项对账。只有目标存在会改变产品行为或写入范围的分歧时，AI Talk 才暂缓执行并问一个关键问题。
+
+## 三段式体验示例
+
+### Fast Path 修改
+
+```text
+输入：在 recharge/page.vue 给活动链接增加 tab=3 直达
+
+AI Talk · 目标明确，直接执行
+
+AI Talk 对账
+目标：已完成，活动链接增加 tab=3 直达
+边界：实际修改 recharge/page.vue
+验证：静态检查通过；页面跳转未运行验证时明确标为未验证
+```
+
+Fast Path 的提示和对账不触发协议 reference、AI Talk 仓库检索、contract checker 或 reporter。
+
+### 只读诊断
+
+```text
+输入：mod3.vue:100-106 中 ID 1719069 无法点击，其他奖励正常
+
+AI Talk · 已锁定为只读诊断
+边界：不修改代码、配置或外部系统
+
+完成：报告证据、结论和未验证项，不输出修改型 AI Talk 对账
+```
+
+### 限定文件
+
+```text
+输入：只改 mod4.vue，把 number 映射为 unit，不要改 core
+
+AI Talk · 已锁定
+目标：把礼包奖励 number 映射为 unit
+边界：只允许 mod4.vue，禁止 core/
+验收：unit 输出正确，且范围校验通过
+
+AI Talk · 已启用写范围保护：只允许 mod4.vue，禁止 core/
+
+AI Talk 对账
+目标：已完成
+边界：scope guard 通过；无越界文件
+验证：映射检查通过；未执行的运行态行为标为未验证
+```
+
+### 视觉多目标
+
+```text
+输入：这两处标注的头像都加上相同动效
+
+AI Talk · 已锁定
+目标：分别修改标注 1 和标注 2
+边界：两个目标独立绑定，不根据相似外观合并或扩张
+验收：两处动效分别验证
+
+AI Talk 对账
+目标：标注 1 已完成；标注 2 未验证
+边界：列出实际修改组件
+验证：只报告已经观察到的页面结果
+```
+
+### 外部写入
+
+```text
+输入：把 Pagecenter 活动 123 的背景图更新为 bg-v2.png
+
+AI Talk · 已锁定
+目标：更新活动 123 背景图
+边界：Pagecenter / update asset / activity 123 background
+验收：读取结果与 bg-v2.png 一致
+
+AI Talk · 外部写入边界已匹配：仅更新 Pagecenter 活动 123 背景图
+
+AI Talk 对账
+目标：已完成或未完成
+边界：列出实际执行的系统、动作和目标
+验证：回读成功才标记完成，否则报告未验证或失败
+```
+
+AI Talk 不向用户展示 route、authorization、schema 字段、validator 输出或 RequirementContract YAML。
+
+## 高级：确保逐轮触发
+
+Codex 默认通过 Skill description 隐式匹配。需要在某个仓库确保每条研发消息都执行 AI Talk 时，可安装 Strict Mode：
+
+```bash
+node /绝对路径/ai-talk/scripts/install-strict-mode.mjs --project /绝对项目路径
+```
+
+```bash
+node /绝对路径/ai-talk/scripts/install-strict-mode.mjs --project /绝对项目路径 --check
+node /绝对路径/ai-talk/scripts/install-strict-mode.mjs --project /绝对项目路径 --dry-run
+node /绝对路径/ai-talk/scripts/install-strict-mode.mjs --project /绝对项目路径 --remove
+```
+
+Strict Mode 只提高触发覆盖率，不改变锁定、边界和对账行为。安装器只维护根 `AGENTS.md` 中带标记的区块；启用或更新后需要新建 Codex 任务。
 
 ## 常用说法
 
@@ -65,7 +184,8 @@ node /绝对路径/ai-talk/scripts/install-strict-mode.mjs --project /绝对项�
 | `现在进展怎么样？` | 作为状态询问原样放行，不生成新契约 |
 | `失败时也要播放音效，但我还没确定` | 暂缓执行，只询问失败分支的预期行为 |
 | `只改 mod4.vue，不要改 core` | 使用 bounded 写范围并在修改后校验 |
-| `mod3.vue:100-106 中 ID 1719069 无法点击，其他奖励正常` | 目标已解析的行为缺陷，直接修复并验证 |
+| `mod3.vue:100-106 中 ID 1719069 无法点击，其他奖励正常` | 目标已解析的缺陷证据，只读检查并报告原因 |
+| `修复 mod3.vue:100-106 中 ID 1719069 无法点击的问题` | 明确授权本地修复并验证 |
 | `Unable to preventDefault...` | 作为上一修改的新证据恢复诊断，不直接授权改变手势行为 |
 
 表达需求时，优先说明可观察的结果和关键时序。例如“请求成功后先播放动画，动画完成再弹窗”比指定某个函数怎么改更容易得到稳定结果。文件、组件和函数位置可以提供，但不是必填项，Agent 会从仓库中定位真实控制点。
@@ -86,7 +206,7 @@ node /绝对路径/ai-talk/scripts/install-strict-mode.mjs --project /绝对项�
 
 ## 使用截图、DOM 和当前页面
 
-“这里”“第二个头像”“这两处”等词本身不会触发契约。AI Talk 会先判断目标是否已由明确文件路径与行号、IDE 代码选区、唯一业务 ID、已绑定 DOM 或截图标注唯一确定；只有仍存在多个合理候选时，才进入视觉契约并请求必要的页面证据。
+“这里”“第二个头像”“这两处”等词本身不会触发契约。AI Talk 先执行 `light_binding`：只检查当前消息和已有对话中是否已有新鲜、唯一的文件行号、IDE 代码选区、业务 ID、DOM 选择或截图标注。唯一时把目标标为 `resolved` 并继续 Fast Path；这个步骤不读取 reference、不调用浏览器或仓库工具，也不持久化 `target_refs`。证据缺失、陈旧或仍存在多个合理候选时，才进入视觉契约并请求必要的页面证据。
 
 ### 截图标注
 
@@ -120,7 +240,7 @@ AI Talk 会区分“先查原因”和“直接修改”：
 
 - `为什么`、`排查`、`定位原因`、`前端还是后端`、`只分析`：进入 `inspect_only`，仅收集和报告证据。
 - `增加`、`改成`、`修复`、`接入`、`做一下`，或直接描述新的目标行为：进入 `modify_and_verify`，允许在证据支持的范围内修改并验证。
-- `A 正常，但 B 无法点击` 这类正常与异常对比：属于行为缺陷报告；目标明确且局部时同样进入 `modify_and_verify`。
+- `A 正常，但 B 无法点击` 这类只有正常与异常对比的缺陷报告：保持 `inspect_only`；只有明确要求修复或直接描述目标行为时才进入 `modify_and_verify`。
 - 单独的错误日志：属于 `evidence_update`，恢复上一任务的验证或诊断，但不自动修改代码或改变交互语义。
 - `先分析，确认后再改`：先输出分析或方案；你回复“执行”后，复用当前结论继续实施。
 
@@ -218,16 +338,17 @@ node /绝对路径/ai-talk/scripts/install-feedback-hooks.mjs --project /绝对�
 
 `skip` 和 `handoff` 都会继续执行。通常无需关注两者的区别，也不会看到中间协议。
 
-## RequirementContract 1.3
+## RequirementContract 1.4
 
-只有契约路径才创建该结构。当宿主支持内部交接时，契约会在后台传递；宿主无法直接交接时，AI Talk 才会显示紧凑 YAML。
+只有契约路径才创建该结构。契约始终在后台传递；宿主无法交接时由当前 Agent 继续执行，不向用户展示 YAML。
 
 契约包含以下信息：
 
 - 用户原始请求、处理结果、执行模式和授权状态；`next_skill` 默认为空，仅在已确定专用流程时填写；
 - 用户指出的 `entry_point`；
 - 截图、DOM 或浏览器页面组成的 `target_refs`；
-- 由代码或运行态证据确认的 `control_point` 和 `write_scope`；
+- 由代码或运行态证据确认的 `control_point` 和本地 `write_scope`；
+- 由当前消息直接命令，或由它简短肯定紧邻上一轮精确写入提议所授权的 `external_write_scope`；
 - 用户明确禁止修改的 `excluded_scope`，以及 `discover` 或 `bounded` 范围策略；
 - 按执行顺序排列的目标行为、关键证据和可观察验证项；
 - 仍未解决的实施级硬阻塞。
@@ -236,11 +357,22 @@ node /绝对路径/ai-talk/scripts/install-feedback-hooks.mjs --project /绝对�
 
 当 `excluded_scope` 非空或范围策略为 `bounded` 时，AI Talk 使用随插件提供的 scope guard 记录实施前工作区状态，并在实施后只比较本轮新增变化。禁止范围内的改动会失败；`bounded` 模式下允许列表外的改动也会失败。用户原有但本轮未改变的脏文件不会被误报。
 
+每次创建或修订契约后，AI Talk 还会把等价 JSON 交给随 Skill 提供的 `contract-check.mjs`。它不理解业务意图，而是确定性检查：
+
+- 17 个顶层字段、顺序、枚举值和模式/授权/结果关系；
+- `entry_point`、`control_point`、`evidence.source` 指向的真实文件和有效行号；
+- 截图、DOM、浏览器上下文是否携带与来源一致的结构化证据，浏览器 URL 是否残留敏感参数；
+- 仓库相对路径是否安全、`write_scope` 是否落入 `excluded_scope`，以及外部写入是否有当前消息的直接命令或有效上下文肯定。
+
+校验错误属于契约构造错误，AI Talk 会自行修正并重跑，不会把它包装成用户问题。工具的 warning 仍需 Agent 判断，例如入口与控制点完全相同是否确有代码证据。Fast Path 和原样放行不会运行该工具。
+
+校验器输出固定 JSON，包含 `status`、五类 `checks`、已验证文件索引、`errors` 和 `warnings`。`validate` 在存在错误时返回非零状态用于阻断交接；`inspect` 返回同一份报告但保持零状态，适合宿主或开发者做只读诊断。契约可从 stdin 输入，也可由 `--contract <json-file>` 读取。
+
 ## 常见问题
 
 ### 为什么安装后没有触发？
 
-先确认已经执行插件安装命令，并在安装或更新后新建 Codex 任务。默认模式是隐式 Skill 匹配，不是不可绕过的宿主拦截；要求逐轮执行时运行 `install-strict-mode.mjs`，用 `--check` 确认状态为 `enabled`，然后新建任务。普通问答不会进入门禁。
+先确认已经执行插件安装命令，并在安装或更新后新建 Codex 任务。隐式 Skill 匹配不是不可绕过的宿主拦截；要求逐轮触发时运行 `install-strict-mode.mjs`，用 `--check` 确认状态为 `enabled`，然后新建任务。普通问答不会触发 AI Talk。
 
 ### 还需要使用 `$ai-talk` 吗？
 
@@ -252,7 +384,11 @@ node /绝对路径/ai-talk/scripts/install-feedback-hooks.mjs --project /绝对�
 
 ### 为什么只分析了问题，没有直接修复？
 
-包含“为什么”“定位原因”“只分析”等表达时，AI Talk 会尊重只读意图。回复“执行”“开始修复”或“按这个做”即可复用当前证据进入实施；尚未解决的产品分歧仍需先确认。
+包含“为什么”“定位原因”“只分析”等表达或只陈述缺陷时，AI Talk 会保持只读。回复“执行”“开始修复”或“按这个做”即可复用当前证据进入实施；尚未解决的产品分歧仍需先确认。
+
+### 外部写入确认后为什么不需要复述完整命令？
+
+当 AI Talk 紧邻上一轮已经列清外部系统、单一动作和每个目标时，你回复“是的”“确认”或“执行”就只授权这份精确提议，Agent 应直接继续，不得要求固定句式。若上一轮仍在询问选项、遗漏目标、存在未决问题或上下文已过期，简短肯定不会被扩张为写入授权。
 
 ### 页面自测为什么没有给出通过结论？
 
@@ -268,4 +404,4 @@ node /绝对路径/ai-talk/scripts/install-feedback-hooks.mjs --project /绝对�
 
 ## Legacy CLI
 
-`route-company-skills.mjs`、`TaskHandoff 1.1` 和相关项目检索测试仅作为旧版 CLI 兼容层保留，不属于当前 AI Talk 对话协议。新任务应以自然语言输入和 `RequirementContract 1.3` 为准。
+`route-company-skills.mjs`、`TaskHandoff 1.1` 和相关项目检索测试仅作为旧版 CLI 兼容层保留，不属于当前 AI Talk 对话协议。新任务应以自然语言输入和 `RequirementContract 1.4` 为准。
