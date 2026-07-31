@@ -1,6 +1,6 @@
 {
   "name": "ai-talk",
-  "version": "0.5.0+codex.20260731032357",
+  "version": "0.5.0+codex.fd30e87dfc26",
   "description": "AI Talk locks development requirements, enforces execution boundaries, and reconciles completed work with evidence.",
   "author": {
     "name": "sf"
@@ -54,9 +54,9 @@
       "Optional project-level metadata-only error hooks"
     ],
     "defaultPrompt": [
-      "\u53ea\u5206\u6790 mod3.vue \u4e2d\u6700\u540e\u4e00\u4e2a\u5956\u52b1\u4e3a\u4ec0\u4e48\u65e0\u6cd5\u70b9\u51fb\uff0c\u4e0d\u8981\u4fee\u6539",
-      "\u53ea\u6539 mod4.vue\uff0c\u628a number \u6620\u5c04\u4e3a unit\uff0c\u4e0d\u8981\u6539 core",
-      "\u8fd9\u4e24\u5904\u6807\u6ce8\u7684\u7528\u6237\u5934\u50cf\u90fd\u52a0\u4e0a\u76f8\u540c\u52a8\u6548"
+      "只分析 mod3.vue 中最后一个奖励为什么无法点击，不要修改",
+      "只改 mod4.vue，把 number 映射为 unit，不要改 core",
+      "这两处标注的用户头像都加上相同动效"
     ]
   }
 }
