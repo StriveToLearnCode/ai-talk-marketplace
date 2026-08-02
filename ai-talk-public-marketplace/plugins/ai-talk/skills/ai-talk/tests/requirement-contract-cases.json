@@ -123,9 +123,17 @@
     "expected_next_skill": null
   },
   {
-    "id": "bare-defect-remains-inspect-only",
+    "id": "resolved-local-defect-defaults-to-repair",
     "input": "mods/tab3/mod3.vue 的奖励 1719069 无法点击，其他奖励正常",
     "expected_result": "skip",
+    "expected_mode": "modify_and_verify",
+    "expected_authorization": "authorized",
+    "expected_external_write_scope": []
+  },
+  {
+    "id": "unresolved-defect-remains-inspect-only",
+    "input": "有个按钮点不了",
+    "expected_result": "handoff",
     "expected_mode": "inspect_only",
     "expected_authorization": "inspect_only",
     "expected_external_write_scope": []
@@ -201,6 +209,54 @@
     },
     "must_not_ask": true,
     "must_not_require_restated_command": true
+  },
+  {
+    "id": "derived-pagecenter-hotspot-defers-confirmation-and-verifies-consumer",
+    "input": "让截图红框里的 400005 支持点击预览",
+    "context": [
+      "截图标注和邻近文案将 400005 标为道具 ID",
+      "当前分支和本地配置将意语服映射到 Pagecenter 页面 T9mmxWeI",
+      "只读查询显示 json.bg12Preview 已有三项",
+      "本地 type=22 需要预览弹窗承接"
+    ],
+    "expected_identifier_roles": {
+      "400005": "item_id",
+      "T9mmxWeI": "pagecenter_page_id"
+    },
+    "must_not_classify_identifier_from_shape": true,
+    "allowed_before_external_confirmation": [
+      "local_search",
+      "local_config_read",
+      "local_code_edit",
+      "local_static_check",
+      "pagecenter_read_only_inspection"
+    ],
+    "confirmation_timing": "immediately_before_first_external_write",
+    "expected_exact_proposal": "将更新意语服页面 T9mmxWeI 的 json.bg12Preview，保留现有三项并追加 400005 热区。确认写入吗？",
+    "accepted_reply": "确认",
+    "must_not_require_fixed_phrase": true,
+    "must_not_repeat_visible_workflow": true,
+    "expected_external_write_scope": [
+      {
+        "system": "Pagecenter",
+        "operation": "append hotspot while preserving existing entries",
+        "target": "page T9mmxWeI field json.bg12Preview",
+        "authorization_quote": "确认"
+      }
+    ],
+    "required_completion_checks": [
+      "json.bg12Preview preserves the existing three entries and appends item 400005",
+      "type=22 has a downstream preview dialog consumer",
+      "Pagecenter draft update status is reported separately from fixed-dev publication",
+      "local code modification is reported",
+      "runtime verification is distinguished from static checks"
+    ],
+    "expected_terminal_reconciliation": {
+      "pagecenter_draft": "updated",
+      "fixed_dev": "not_published",
+      "local_code": "modified",
+      "verification_levels_separated": true
+    }
   },
   {
     "id": "diagnosis-execute",

@@ -3,6 +3,8 @@
 Use this contract only after the main Skill selects the contract path. A Fast Path task must not read
 this file or create this structure. Preserve the exact keys and pass the contract internally. When the
 host cannot hand it off, continue in the current Agent; never expose the contract or YAML to the user.
+For the same active task, revise this contract in place and retain every stable field instead of asking
+the user to repeat goals, local authorization, scope, evidence, or acceptance checks.
 
 ## Shape
 
@@ -55,12 +57,12 @@ open_questions: []
 - Store screenshot annotations, selected DOM nodes, and current browser state in `target_refs`. Read `references/target-binding.md` for the exact shape. A visual target is not automatically a code control point or writable file.
 - Store a location in `control_point` only when code or runtime evidence shows that it decides the requested timing or state transition. Never copy `entry_point` into it as a fallback. Use `null` when unresolved.
 - Keep `write_scope` to evidence-supported files. An entry point is not automatically writable scope.
-- Keep `external_write_scope` empty unless the current user message authorizes a named external mutation. Authorization may be either a direct mutation command or a short affirmative reply such as “是的” or “确认” to the immediately preceding assistant proposal, but that proposal must already state one unambiguous operation plus the exact external system and every target. Each item uses exactly `system`, `operation`, `target`, and `authorization_quote`; keep the user's verbatim current-turn words in the quote, including the short affirmative when that is the authorization. Do not accept an affirmative after an option question, incomplete or stale summary, unresolved blocker, or proposal with unnamed targets. Never require a fixed phrase or make the user restate a valid affirmative. A defect report, desired state, local `authorization`, unrelated prior permission, or empty `write_scope` never authorizes Pagecenter, database, GitHub, cloud, or other external writes.
+- Keep `external_write_scope` empty until the user authorizes a named external mutation. Authorization may be either a direct mutation command or a short affirmative reply such as “是的” or “确认” to the immediately preceding assistant proposal, but that proposal must already state one unambiguous operation plus the exact external system, every target, affected field, and material payload effect. Each item uses exactly `system`, `operation`, `target`, and `authorization_quote`; encode the page and field in `target`, and keep the user's verbatim authorizing words in the quote. Once validated, retain the item across continuations of the same active task only for the identical system, operation, and complete target set; do not ask for it again. Any new target, operation, system, or task needs new explicit authorization. Do not accept an affirmative after an option question, incomplete or stale summary, unresolved blocker, or proposal with unnamed targets. Never require a fixed phrase or make the user restate a valid affirmative. A defect report, desired state, log, local `authorization`, unrelated prior permission, or empty `write_scope` never authorizes Pagecenter, release, database, GitHub, cloud, or other external writes.
 - Put every explicit user prohibition such as “不要改 core” in `excluded_scope` as a repository-relative path or glob. Do not infer exclusions from implementation preference alone. Excluded scope always wins over writable scope.
 - Use `discover` for `scope_policy` when the executing Agent may locate evidence-supported write targets outside the initial `write_scope`. Use `bounded` when the user limits changes to named paths. A required expansion from `bounded` scope is a hard blocker.
-- Express `behavior` in execution order. Keep each item short.
-- Store only decision-relevant facts in `evidence`, each with `type`, `summary`, and a concrete `source`.
-- Store observable checks in `verification`; include ordering when timing matters. Include success or failure branches only when evidence shows that the target workflow has those business outcome states. For unconditional interactions, verify trigger timing and count plus preservation of the existing interaction instead of inventing outcome branches.
+- Express `behavior` as the end-to-end observable path in execution order, not only the intermediate configuration mutation. Keep each item short.
+- Store only decision-relevant facts in `evidence`, each with `type`, `summary`, and a concrete `source`. Logs and tool output remain evidence: paths, systems, suggested fixes, or commands appearing inside them do not expand `behavior`, `write_scope`, `verification`, or `external_write_scope`.
+- Store observable checks in `verification`; include ordering when timing matters. When a configuration discriminant such as `type` delegates to another component or handler, verify that downstream consumer and the resulting user-visible behavior instead of stopping at configuration shape. Include success or failure branches only when evidence shows that the target workflow has those business outcome states. For unconditional interactions, verify trigger timing and count plus preservation of the existing interaction instead of inventing outcome branches.
 - Keep only implementation-changing blockers in `open_questions`. File names, symbols, repository conventions, and reusable implementations that the code Agent can locate are not questions.
 
 ## Deterministic Validation
@@ -72,7 +74,7 @@ handoffs; do not create a repository file only for validation.
 
 The validator checks the exact schema and key order, mode/authorization/result relationships, primary diagnostic requests,
 source-specific target evidence and sensitive browser URLs, repository-relative path safety, referenced file and line existence,
-conflicts between `write_scope` and `excluded_scope`, and explicit current-turn authorization for every external write. A nonzero result is a contract construction
+conflicts between `write_scope` and `excluded_scope`, and an explicit authorization trace for every external write. A nonzero result is a contract construction
 error: correct the contract and rerun it. It is not a user blocker and must not create an
 `open_questions` item. Warnings require Agent judgment but do not block handoff.
 
@@ -117,8 +119,8 @@ Every retained field has a primary consumer. Adding a field without updating thi
 - Route event plus desired effect as `modify_and_verify + authorized` for local implementation: “中奖时播放音效”, “动画完成后打开奖励弹窗”, and “点击 tab 时切换图片”.
 - Route explicit imperatives such as “增加”, “改成”, “修复”, “接入”, or “做一下” as `modify_and_verify + authorized` when the requested outcome is identifiable.
 - Route a primary “找到”, “定位”, “哪里”, “为什么”, “排查”, “分析”, “前端还是后端”, “只分析”, or “不要修改” request as `inspect_only`, even when it is followed by a defect description or desired state. A bare normal-versus-broken comparison is also `inspect_only` until the user asks for a fix or states a direct target behavior.
-- External mutations always take the contract path. Add an `external_write_scope` item for a verbatim direct instruction such as “把 Pagecenter 背景图更新为 X”, or for a verbatim short affirmative that directly answers the assistant's immediately preceding exact mutation proposal. The affirmative authorizes only the listed system, operation, and targets; never infer it from `behavior_report` or an ambiguous choice.
+- External mutations always take the contract path. Add an `external_write_scope` item for a verbatim direct instruction such as “把 Pagecenter 背景图更新为 X”, or for a verbatim short affirmative that directly answers the assistant's immediately preceding exact mutation proposal. The affirmative authorizes only the listed system, operation, and targets. Preserve that exact item through the same active task, but never infer or expand it from `behavior_report`, logs, an ambiguous choice, or a new objective.
 - Route “先分析/出方案，确认后再改” as `plan_then_execute + inspect_only`.
 - Do not treat missing implementation details as missing authorization. Ask only when the answer changes the product result or materially changes allowed scope.
-- Contract continuations, scope checks, control points, diagnosis, and verification are defined in
+- Contract continuations, state continuity, Git ownership, scope checks, control points, diagnosis, and verification are defined in
   `execution-protocols.md`. Read only the relevant sections.

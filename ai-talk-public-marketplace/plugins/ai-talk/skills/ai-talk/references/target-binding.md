@@ -76,7 +76,8 @@ Use this exact attachment shape:
 
 1. Prefer an explicit DOM selection, then a screenshot annotation, then matching current browser context.
 2. Bind every independently referenced region or node. Keep the plain-language `target` as their shared summary.
-3. If exactly one fresh context resolves the phrase, bind it without asking the user to repeat the target.
-4. If multiple fresh candidates remain, ask one short choice question and keep the contract `clarifying`.
-5. If no evidence resolves the phrase, request a screenshot annotation or DOM selection; do not guess from code, filenames, an old browser tab, or visual similarity.
-6. Preserve all `target_refs` during routing, execution, and verification.
+3. Resolve each identifier's semantic role from annotation bounds, adjacent labels, branch or locale, configuration keys, and fresh conversation context. A number may be an item, gift, reward, activity, or other business ID; never classify it as a Pagecenter page ID from shape alone.
+4. If exactly one fresh context resolves the phrase and identifier roles, bind it without asking the user to repeat the target.
+5. If multiple fresh candidates or identifier roles remain, ask one short choice question and keep the contract `clarifying`.
+6. If no evidence resolves the phrase, request a screenshot annotation or DOM selection; do not guess from code, filenames, an old browser tab, or visual similarity.
+7. Preserve all `target_refs` during routing, execution, and verification.

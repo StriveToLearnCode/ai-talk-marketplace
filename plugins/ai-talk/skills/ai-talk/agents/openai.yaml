@@ -1,7 +1,7 @@
 interface:
   display_name: "AI Talk"
-  short_description: "开始前锁定需求，执行中守住边界，完成后用证据逐项对账"
-  default_prompt: "使用 $ai-talk 锁定这条研发任务的目标与边界，并在完成后逐项对账。"
+  short_description: "连续保存任务状态，按风险渐进升级，严格守住写入边界"
+  default_prompt: "使用 $ai-talk 连续处理这条研发任务；简单任务保持轻量，实际介入时说明可核验的判断、依据和影响。"
 
 policy:
   allow_implicit_invocation: true

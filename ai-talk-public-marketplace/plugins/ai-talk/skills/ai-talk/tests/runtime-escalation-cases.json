@@ -1,0 +1,39 @@
+[
+  {
+    "id": "adjacent-files-stay-fast-path",
+    "initial_route": "fast_path",
+    "runtime_evidence": "The same local outcome also needs an adjacent helper, type, and test update.",
+    "expected_transition": "continue_fast_path",
+    "expected_contract": null,
+    "expected_question_count": 0,
+    "must_not_treat_file_or_tool_count_as_risk": true
+  },
+  {
+    "id": "cross-module-behavior-upgrades-before-write",
+    "initial_route": "fast_path",
+    "runtime_evidence": "The local UI behavior is controlled by shared state consumed by two modules.",
+    "expected_transition": "upgrade_before_expanded_write",
+    "expected_route": "contract_path",
+    "expected_question_count": 0,
+    "must_preserve_collected_evidence": true,
+    "must_preserve_in_boundary_edits": true
+  },
+  {
+    "id": "data-semantics-upgrade-asks-once",
+    "initial_route": "fast_path",
+    "runtime_evidence": "Two incompatible meanings of a status field produce different user-visible results.",
+    "expected_transition": "upgrade_before_expanded_write",
+    "expected_route": "contract_path",
+    "expected_question_count": 1,
+    "question_reason": "product_or_data_semantics_hard_ambiguity"
+  },
+  {
+    "id": "external-write-upgrade-remains-read-only",
+    "initial_route": "fast_path",
+    "runtime_evidence": "Completion requires updating an unmentioned Pagecenter page.",
+    "expected_transition": "upgrade_before_external_write",
+    "expected_route": "contract_path",
+    "external_posture": "inspect_only",
+    "must_not_infer_external_authorization_from_local_write": true
+  }
+]
