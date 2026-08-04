@@ -2,4 +2,4 @@ __pycache__/
 *.py[cod]
 .venv/
 .DS_Store
-plugins/ai-talk/docs/skills/
+docs/skills/

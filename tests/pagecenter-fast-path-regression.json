@@ -1,0 +1,35 @@
+{
+  "id": "french-pagecenter-two-hidden-preview-items",
+  "input": "只改法语 Pagecenter 7AIKIjzi 的两个道具配置：让它们不可见，但保持点击预览。不要改源码、德语或意语。完成后回读配置，确认两个 opacity 都为 0、DOM 热区仍存在，并记录两次点击调用的道具预览 ID。桌面浏览器无法显示客户端 SDK 画面时标记真机未验证，然后停止。",
+  "expected": {
+    "goal": "仅法语 Pagecenter 7AIKIjzi",
+    "mutation": "两个道具不可见、保持预览",
+    "forbidden": ["source_code", "german_pagecenter", "italian_pagecenter"],
+    "verification": [
+      "page_id_is_7AIKIjzi",
+      "both_opacity_values_are_0",
+      "both_dom_hotspots_exist",
+      "two_expected_item_preview_sdk_ids_called",
+      "git_has_no_new_source_changes"
+    ],
+    "route": "fast_path",
+    "contract": null,
+    "skill_reads": 1,
+    "visible_ai_talk_messages": 0,
+    "reference_reads": 0,
+    "contract_checker_calls": 0,
+    "reporter_calls": 0,
+    "extra_latency_seconds_lt": 10,
+    "terminal_unverified": ["client_sdk_visual_on_real_device"],
+    "stop_after_verification": true
+  },
+  "regression_failures": [
+    "generate_requirement_contract",
+    "show_ai_talk_prompt",
+    "repeat_scope_or_requirement_analysis",
+    "attempt_source_code_write",
+    "write_german_or_italian_pagecenter",
+    "continue_popup_investigation_after_sdk_calls",
+    "exceed_latency_budget"
+  ]
+}
