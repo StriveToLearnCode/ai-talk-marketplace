@@ -1,7 +1,7 @@
 interface:
   display_name: "AI Talk"
-  short_description: "每轮明确显示介入或跳过，并为复杂研发任务保留证据状态"
-  default_prompt: "使用 $ai-talk 处理这一轮对话，先显示介入或跳过状态，并为复杂研发任务保留目标、范围、证据和授权。"
+  short_description: "连续保存任务状态，实际介入后说明AI Talk具体补全项"
+  default_prompt: "使用 $ai-talk 连续处理这条研发任务；简单任务保持轻量，实际介入时按目标、范围、证据、状态、授权或验收说明 AI Talk 帮我们补全了什么。"
 
 policy:
   allow_implicit_invocation: true

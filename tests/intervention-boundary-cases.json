@@ -1,23 +1,49 @@
 {
   "schema_version": "1.0",
-  "invocation_scope": "every_user_turn",
+  "invocation_scope": "every_development_turn",
   "simple_acceptance": {
     "skill_reads_exact": 1,
     "reference_reads_max": 0,
     "ai_talk_tool_calls_max": 0,
-    "visible_status_messages_exact": 1,
-    "status": "AI Talk：跳过"
+    "visible_protocol_messages_max": 0
   },
   "complex_acceptance": {
     "required_artifact": true,
-    "visible_status_messages_exact": 1,
-    "status_prefix": "AI Talk：介入",
+    "material_summary_messages_max": 1,
+    "terminal_contribution_prefix": "AI Talk 帮我们补全了：",
     "metrics": {
       "rework_count": "decrease",
       "repeated_confirmation_count": "decrease",
       "out_of_scope_change_count": "decrease",
       "context_loss_count": "decrease"
     }
+  },
+  "terminal_contribution_acceptance": {
+    "allowed_labels": ["目标", "范围", "证据", "状态", "授权", "验收"],
+    "minimum_filled_items": 1,
+    "forbidden_phrases": ["已处理", "已完成", "保障质量", "修改了代码", "运行了测试"],
+    "cases": [
+      {
+        "id": "scope-and-evidence",
+        "line": "AI Talk 帮我们补全了：范围：只改结算与库存模块；证据：保留了服务端落库失败断点",
+        "expected_valid": true
+      },
+      {
+        "id": "external-authorization",
+        "line": "AI Talk 帮我们补全了：授权：正式发布仍需确认三个页面和完整目标集合",
+        "expected_valid": true
+      },
+      {
+        "id": "generic-claim",
+        "line": "AI Talk 帮我们补全了：已完成并保障质量",
+        "expected_valid": false
+      },
+      {
+        "id": "agent-work-claim",
+        "line": "AI Talk 帮我们补全了：验收：修改了代码并运行了测试",
+        "expected_valid": false
+      }
+    ]
   },
   "cases": [
     {

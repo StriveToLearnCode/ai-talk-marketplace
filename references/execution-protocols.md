@@ -41,32 +41,48 @@ the main Skill and must not load this file merely to continue a task.
 
 ## Runtime escalation
 
-- A required write to multiple files is a contract-path risk. Merely reading adjacent implementation,
-  type, or test files, or using additional tools, does not trigger escalation.
+- Additional adjacent implementation, type, or test files for the same local outcome are not by
+  themselves a risk increase. File count and tool count never trigger escalation.
 - When runtime evidence reveals a contract-path risk, stop before the first local or external write beyond
   the original lightweight boundary, then construct and validate the contract. A newly discovered external
   write is not automatically risky when the same turn already directly authorizes one exact, reversible,
   single-target operation with finite readback.
 - Preserve collected evidence and completed in-boundary local edits. Do not repeat investigation merely
   because the task changed paths.
-- After the required per-turn status line, continue without additional protocol text when the contract has
-  no hard product, write-scope, or new-authorization decision. Otherwise state the concrete impact and ask
-  one decisive question before the expanded action.
+- Continue without clarification when the contract has no hard product, write-scope, or new-authorization
+  decision. Otherwise state the concrete impact and ask one decisive question before the expanded action.
 
 ## User-visible experience
 
-For every user turn, print exactly one status line at the start of the first visible assistant response.
-Use `AI Talk：跳过` for pass-through messages and simple Fast Path work where AI Talk creates no reusable
-state or boundary control. Use `AI Talk：介入` when AI Talk maintains a DiagnosticBrief, ChangeBrief,
-RequirementContract, target or scope binding, active-task handoff, or external-write boundary; an optional
-short reason may follow on the same line. If tools are needed, the first progress update carries the status;
-otherwise the final answer carries it. Do not repeat the status in later progress updates or the final answer
-for that user turn. The status is routing visibility, not a contribution claim.
+Keep internal reasoning and protocol machinery silent. Do not print a start banner, route, authorization,
+schema fields, YAML, validator output, hidden chain of thought, candidate-by-candidate deliberation, or a
+mandatory branded reconciliation block. A plain Fast Path `skip` has no AI Talk status or contribution and
+stays silent. AI Talk has material participation only when it actually performs target binding, a boundary
+decision, a source-attributed diagnostic chain, runtime escalation, or active-state reuse that changes what
+the Agent can safely do without repeating work.
 
-Apart from the single status line, remain silent as a protocol during normal locking, validation, search,
-execution, continuation, and completion. Do not print a lock summary, route, authorization, schema fields,
-YAML, validator output, decision summary, contribution claim, or branded reconciliation block. Every simple
-Fast Path `skip` has zero contract, reference, AI Talk repository read, dedicated tool, and clarification.
+After the first material decision is established, report one compact, evidence-backed summary using only
+the applicable lines below. Never exceed three lines, and do not repeat it unless the conclusion changes:
+
+```text
+AI Talk 判断：<formed decision, not hidden reasoning>
+依据：<user statement or observed evidence already available>
+影响：<actual scope, mode, verification, or next-action effect>
+```
+
+Omit empty lines rather than inventing content. Do not claim that AI Talk prevented an error, saved time,
+or improved quality unless the conversation contains direct evidence of that effect. A clarification may
+replace the summary when the decisive question already communicates the same issue. Ordinary Agent progress
+updates remain unbranded and should report search or implementation progress only when useful.
+
+In the final response, use the natural shape of the task to report actual changed scope, observable outcomes,
+static checks, runtime verification, and unverified items. If material participation occurred, add one short
+`AI Talk 帮我们补全了：<类别：具体内容；...>` sentence. Use only the applicable Chinese labels `目标`, `范围`,
+`证据`, `状态`, `授权`, and `验收`, with at least one non-empty, evidence-backed item. Do not use generic
+claims such as “已处理”, “已完成”, or “保障质量”, and do not attribute source search, code changes, or test
+execution performed by the task Agent to AI Talk. Do not add that sentence for plain `skip` or work performed
+solely by the task Agent. Report local code changes, external drafts, fixed-dev or publication state, and
+verification level as separate facts.
 
 Diagnosis and modification use the host Agent's ordinary experience. A diagnostic final reports facts
 with sources, evidence-backed conclusions, the next unperformed verification step, and unverified
@@ -117,7 +133,7 @@ Pure diagnosis reports facts, conclusions, and unverified hypotheses without mod
   GitHub mutations, database writes, cloud changes, messages, or any other external write.
 - The main Skill may keep a directly authorized, reversible, single-target external mutation on Fast Path
   when system, operation, target, payload, exclusions, and finite readback are all explicit. It records these
-  only in conversation state, emits no contract or additional branded prompt beyond the per-turn status,
+  only in conversation state, emits no contract or branded prompt,
   matches the target before writing, and stops after the requested evidence is collected. Publishing,
   deleting, overwriting, multi-target or
   multi-system writes, and any item requiring scope interpretation remain contract-path work.
@@ -219,8 +235,8 @@ Pure diagnosis reports facts, conclusions, and unverified hypotheses without mod
   Record `changes`, one `acceptance_results` item per acceptance condition with `passed`, `failed`, or
   `unverified` plus concrete evidence, `scope_result` as `within`, `exceeded`, or `not_checked`,
   `unverified_items`, and `remaining_hypotheses`.
-- Render this state naturally in the ordinary final response; do not expose field names or add AI Talk
-  branding. A failed or unverified acceptance item remains visibly incomplete. A scope result is `within`
+- Render this state naturally in the ordinary final response; do not expose field names or add mandatory
+  AI Talk branding. Failed or unverified acceptance items remain visibly incomplete. A scope result is `within`
   only with scope-guard evidence; otherwise list actual changed files and use `not_checked`.
 - A hypothesis never becomes a completion claim. Move it to a conclusion only when direct evidence supports
   it; otherwise retain it in `remaining_hypotheses`. Keep static, runtime, external-draft, fixed-dev, release,
@@ -229,7 +245,7 @@ Pure diagnosis reports facts, conclusions, and unverified hypotheses without mod
 ## Continuations
 
 - `pass_through`: status, location, ordinary confirmation, and implementation-neutral context. Preserve
-  active state without revision and show only the required per-turn `AI Talk：跳过` status.
+  active state without revision or visible protocol output.
 - `evidence_update`: merge evidence into the active task, preserving its goal, authorization, scope, and
   verification. Without an active task, retain it only as context.
 - `behavior_report`: use `modify_and_verify + authorized` when an active coding workspace, a clear local

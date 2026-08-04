@@ -22,30 +22,38 @@ class StandaloneSkillContract(unittest.TestCase):
             ["name", "description"],
         )
         self.assertIn("name: ai-talk", frontmatter.group(1))
-        self.assertIn("每一轮用户对话", frontmatter.group(1))
-        self.assertIn("复杂研发任务", frontmatter.group(1))
+        self.assertIn("软件研发工作", frontmatter.group(1))
+        self.assertIn("明确局部任务静默走 Fast Path", frontmatter.group(1))
+        self.assertIn("只有歧义、跨模块、范围限制或外部写入风险", frontmatter.group(1))
 
         agent = AGENT.read_text()
         self.assertIn('display_name: "AI Talk"', agent)
         self.assertIn('default_prompt: "使用 $ai-talk', agent)
+        self.assertIn("简单任务保持轻量", agent)
+        self.assertIn("AI Talk 帮我们补全了什么", agent)
         self.assertIn("allow_implicit_invocation: true", agent)
         short_description = re.search(r'short_description: "([^"]+)"', agent)
         self.assertIsNotNone(short_description)
         self.assertLessEqual(25, len(short_description.group(1)))
         self.assertLessEqual(len(short_description.group(1)), 64)
 
-    def test_every_turn_has_exactly_one_visible_status(self):
+    def test_fast_path_is_silent_and_risk_escalation_is_progressive(self):
         skill = SKILL_MD.read_text()
-        self.assertIn("每个用户回合必须调用本 Skill 一次", skill)
-        self.assertIn("第一条可见助手回复的首行", skill)
-        self.assertIn("后续进度更新和最终回复不得重复状态行", skill)
-        self.assertIn("`AI Talk：跳过`", skill)
-        self.assertIn("`AI Talk：介入`", skill)
+        self.assertIn("每次调用只分类一次", skill)
+        self.assertIn("纯 Fast Path `skip` 不显示 AI Talk 状态或贡献", skill)
+        self.assertIn("文件数和工具数都不是升级理由", skill)
+        self.assertIn("只有实际产品结果、写范围或新增授权决策才询问用户", skill)
+        self.assertNotIn("AI Talk：跳过", skill)
+        self.assertNotIn("AI Talk：介入", skill)
+        self.assertNotIn("AI Talk：本轮处理", skill)
 
         protocols = (REFERENCES / "execution-protocols.md").read_text()
-        self.assertIn("print exactly one status line", protocols)
-        self.assertIn("`AI Talk：跳过`", protocols)
-        self.assertIn("`AI Talk：介入`", protocols)
+        self.assertIn("A plain Fast Path `skip` has no AI Talk status", protocols)
+        self.assertIn("File count and tool count never trigger escalation", protocols)
+        self.assertIn("AI Talk 帮我们补全了：", protocols)
+        self.assertIn("`目标`, `范围`,", protocols)
+        self.assertNotIn("per-turn status", protocols)
+        self.assertNotIn("AI Talk：本轮处理", protocols)
 
     def test_runtime_resources_are_complete(self):
         required = [
@@ -93,9 +101,17 @@ class StandaloneSkillContract(unittest.TestCase):
 
         self.assertEqual(len(simple), 20)
         self.assertEqual(len(complex_cases), 20)
-        self.assertEqual(fixture["invocation_scope"], "every_user_turn")
-        self.assertEqual(fixture["simple_acceptance"]["status"], "AI Talk：跳过")
-        self.assertEqual(fixture["complex_acceptance"]["status_prefix"], "AI Talk：介入")
+        self.assertEqual(fixture["invocation_scope"], "every_development_turn")
+        self.assertEqual(fixture["simple_acceptance"]["visible_protocol_messages_max"], 0)
+        self.assertEqual(fixture["complex_acceptance"]["material_summary_messages_max"], 1)
+        self.assertEqual(
+            fixture["complex_acceptance"]["terminal_contribution_prefix"],
+            "AI Talk 帮我们补全了：",
+        )
+        terminal = fixture["terminal_contribution_acceptance"]
+        self.assertEqual(terminal["minimum_filled_items"], 1)
+        self.assertEqual(len(terminal["allowed_labels"]), 6)
+        self.assertIn("已完成", terminal["forbidden_phrases"])
         self.assertTrue(all(not case["expected_material_intervention"] for case in simple))
         self.assertTrue(all(case["expected_material_intervention"] for case in complex_cases))
         self.assertTrue(all(case["expected_artifact"] for case in complex_cases))
