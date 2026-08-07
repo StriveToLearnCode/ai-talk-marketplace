@@ -3,3 +3,5 @@ __pycache__/
 .venv/
 .DS_Store
 docs/skills/
+.plugin-eval/runs/
+.plugin-eval/benchmark-usage.jsonl

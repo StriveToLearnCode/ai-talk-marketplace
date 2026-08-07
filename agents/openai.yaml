@@ -1,7 +1,7 @@
 interface:
   display_name: "AI Talk"
-  short_description: "连续保存任务状态，实际介入后说明AI Talk具体补全项"
-  default_prompt: "使用 $ai-talk 连续处理这条研发任务；简单任务保持轻量，实际介入时按目标、范围、证据、状态、授权或验收说明 AI Talk 帮我们补全了什么。"
+  short_description: "每次使用都说明这一次具体做了什么，复杂状态持续保护"
+  default_prompt: "使用 $ai-talk 处理当前研发请求；完成 AI Talk 读取、分析和必要状态操作后，下一段立刻输出 `AI Talk 分析结果：<本次具体作用>`，再开始业务检索或实现，不能拖到最终总结；仅在纠正、边界、已确认结果或跨上下文时持久化状态。"
 
 policy:
   allow_implicit_invocation: true

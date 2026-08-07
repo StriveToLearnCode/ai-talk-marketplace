@@ -1,0 +1,80 @@
+{
+  "schema_version": 1,
+  "policy": "every_development_request",
+  "dimensions": ["load_skill", "persist_state", "visible_output"],
+  "visible_output_contract": {
+    "prefix": "AI Talk 分析结果：",
+    "timing": "immediately_after_ai_talk_processing",
+    "must_precede": ["业务目录定位", "源码检索", "实现", "验证"],
+    "final_summary_is_too_late": true
+  },
+  "cases": [
+    {
+      "id": "single-local-edit",
+      "message": "把 button.css:18 的文字颜色改成 #222",
+      "expected": {"load_skill": true, "persist_state": false, "visible_output": true}
+    },
+    {
+      "id": "single-local-diagnosis",
+      "message": "排查 src/date.ts:42 为什么会读取 undefined",
+      "expected": {"load_skill": true, "persist_state": false, "visible_output": true}
+    },
+    {
+      "id": "code-review",
+      "message": "评审当前分支的 Go 改动，先列出高风险问题",
+      "expected": {"load_skill": true, "persist_state": false, "visible_output": true}
+    },
+    {
+      "id": "short-continuation",
+      "conversation_context": "当前对话正在实现活动页截图 1I",
+      "message": "完成1I",
+      "expected": {"load_skill": true, "persist_state": false, "visible_output": true}
+    },
+    {
+      "id": "confirmed-result",
+      "message": "位置现在对了，不能再动布局；只补四个奖励名称",
+      "expected": {"load_skill": true, "persist_state": true, "visible_output": true}
+    },
+    {
+      "id": "explicit-boundary",
+      "message": "修复充值页，只改当前活动，不改公共组件，也不要发布",
+      "expected": {"load_skill": true, "persist_state": true, "visible_output": true}
+    },
+    {
+      "id": "context-handoff",
+      "message": "上下文压缩后继续，沿用前面确认的目标和验收",
+      "expected": {"load_skill": true, "persist_state": true, "visible_output": true}
+    },
+    {
+      "id": "ai-talk-implementation",
+      "message": "修改 AI Talk 的触发描述并补回归测试",
+      "expected": {"load_skill": true, "persist_state": true, "visible_output": true}
+    },
+    {
+      "id": "non-development",
+      "message": "推荐一部周末看的电影",
+      "expected": {"load_skill": false, "persist_state": false, "visible_output": false}
+    },
+    {
+      "id": "ordinary-status",
+      "conversation_context": "当前对话正在实现活动页",
+      "message": "现在进度怎么样了",
+      "expected": {"load_skill": false, "persist_state": false, "visible_output": false}
+    },
+    {
+      "id": "preference-feedback",
+      "message": "以后更新少写一点，太机械了",
+      "expected": {"load_skill": false, "persist_state": false, "visible_output": false}
+    },
+    {
+      "id": "meta-without-change",
+      "message": "AI Talk 对你有帮助吗",
+      "expected": {"load_skill": false, "persist_state": false, "visible_output": false}
+    },
+    {
+      "id": "quoted-context-only",
+      "message": "这是上次的实现记录：把充值页 RTL 偏移修好了。",
+      "expected": {"load_skill": false, "persist_state": false, "visible_output": false}
+    }
+  ]
+}
