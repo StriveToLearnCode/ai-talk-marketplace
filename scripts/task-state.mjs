@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { createHash } from "node:crypto";
-import { mkdir, chmod, readFile, readdir, realpath, rename, writeFile } from "node:fs/promises";
+import { mkdir, chmod, readFile, readdir, rename, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import process from "node:process";
@@ -9,7 +9,7 @@ import { pathToFileURL } from "node:url";
 
 import { collectTaskContext } from "./collect-task-context.mjs";
 
-const VERSION = 1;
+const VERSION = 2;
 const MAX_ITEMS = 8;
 const MAX_STATE_BYTES = 32 * 1024;
 
@@ -63,15 +63,47 @@ function records(values, field, normalize) {
   if (values.length > MAX_ITEMS) throw new Error(`${field} cannot contain more than ${MAX_ITEMS} items`);
   const seen = new Set();
   return values.map((item, index) => normalize(item, `${field}[${index}]`)).filter((item) => {
-    const key = `${item.name || ""}\0${item.kind || ""}\0${item.value}`;
+    const key = `${item.kind || ""}\0${item.value}`;
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
   });
 }
 
+function migrateLegacy(raw) {
+  if (raw.current_goal) return raw;
+  const verifiedFacts = (raw.confirmed_results || []).map((item) => ({
+    value: item.value,
+    source: item.source,
+    verified_by: item.source === "user" ? "user" : "source",
+    protected: true,
+    evidence: item.evidence,
+  }));
+  for (const item of raw.acceptance || []) {
+    if (item.status === "verified") {
+      verifiedFacts.push({
+        value: item.value,
+        source: item.source,
+        verified_by: "runtime",
+        evidence: item.evidence,
+      });
+    }
+  }
+  return {
+    ...raw,
+    current_goal: raw.goal,
+    change_boundaries: [
+      ...(raw.boundaries || []),
+      ...(raw.corrections || []).map((item) => ({ ...item, kind: "constraint" })),
+    ],
+    verified_facts: verifiedFacts,
+    pending_checks: (raw.acceptance || []).filter((item) => item.status !== "verified"),
+    completion_criteria: raw.acceptance || [],
+  };
+}
+
 function normalizeState(rawState, taskKey) {
-  const raw = rawState?.task_state || rawState;
+  const raw = migrateLegacy(rawState?.task_state || rawState);
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
     throw new Error("state must be a JSON object");
   }
@@ -84,47 +116,34 @@ function normalizeState(rawState, taskKey) {
     version: VERSION,
     task_key: requireText(taskKey || raw.task_key, "task_key", 300),
     status,
-    goal: sourceRecord(raw.goal, "goal"),
-    confirmed_results: records(raw.confirmed_results, "confirmed_results", (item, field) => {
-      const record = sourceRecord(item, field, { status: "protected" });
-      const validWhen = optionalText(item.valid_when, `${field}.valid_when`);
-      const evidence = optionalText(item.evidence, `${field}.evidence`);
-      if (validWhen) record.valid_when = validWhen;
-      if (evidence) record.evidence = evidence;
-      return record;
-    }),
-    corrections: records(raw.corrections, "corrections", (item, field) => {
-      const record = sourceRecord(item, field);
-      const replaces = optionalText(item.replaces, `${field}.replaces`);
-      if (replaces) record.replaces = replaces;
-      return record;
-    }),
-    boundaries: records(raw.boundaries, "boundaries", (item, field) => {
+    current_goal: sourceRecord(raw.current_goal, "current_goal"),
+    change_boundaries: records(raw.change_boundaries, "change_boundaries", (item, field) => {
       const kind = item?.kind;
-      if (!["allowed", "prohibited"].includes(kind)) {
-        throw new Error(`${field}.kind must be allowed or prohibited`);
+      if (!["allowed", "prohibited", "constraint"].includes(kind)) {
+        throw new Error(`${field}.kind must be allowed, prohibited, or constraint`);
       }
       return sourceRecord(item, field, { kind });
     }),
-    acceptance: records(raw.acceptance, "acceptance", (item, field) => {
-      const acceptanceStatus = item?.status || "pending";
-      if (!["pending", "verified"].includes(acceptanceStatus)) {
-        throw new Error(`${field}.status must be pending or verified`);
+    verified_facts: records(raw.verified_facts, "verified_facts", (item, field) => {
+      const verifiedBy = item?.verified_by;
+      if (!["source", "runtime", "user"].includes(verifiedBy)) {
+        throw new Error(`${field}.verified_by must be source, runtime, or user`);
       }
-      const record = sourceRecord(item, field, { status: acceptanceStatus });
-      const validWhen = optionalText(item.valid_when, `${field}.valid_when`);
+      const record = sourceRecord(item, field, { verified_by: verifiedBy });
+      if (item.protected === true) record.protected = true;
       const evidence = optionalText(item.evidence, `${field}.evidence`);
-      if (validWhen) record.valid_when = validWhen;
+      const validWhen = optionalText(item.valid_when, `${field}.valid_when`);
       if (evidence) record.evidence = evidence;
+      if (validWhen) record.valid_when = validWhen;
       return record;
     }),
-    bindings: records(raw.bindings, "bindings", (item, field) => ({
-      name: requireText(item?.name, `${field}.name`, 200),
-      value: requireText(item?.value, `${field}.value`),
-      source: requireText(item?.source, `${field}.source`, 300),
-    })),
+    pending_checks: records(raw.pending_checks, "pending_checks", sourceRecord),
+    completion_criteria: records(raw.completion_criteria, "completion_criteria", sourceRecord),
   };
-  if (status !== "complete") {
+
+  if (status === "complete") {
+    if (state.pending_checks.length) throw new Error("complete states cannot contain pending_checks");
+  } else {
     if (!raw.next_action) throw new Error("active and blocked states require next_action");
     state.next_action = sourceRecord(raw.next_action, "next_action");
   }
@@ -144,39 +163,44 @@ function stateFile(storeRoot, activityDirectory, taskKey) {
   return path.join(storeRoot, `${digest}.json`);
 }
 
-async function canonicalRoot(root) {
-  return realpath(path.resolve(root));
+async function resolvedContext(root, targets = []) {
+  return collectTaskContext({ root: root || process.cwd(), targets });
+}
+
+function workspaceFrom(context) {
+  return {
+    repository_root: context.repository.root,
+    branch: context.repository.branch,
+    head: context.repository.head,
+    activity_directory: context.activity_directory,
+    activity_source: context.activity_source,
+    activity_conflict: context.activity_conflict,
+    page_directory: context.page_directory,
+    page_candidates: context.page_candidates,
+    agents_file: context.agents_file,
+    target_files: context.target_files.map(({ observed_at: _observedAt, ...target }) => target),
+  };
 }
 
 export async function saveTaskState({ root, taskKey, state, targets = [], storeRoot } = {}) {
-  const activityDirectory = await canonicalRoot(root || process.cwd());
+  const context = await resolvedContext(root, targets);
   const normalized = normalizeState(state, taskKey);
-  const context = await collectTaskContext({ root: activityDirectory, targets });
   const directory = path.resolve(storeRoot || defaultStoreRoot());
-  const file = stateFile(directory, activityDirectory, normalized.task_key);
+  const file = stateFile(directory, context.activity_directory, normalized.task_key);
+  const workspace = workspaceFrom(context);
   try {
     const existing = JSON.parse(await readFile(file, "utf8"));
     const { workspace: _workspace, updated_at: _updatedAt, ...existingState } = existing;
-    const existingTargets = (existing.workspace?.target_files || []).map((item) => item.path).sort();
-    const requestedTargets = context.target_files.map((item) => item.path).sort();
-    if (
-      JSON.stringify(existingState) === JSON.stringify(normalized)
-      && JSON.stringify(existingTargets) === JSON.stringify(requestedTargets)
-    ) {
+    if (JSON.stringify(existingState) === JSON.stringify(normalized)
+      && JSON.stringify(existing.workspace) === JSON.stringify(workspace)) {
       return existing;
     }
   } catch (error) {
     if (error?.code !== "ENOENT" && !(error instanceof SyntaxError)) throw error;
   }
 
-  normalized.workspace = {
-    activity_directory: activityDirectory,
-    branch: context.repository?.branch || null,
-    head: context.repository?.head || null,
-    target_files: context.target_files,
-  };
+  normalized.workspace = workspace;
   normalized.updated_at = new Date().toISOString();
-
   const serialized = `${JSON.stringify(normalized, null, 2)}\n`;
   if (Buffer.byteLength(serialized) > MAX_STATE_BYTES) {
     throw new Error(`state exceeds ${MAX_STATE_BYTES} bytes`);
@@ -191,9 +215,9 @@ export async function saveTaskState({ root, taskKey, state, targets = [], storeR
 }
 
 export async function loadTaskState({ root, taskKey, storeRoot } = {}) {
-  const activityDirectory = await canonicalRoot(root || process.cwd());
+  const context = await resolvedContext(root);
   const key = requireText(taskKey, "task_key", 300);
-  const file = stateFile(path.resolve(storeRoot || defaultStoreRoot()), activityDirectory, key);
+  const file = stateFile(path.resolve(storeRoot || defaultStoreRoot()), context.activity_directory, key);
   let content;
   try {
     content = await readFile(file, "utf8");
@@ -201,15 +225,15 @@ export async function loadTaskState({ root, taskKey, storeRoot } = {}) {
     if (error?.code === "ENOENT") throw new Error(`No saved AI Talk state for task: ${key}`);
     throw error;
   }
-  const state = JSON.parse(content);
-  if (state.workspace?.activity_directory !== activityDirectory || state.task_key !== key) {
+  const saved = JSON.parse(content);
+  if (saved.workspace?.activity_directory !== context.activity_directory || saved.task_key !== key) {
     throw new Error("Saved state identity does not match the requested task");
   }
-  return state;
+  return { ...normalizeState(saved, key), workspace: saved.workspace, updated_at: saved.updated_at };
 }
 
 export async function listTaskStates({ root, storeRoot } = {}) {
-  const activityDirectory = await canonicalRoot(root || process.cwd());
+  const context = await resolvedContext(root);
   const directory = path.resolve(storeRoot || defaultStoreRoot());
   let names;
   try {
@@ -222,11 +246,11 @@ export async function listTaskStates({ root, storeRoot } = {}) {
   for (const name of names.filter((entry) => entry.endsWith(".json")).sort()) {
     try {
       const state = JSON.parse(await readFile(path.join(directory, name), "utf8"));
-      if (state.workspace?.activity_directory === activityDirectory) {
+      if (state.workspace?.activity_directory === context.activity_directory) {
         states.push({
           task_key: state.task_key,
           status: state.status,
-          goal: state.goal?.value,
+          current_goal: state.current_goal?.value || state.goal?.value,
           updated_at: typeof state.updated_at === "string" ? state.updated_at : "",
         });
       }
@@ -237,30 +261,40 @@ export async function listTaskStates({ root, storeRoot } = {}) {
   return states.sort((left, right) => right.updated_at.localeCompare(left.updated_at));
 }
 
-function joined(recordsToJoin) {
-  return recordsToJoin.map((item) => item.value).join("；");
+function joined(items) {
+  return items.map((item) => item.value).join("；");
 }
 
 export async function buildPreflight({ root, taskKey, storeRoot } = {}) {
   const state = await loadTaskState({ root, taskKey, storeRoot });
   const targets = state.workspace?.target_files?.map((item) => item.path) || [];
-  const current = await collectTaskContext({ root: state.workspace.activity_directory, targets });
+  const current = await collectTaskContext({
+    root: state.workspace.repository_root || state.workspace.activity_directory,
+    targets,
+  });
   const currentByPath = new Map(current.target_files.map((item) => [item.path, item.fingerprint?.sha256 || null]));
   const changed = (state.workspace.target_files || [])
     .filter((item) => (item.fingerprint?.sha256 || null) !== currentByPath.get(item.path))
     .map((item) => item.path);
+  const protectedFacts = state.verified_facts.filter((item) => item.protected);
 
-  const lines = [`当前唯一目标：${state.goal.value}`];
-  if (state.confirmed_results.length) lines.push(`不可回归：${joined(state.confirmed_results)}`);
-  if (state.corrections.length) lines.push(`用户纠正：${joined(state.corrections)}`);
-  const allowed = state.boundaries.filter((item) => item.kind === "allowed");
-  const prohibited = state.boundaries.filter((item) => item.kind === "prohibited");
-  if (allowed.length) lines.push(`允许：${joined(allowed)}`);
-  if (prohibited.length) lines.push(`禁止：${joined(prohibited)}`);
-  if (state.acceptance.length) {
-    lines.push(`验收：${state.acceptance.map((item) => `${item.value}[${item.status === "verified" ? "已验证" : "待验证"}]`).join("；")}`);
+  const lines = [`当前目标：${state.current_goal.value}`];
+  if (state.change_boundaries.length) lines.push(`修改边界：${joined(state.change_boundaries)}`);
+  if (protectedFacts.length) lines.push(`不可回归：${joined(protectedFacts)}`);
+  if (state.verified_facts.length) lines.push(`已确认事实：${joined(state.verified_facts)}`);
+  if (state.pending_checks.length) lines.push(`待验证：${joined(state.pending_checks)}`);
+  if (state.completion_criteria.length) lines.push(`完成条件：${joined(state.completion_criteria)}`);
+  if (state.next_action) lines.push(`唯一下一步：${state.next_action.value}`);
+  lines.push(`定位：${current.activity_directory}${current.page_directory ? ` | ${current.page_directory}` : ""}${current.agents_file ? ` | ${current.agents_file}` : ""}`);
+  if (current.activity_conflict) {
+    lines.push(`活动目录冲突：路径指向 ${current.activity_conflict.path}，分支指向 ${current.activity_conflict.branch}`);
   }
-  if (state.next_action) lines.push(`下一步：${state.next_action.value}`);
+  if (state.workspace.branch !== current.repository.branch) {
+    lines.push(`分支已变化：${state.workspace.branch || "(detached)"} -> ${current.repository.branch || "(detached)"}`);
+  }
+  if (state.workspace.agents_file !== current.agents_file) {
+    lines.push("最近的 AGENTS.md 已变化，修改前必须读取当前文件");
+  }
   if (changed.length) lines.push(`基线后变化（修改者未知，必须基于现状合并）：${changed.join("、")}`);
   return { state, changed_files: changed, text: lines.join("\n") };
 }

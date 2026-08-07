@@ -2,7 +2,7 @@
 
 import { createHash } from "node:crypto";
 import { execFile } from "node:child_process";
-import { lstat, readFile, realpath, stat } from "node:fs/promises";
+import { lstat, readFile, readdir, realpath, stat } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
@@ -49,12 +49,29 @@ async function fingerprint(file) {
   }
 }
 
-async function git(root, args, { trim = true } = {}) {
-  const output = (await execFileAsync("git", ["-C", root, ...args], {
+async function directoryExists(directory) {
+  try {
+    return (await stat(directory)).isDirectory();
+  } catch (error) {
+    if (error?.code === "ENOENT") return false;
+    throw error;
+  }
+}
+
+async function fileExists(file) {
+  try {
+    return (await stat(file)).isFile();
+  } catch (error) {
+    if (error?.code === "ENOENT") return false;
+    throw error;
+  }
+}
+
+async function git(root, args) {
+  return (await execFileAsync("git", ["-C", root, ...args], {
     encoding: "utf8",
     maxBuffer: 4 * 1024 * 1024,
-  })).stdout;
-  return trim ? output.trim() : output;
+  })).stdout.trim();
 }
 
 async function gitOrNull(root, args) {
@@ -65,66 +82,112 @@ async function gitOrNull(root, args) {
   }
 }
 
-function statusEntries(output) {
-  const tokens = output.split("\0");
-  const entries = [];
-  for (let index = 0; index < tokens.length; index += 1) {
-    const token = tokens[index];
-    if (!token) continue;
-    const code = token.slice(0, 2);
-    const file = token.slice(3);
-    const entry = { path: file, status: code, source: "git_status" };
-    if (/[RC]/u.test(code) && tokens[index + 1]) entry.previous_path = tokens[++index];
-    entries.push(entry);
+function activityFromPath(gitRoot, location) {
+  const parts = path.relative(gitRoot, location).split(path.sep);
+  const appsIndex = parts.indexOf("apps");
+  if (appsIndex < 0 || !["short", "long", "mdc"].includes(parts[appsIndex + 1]) || !parts[appsIndex + 2]) {
+    return null;
   }
-  return entries;
+  return path.join(gitRoot, ...parts.slice(0, appsIndex + 3));
+}
+
+async function activityFromBranch(gitRoot, branch) {
+  let relative;
+  if (branch?.startsWith("act-") && branch.length > 4) {
+    relative = path.join("apps", "short", branch.slice(4));
+  } else if (branch?.startsWith("mdc-") && branch.length > 4) {
+    relative = path.join("apps", "mdc", branch.slice(4));
+  }
+  if (!relative) return null;
+  const candidate = path.join(gitRoot, relative);
+  return (await directoryExists(candidate)) ? candidate : null;
+}
+
+function pageFromLocation(activityDirectory, location) {
+  if (!activityDirectory || !within(activityDirectory, location)) return null;
+  const parts = path.relative(activityDirectory, location).split(path.sep);
+  const pageIndex = parts.findIndex((part) => /^pages(?:-|$)/iu.test(part));
+  return pageIndex < 0 ? null : path.join(activityDirectory, ...parts.slice(0, pageIndex + 1));
+}
+
+async function pageDirectories(activityDirectory, locations) {
+  const candidates = new Set(locations.map((location) => pageFromLocation(activityDirectory, location)).filter(Boolean));
+  if (candidates.size === 0 && activityDirectory) {
+    for (const entry of await readdir(activityDirectory, { withFileTypes: true })) {
+      if (entry.isDirectory() && /^pages(?:-|$)/iu.test(entry.name)) {
+        candidates.add(path.join(activityDirectory, entry.name));
+      }
+    }
+  }
+  return [...candidates].sort();
+}
+
+async function nearestAgentsFile(start, stop) {
+  let current = start;
+  while (within(stop, current)) {
+    const candidate = path.join(current, "AGENTS.md");
+    if (await fileExists(candidate)) return candidate;
+    if (current === stop) break;
+    current = path.dirname(current);
+  }
+  return null;
 }
 
 export async function collectTaskContext({ root = process.cwd(), targets = [] } = {}) {
-  const activityDirectory = await realpath(path.resolve(root));
-  if (!(await stat(activityDirectory)).isDirectory()) throw new Error(`Not a directory: ${root}`);
-  const observedAt = new Date().toISOString();
+  const inputDirectory = await realpath(path.resolve(root));
+  if (!(await stat(inputDirectory)).isDirectory()) throw new Error(`Not a directory: ${root}`);
 
-  let repository = null;
-  let changedFiles = [];
+  let gitRoot = inputDirectory;
+  let branch = null;
+  let head = null;
   try {
-    const gitRoot = await realpath(await git(activityDirectory, ["rev-parse", "--show-toplevel"]));
-    if (!within(gitRoot, activityDirectory)) throw new Error("Activity directory escapes Git root");
-    changedFiles = statusEntries(await git(
-      activityDirectory,
-      ["status", "--porcelain=v1", "-z", "--untracked-files=all"],
-      { trim: false },
-    ));
-    repository = {
-      root: gitRoot,
-      branch: (await git(activityDirectory, ["branch", "--show-current"])) || null,
-      head: await gitOrNull(activityDirectory, ["rev-parse", "--verify", "HEAD"]),
-    };
-    for (const entry of changedFiles) {
-      entry.observed_at = observedAt;
-      entry.fingerprint = await fingerprint(path.resolve(gitRoot, entry.path));
-    }
+    gitRoot = await realpath(await git(inputDirectory, ["rev-parse", "--show-toplevel"]));
+    branch = (await git(inputDirectory, ["branch", "--show-current"])) || null;
+    head = await gitOrNull(inputDirectory, ["rev-parse", "--verify", "HEAD"]);
   } catch (error) {
     if (!/not a git repository/iu.test(error?.stderr || error?.message || "")) throw error;
   }
 
+  const absoluteTargets = targets.map((target) => path.resolve(inputDirectory, target));
+  for (const target of absoluteTargets) {
+    if (!within(gitRoot, target)) throw new Error(`Target escapes repository: ${target}`);
+  }
+
+  const pathActivity = activityFromPath(gitRoot, inputDirectory)
+    || absoluteTargets.map((target) => activityFromPath(gitRoot, target)).find(Boolean);
+  const branchActivity = await activityFromBranch(gitRoot, branch);
+  const activityConflict = pathActivity && branchActivity && pathActivity !== branchActivity
+    ? { path: pathActivity, branch: branchActivity }
+    : null;
+  const activityDirectory = pathActivity || branchActivity || inputDirectory;
+  const activitySource = pathActivity ? "path" : branchActivity ? "branch" : "current_directory";
+  const pages = await pageDirectories(activityDirectory, [inputDirectory, ...absoluteTargets]);
+  const pageDirectory = pages.length === 1 ? pages[0] : null;
+  const agentsStart = absoluteTargets.length === 1
+    ? path.dirname(absoluteTargets[0])
+    : pageDirectory || activityDirectory;
+  const agentsFile = await nearestAgentsFile(agentsStart, gitRoot);
+  const observedAt = new Date().toISOString();
+
   const targetFiles = [];
-  for (const target of targets) {
-    const absolute = path.resolve(activityDirectory, target);
-    if (!within(activityDirectory, absolute)) throw new Error(`Target escapes activity directory: ${target}`);
+  for (const target of absoluteTargets) {
     targetFiles.push({
-      path: path.relative(activityDirectory, absolute) || ".",
+      path: path.relative(gitRoot, target) || ".",
       observed_at: observedAt,
-      fingerprint: await fingerprint(absolute),
+      fingerprint: await fingerprint(target),
     });
   }
 
   return {
-    version: 1,
+    version: 2,
     observed_at: observedAt,
+    repository: { root: gitRoot, branch, head },
     activity_directory: activityDirectory,
-    repository,
-    changed_files: changedFiles,
+    activity_source: activitySource,
+    activity_conflict: activityConflict,
+    page_directory: pageDirectory,
+    page_candidates: pages.length > 1 ? pages : [],
+    agents_file: agentsFile,
     target_files: targetFiles,
   };
 }
