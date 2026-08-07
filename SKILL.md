@@ -10,7 +10,7 @@ description: Use when 发起或继续软件研发工作，包括修改、排查�
 ## 工作流
 
 1. 从用户最新要求提取一个可观察的 `current_goal`，同时明确 `change_boundaries`、`completion_criteria` 和唯一 `next_action`。本地修改不推导出 commit、push、发布或外部写入权限。
-2. 在活动仓库运行 `scripts/collect-task-context.mjs --root <当前工作区> [--target <目标文件> ...]`。采用脚本核实的当前分支、活动目录、页面目录和最近的 `AGENTS.md`；分支定位与用户明确路径冲突时只问一个决定性问题。读取最近的 `AGENTS.md`，不要把其编码规则复制进任务状态。
+2. 运行 `node <skill-dir>/scripts/collect-task-context.mjs --root <当前工作区> [--target <目标文件> ...]`，其中 `<skill-dir>` 是本 Skill 根目录。采用脚本核实的当前分支、活动目录、页面目录和最近的 `AGENTS.md`；分支定位与用户明确路径冲突时只问一个决定性问题。读取最近的 `AGENTS.md`，不要把其编码规则复制进任务状态。
 3. 只把经过源码或运行验证的信息加入 `verified_facts`：实际负责目标区域的组件、已核实的接口或配置 key、通过的测试，以及用户明确要求不可回归的结果。每项带简短来源和验证方式；文件名猜测、模型记忆、未运行的测试和单独截图不算已验证事实。
 4. 把尚未得到证据的验收动作放入 `pending_checks`。每完成一步，立即删除已完成检查，按结果补充 `verified_facts`，并把 `next_action` 替换为新的唯一下一步。代码写完但仍有 `pending_checks` 时不得宣告完成。
 5. 修改前先检查所有 `protected: true` 的事实和禁止边界；已有持久状态时运行 `preflight`。目标文件、分支或最近的 `AGENTS.md` 变化后，重读现状并基于当前内容合并，不能覆盖来源未知的变化。

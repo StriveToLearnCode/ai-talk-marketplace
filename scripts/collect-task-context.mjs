@@ -49,6 +49,11 @@ async function fingerprint(file) {
   }
 }
 
+async function contentFingerprint(file) {
+  const content = await readFile(file);
+  return { sha256: createHash("sha256").update(content).digest("hex") };
+}
+
 async function directoryExists(directory) {
   try {
     return (await stat(directory)).isDirectory();
@@ -153,20 +158,28 @@ export async function collectTaskContext({ root = process.cwd(), targets = [] } 
     if (!within(gitRoot, target)) throw new Error(`Target escapes repository: ${target}`);
   }
 
-  const pathActivity = activityFromPath(gitRoot, inputDirectory)
-    || absoluteTargets.map((target) => activityFromPath(gitRoot, target)).find(Boolean);
+  const targetActivities = [...new Set(
+    absoluteTargets.map((target) => activityFromPath(gitRoot, target)).filter(Boolean),
+  )];
+  const ambiguousTargetActivities = targetActivities.length > 1;
+  const targetActivity = targetActivities.length === 1 ? targetActivities[0] : null;
+  const rootActivity = activityFromPath(gitRoot, inputDirectory);
+  const pathActivity = ambiguousTargetActivities ? null : targetActivity || rootActivity;
   const branchActivity = await activityFromBranch(gitRoot, branch);
-  const activityConflict = pathActivity && branchActivity && pathActivity !== branchActivity
+  const activityConflict = !ambiguousTargetActivities && pathActivity && branchActivity && pathActivity !== branchActivity
     ? { path: pathActivity, branch: branchActivity }
     : null;
-  const activityDirectory = pathActivity || branchActivity || inputDirectory;
-  const activitySource = pathActivity ? "path" : branchActivity ? "branch" : "current_directory";
+  const activityDirectory = ambiguousTargetActivities ? gitRoot : pathActivity || branchActivity || inputDirectory;
+  const activitySource = ambiguousTargetActivities
+    ? "ambiguous_targets"
+    : targetActivity ? "target" : rootActivity ? "path" : branchActivity ? "branch" : "current_directory";
   const pages = await pageDirectories(activityDirectory, [inputDirectory, ...absoluteTargets]);
   const pageDirectory = pages.length === 1 ? pages[0] : null;
   const agentsStart = absoluteTargets.length === 1
     ? path.dirname(absoluteTargets[0])
     : pageDirectory || activityDirectory;
   const agentsFile = await nearestAgentsFile(agentsStart, gitRoot);
+  const agentsFingerprint = agentsFile ? await contentFingerprint(agentsFile) : null;
   const observedAt = new Date().toISOString();
 
   const targetFiles = [];
@@ -179,15 +192,17 @@ export async function collectTaskContext({ root = process.cwd(), targets = [] } 
   }
 
   return {
-    version: 2,
+    version: 3,
     observed_at: observedAt,
     repository: { root: gitRoot, branch, head },
     activity_directory: activityDirectory,
     activity_source: activitySource,
     activity_conflict: activityConflict,
+    target_activity_candidates: targetActivities.length > 1 ? targetActivities : [],
     page_directory: pageDirectory,
     page_candidates: pages.length > 1 ? pages : [],
     agents_file: agentsFile,
+    agents_fingerprint: agentsFingerprint,
     target_files: targetFiles,
   };
 }

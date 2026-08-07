@@ -9,7 +9,7 @@ import { pathToFileURL } from "node:url";
 
 import { collectTaskContext } from "./collect-task-context.mjs";
 
-const VERSION = 2;
+const VERSION = 3;
 const MAX_ITEMS = 8;
 const MAX_STATE_BYTES = 32 * 1024;
 
@@ -70,8 +70,49 @@ function records(values, field, normalize) {
   });
 }
 
-function migrateLegacy(raw) {
-  if (raw.current_goal) return raw;
+function criterionId(value) {
+  return `criterion-${createHash("sha256").update(value.trim()).digest("hex").slice(0, 12)}`;
+}
+
+function withCriterionId(item) {
+  if (item?.id || typeof item?.value !== "string") return item;
+  return { ...item, id: criterionId(item.value) };
+}
+
+function migrateState(raw) {
+  if (raw.current_goal) {
+    const criteria = (raw.completion_criteria || []).map(withCriterionId);
+    let facts = raw.verified_facts || [];
+    let status = raw.status;
+    let pendingChecks = raw.pending_checks || [];
+    let nextAction = raw.next_action;
+    if (raw.version && raw.version < VERSION && raw.status === "complete") {
+      facts = facts.map((fact) => {
+        if (fact.satisfies?.length) return fact;
+        const exact = criteria.filter((criterion) => criterion.value === fact.value);
+        if (exact.length) return { ...fact, satisfies: exact.map((criterion) => criterion.id) };
+        return fact;
+      });
+      const satisfied = new Set(facts.flatMap((fact) => fact.satisfies || []));
+      const missing = criteria.filter((criterion) => !satisfied.has(criterion.id));
+      if (!criteria.length || missing.length) {
+        status = "active";
+        pendingChecks = missing.length
+          ? missing.map((criterion) => ({ value: `重新验证：${criterion.value}`, source: "migration:v2" }))
+          : [{ value: "补充完成条件并重新验证", source: "migration:v2" }];
+        nextAction = { value: pendingChecks[0].value, source: "migration:v2" };
+      }
+    }
+    return {
+      ...raw,
+      status,
+      verified_facts: facts,
+      pending_checks: pendingChecks,
+      completion_criteria: criteria,
+      next_action: nextAction,
+    };
+  }
+  const criteria = (raw.acceptance || []).map(withCriterionId);
   const verifiedFacts = (raw.confirmed_results || []).map((item) => ({
     value: item.value,
     source: item.source,
@@ -79,13 +120,14 @@ function migrateLegacy(raw) {
     protected: true,
     evidence: item.evidence,
   }));
-  for (const item of raw.acceptance || []) {
+  for (const [index, item] of (raw.acceptance || []).entries()) {
     if (item.status === "verified") {
       verifiedFacts.push({
         value: item.value,
         source: item.source,
         verified_by: "runtime",
         evidence: item.evidence,
+        satisfies: [criteria[index].id],
       });
     }
   }
@@ -98,12 +140,12 @@ function migrateLegacy(raw) {
     ],
     verified_facts: verifiedFacts,
     pending_checks: (raw.acceptance || []).filter((item) => item.status !== "verified"),
-    completion_criteria: raw.acceptance || [],
+    completion_criteria: criteria,
   };
 }
 
 function normalizeState(rawState, taskKey) {
-  const raw = migrateLegacy(rawState?.task_state || rawState);
+  const raw = migrateState(rawState?.task_state || rawState);
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
     throw new Error("state must be a JSON object");
   }
@@ -133,16 +175,41 @@ function normalizeState(rawState, taskKey) {
       if (item.protected === true) record.protected = true;
       const evidence = optionalText(item.evidence, `${field}.evidence`);
       const validWhen = optionalText(item.valid_when, `${field}.valid_when`);
+      const satisfies = item.satisfies === undefined
+        ? []
+        : records(item.satisfies, `${field}.satisfies`, (id, idField) => ({
+          value: requireText(id, idField, 100),
+        })).map(({ value }) => value);
       if (evidence) record.evidence = evidence;
       if (validWhen) record.valid_when = validWhen;
+      if (satisfies.length) record.satisfies = satisfies;
       return record;
     }),
     pending_checks: records(raw.pending_checks, "pending_checks", sourceRecord),
-    completion_criteria: records(raw.completion_criteria, "completion_criteria", sourceRecord),
+    completion_criteria: records(raw.completion_criteria, "completion_criteria", (item, field) => ({
+      id: requireText(item?.id, `${field}.id`, 100),
+      ...sourceRecord(item, field),
+    })),
   };
+
+  const criterionIds = new Set(state.completion_criteria.map((criterion) => criterion.id));
+  if (criterionIds.size !== state.completion_criteria.length) {
+    throw new Error("completion_criteria ids must be unique");
+  }
+  for (const fact of state.verified_facts) {
+    for (const id of fact.satisfies || []) {
+      if (!criterionIds.has(id)) throw new Error(`verified_facts.satisfies references unknown criterion: ${id}`);
+    }
+  }
 
   if (status === "complete") {
     if (state.pending_checks.length) throw new Error("complete states cannot contain pending_checks");
+    if (!state.completion_criteria.length) throw new Error("complete states require completion_criteria");
+    const satisfied = new Set(state.verified_facts.flatMap((fact) => fact.satisfies || []));
+    const missing = state.completion_criteria.filter((criterion) => !satisfied.has(criterion.id));
+    if (missing.length) {
+      throw new Error(`complete state lacks verified facts for criteria: ${missing.map((item) => item.id).join(", ")}`);
+    }
   } else {
     if (!raw.next_action) throw new Error("active and blocked states require next_action");
     state.next_action = sourceRecord(raw.next_action, "next_action");
@@ -175,9 +242,11 @@ function workspaceFrom(context) {
     activity_directory: context.activity_directory,
     activity_source: context.activity_source,
     activity_conflict: context.activity_conflict,
+    target_activity_candidates: context.target_activity_candidates,
     page_directory: context.page_directory,
     page_candidates: context.page_candidates,
     agents_file: context.agents_file,
+    agents_fingerprint: context.agents_fingerprint,
     target_files: context.target_files.map(({ observed_at: _observedAt, ...target }) => target),
   };
 }
@@ -294,6 +363,10 @@ export async function buildPreflight({ root, taskKey, storeRoot } = {}) {
   }
   if (state.workspace.agents_file !== current.agents_file) {
     lines.push("最近的 AGENTS.md 已变化，修改前必须读取当前文件");
+  } else if (state.workspace.agents_file && !state.workspace.agents_fingerprint) {
+    lines.push("状态基线没有 AGENTS.md 指纹，修改前必须读取当前文件");
+  } else if (state.workspace.agents_fingerprint?.sha256 !== current.agents_fingerprint?.sha256) {
+    lines.push("最近的 AGENTS.md 内容已变化，修改前必须重新读取");
   }
   if (changed.length) lines.push(`基线后变化（修改者未知，必须基于现状合并）：${changed.join("、")}`);
   return { state, changed_files: changed, text: lines.join("\n") };

@@ -17,16 +17,21 @@ task_state:
       source: source:apps/short/20260709/pages-F/components/RewardDialog.vue
       verified_by: source
       evidence: 页面入口直接注册并渲染该组件
+    - value: 网络记录显示奖励接口仅请求一次
+      source: runtime:reward-dialog-page
+      verified_by: runtime
+      evidence: 打开奖励弹窗后请求计数为 1
+      satisfies: [request-once]
     - value: 弹窗当前视觉结果不能回归
       source: user
       verified_by: user
       protected: true
   pending_checks:
-    - { value: 验证接口只触发一次, source: acceptance }
     - { value: 验证弹窗正常展示, source: acceptance }
   completion_criteria:
-    - { value: 接口只触发一次且弹窗正常展示, source: user }
-  next_action: { value: 定位重复触发入口, source: conversation }
+    - { id: request-once, value: 接口只触发一次, source: user }
+    - { id: dialog-visible, value: 弹窗正常展示, source: user }
+  next_action: { value: 验证弹窗正常展示, source: conversation }
 ```
 
 ## 字段约束
@@ -34,21 +39,21 @@ task_state:
 - `task_key` 使用稳定路径、模块或简短任务名；`status` 只用 `active | blocked | complete`。
 - `current_goal` 和非完成状态的 `next_action` 各只能有一个。`complete` 不含 `next_action`，也不能残留 `pending_checks`。
 - `change_boundaries.kind` 只用 `allowed | prohibited | constraint`。
-- `verified_facts.verified_by` 只用 `source | runtime | user`。源码事实引用最小路径或符号，运行事实写明命令或页面操作及结果；只有用户明确要求不可回归的结果或验证仍有效的结果才加 `protected: true`。
+- `verified_facts.verified_by` 只用 `source | runtime | user`。源码事实引用最小路径或符号，运行事实写明命令或页面操作及结果；只有用户明确要求不可回归的结果或验证仍有效的结果才加 `protected: true`。事实证明完成条件时，用 `satisfies` 引用条件 ID。
 - `pending_checks` 只保留未执行或证据不足的验证。验证完成后删除该项，并将结果压缩到 `verified_facts`；失败时更新唯一下一步。
-- `completion_criteria` 保持稳定，除非用户改变验收。不能用“代码已修改”作为完成条件。
+- `completion_criteria` 每项使用任务内稳定且唯一的 `id`，除非用户改变验收否则保持稳定。不能用“代码已修改”作为完成条件。
 
 每个数组最多 8 项。不要保存日志、文件正文、完整响应、截图内容、secret、token、cookie、推理过程或无证据假设，也不要增加平行账本。
 
 ## 定位绑定
 
-脚本从当前分支和目标文件自动保存以下工作区事实：仓库根目录、分支、活动目录、页面目录、最近的 `AGENTS.md`、目标文件指纹。
+脚本从当前分支和目标文件自动保存以下工作区事实：仓库根目录、分支、活动目录、页面目录、最近的 `AGENTS.md` 路径与 SHA-256、目标文件指纹。
 
 ```text
 node <skill-dir>/scripts/collect-task-context.mjs --root <工作区> [--target <目标文件> ...]
 ```
 
-活动仓库内，`act-<name>` 对应 `apps/short/<name>`，`mdc-<id>` 对应 `apps/mdc/<id>`；只有目录真实存在才采用。用户路径优先，但与分支推导冲突时先确认。页面目录优先从当前路径或目标文件的 `pages-*` 祖先获得；活动下只有一个页面目录时可自动采用，多个候选时不猜。
+活动仓库内，`act-<name>` 对应 `apps/short/<name>`，`mdc-<id>` 对应 `apps/mdc/<id>`；只有目录真实存在才采用。单一明确目标路径优先于 `--root` 和分支；多个目标指向不同活动时只报告候选，不猜。目标路径与分支推导冲突时先确认。页面目录优先从目标文件的 `pages-*` 祖先获得；活动下只有一个页面目录时可自动采用，多个候选时不猜。
 
 ## 保存与恢复
 
@@ -72,15 +77,15 @@ node <skill-dir>/scripts/task-state.mjs list --root <工作区>
 node <skill-dir>/scripts/task-state.mjs preflight --root <工作区> --task <task_key>
 ```
 
-先检查输出中的修改边界和不可回归事实，再编辑。目标文件指纹、分支或最近的 `AGENTS.md` 变化时，重读当前规则和源码并合并修改；变化不自动撤销保护项，也不证明需求改变。
+先检查输出中的修改边界和不可回归事实，再编辑。目标文件指纹、分支、最近的 `AGENTS.md` 路径或内容指纹变化时，重读当前规则和源码并合并修改；变化不自动撤销保护项，也不证明需求改变。
 
 ## 完成闭环
 
 每完成一步按此顺序更新：
 
 1. 从 `pending_checks` 删除已执行项。
-2. 将可复用结论写入 `verified_facts`，附来源和验证方式。
+2. 将可复用结论写入 `verified_facts`，附来源和验证方式；证明完成条件时通过 `satisfies` 关联其 ID。
 3. 仍有待验证项时只保留一个 `next_action`。
-4. 所有完成条件均有有效证据且 `pending_checks` 为空时，设为 `complete` 并删除 `next_action`。
+4. 所有完成条件 ID 均被有效验证事实关联且 `pending_checks` 为空时，设为 `complete` 并删除 `next_action`；脚本会拒绝缺少条件或证据关联的完成态。
 
 用户最新要求覆盖冲突旧状态。相关源码、运行环境或页面状态变化导致证据失效时，移除对应事实并重新加入 `pending_checks`。
